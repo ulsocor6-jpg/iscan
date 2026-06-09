@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISCAN Dashboard PRO</title>
+
+<style>
+body{margin:0;font-family:system-ui;background:#0b1220;color:#e5e7eb;}
+nav{display:flex;justify-content:space-between;align-items:center;padding:12px;background:#0f172a;border-bottom:1px solid #1f2937;flex-wrap:wrap}
+button{cursor:pointer}
+.nav-left button{margin:2px;padding:7px 10px;border-radius:8px;border:1px solid #1f2937;background:transparent;color:#94a3b8}
+.nav-left button.active{background:#2563eb;color:#fff}
+.screen{display:none;padding:18px;max-width:1100px;margin:auto}
+.screen.active{display:block}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+input,select{width:100%;padding:9px;border-radius:8px;border:1px solid #1f2937;background:#0b1220;color:white;margin-top:6px}
+.btn{padding:9px;border-radius:8px;border:none;margin-top:8px;width:100%}
+.primary{background:#2563eb;color:white}
+.green{background:#16a34a;color:white}
+.amber{background:#d97706;color:white}
+.msg{margin-top:8px;font-size:12px}
+.msg.ok{color:#22c55e}
+.msg.err{color:#f87171}
+.table{width:100%;font-size:12px;border-collapse:collapse}
+.table td,.table th{padding:8px;border-bottom:1px solid #1f2937}
+.small{font-size:11px;color:#94a3b8}
+.balance{font-size:26px;color:#22c55e;font-weight:700}
+</style>
+</head>
+
+<body>
+
+<nav>
+  <div class="nav-left">
+    <button class="active" onclick="ui.switchTab('overview')">Dashboard</button>
+    <button onclick="ui.switchTab('pay')">Pay</button>
+    <button onclick="ui.switchTab('ledger')">Ledger</button>
+    <button onclick="ui.switchTab('wallets')">Wallets</button>
+  </div>
+  <div>
+    <span id="userInfo"></span>
+  </div>
+</nav>
+
+<!-- OVERVIEW -->
+<div id="overview" class="screen active">
+  <div class="grid">
+    <div class="card">
+      <div class="small">ISCAN BALANCE</div>
+      <div class="balance" id="balance">₱0.00</div>
+    </div>
+
+    <div class="card">
+      <div class="small">WALLET</div>
+      <div id="walletInfo">Not connected</div>
+    </div>
+
+    <div class="card">
+      <div class="small">RATES</div>
+      <div id="rates">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- PAY -->
+<div id="pay" class="screen">
+  <div class="card">
+    <h3>Send Payment</h3>
+    <input id="to" placeholder="Receiver Address / Email">
+    <input id="amount" type="number" placeholder="Amount">
+    <select id="currency">
+      <option>USDC</option>
+      <option>ETH</option>
+      <option>PHP</option>
+    </select>
+    <button class="btn primary" onclick="actions.send()">Send</button>
+    <div id="payMsg" class="msg"></div>
+  </div>
+</div>
+
+<!-- LEDGER -->
+<div id="ledger" class="screen">
+  <div class="card">
+    <h3>Ledger</h3>
+    <div id="ledgerBox">Loading...</div>
+  </div>
+</div>
+
+<!-- WALLETS -->
+<div id="wallets" class="screen">
+  <div class="card">
+    <h3>Wallet Connection</h3>
+    <button class="btn primary" onclick="wallet.connect('metamask')">MetaMask</button>
+    <button class="btn amber" onclick="wallet.connect('ronin')">Ronin</button>
+    <div id="walletMsg" class="msg"></div>
+  </div>
+</div>
+
+<script>
+/* =========================
+   GLOBAL STATE (IMPORTANT FIX)
+========================= */
+const state = {
+  user: {
+    email: document.cookie.match(/iscan_email=([^;]+)/)?.[1] || null,
+    name: document.cookie.match(/iscan_name=([^;]+)/)?.[1] || null
+  },
+  rates: {},
+  wallet: null,
+  balance: 0
+};
+
+/* =========================
+   SAFE API WRAPPER
+========================= */
+async function api(url, options = {}) {
+  try {
+    const res = await fetch(url, {
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      ...options
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "Request failed");
+
+    return data;
+  } catch (err) {
+    console.error("API error:", err.message);
+    return { error: err.message };
+  }
+}
+
+/* =========================
+   UI CONTROLLER
+========================= */
+const ui = {
+  switchTab(tab) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(tab).classList.add("active");
+  },
+
+  msg(id, text, ok = true) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = "msg " + (ok ? "ok" : "err");
+  }
+};
+
+/* =========================
+   WALLET MODULE
+========================= */
+const wallet = {
+  async connect(type) {
+    try {
+      const provider = window.ethereum;
+      if (!provider) return ui.msg("walletMsg", "No wallet detected", false);
+
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const address = accounts[0];
+
+      state.wallet = address;
+
+      const bal = await provider.request({
+        method: "eth_getBalance",
+        params: [address, "latest"]
+      });
+
+      const eth = (parseInt(bal, 16) / 1e18).toFixed(4);
+
+      document.getElementById("walletInfo").innerText =
+        address.slice(0,6)+"..."+address.slice(-4)+" ("+eth+" ETH)";
+
+      ui.msg("walletMsg", "Wallet connected");
+    } catch (e) {
+      ui.msg("walletMsg", e.message, false);
+    }
+  }
+};
+
+/* =========================
+   ACTIONS
+========================= */
+const actions = {
+  async send() {
+    const to = document.getElementById("to").value;
+    const amount = document.getElementById("amount").value;
+
+    if (!to || !amount) {
+      return ui.msg("payMsg", "Missing fields", false);
+    }
+
+    const res = await api("/api/v1/remittance/send", {
+      method: "POST",
+      body: JSON.stringify({ to, amount })
+    });
+
+    if (res.error) return ui.msg("payMsg", res.error, false);
+
+    ui.msg("payMsg", "Sent successfully");
+    loadLedger();
+  }
+};
+
+/* =========================
+   DATA LOADERS
+========================= */
+async function loadRates() {
+  const res = await api("/api/v1/remittance/rates");
+  if (res.rates) {
+    state.rates = res.rates;
+    document.getElementById("rates").innerText =
+      "USDC: ₱" + res.rates.USDC + "\nETH: ₱" + res.rates.ETH;
+  }
+}
+
+async function loadBalance() {
+  const res = await api("/api/v1/ledger/history");
+  if (res.balance !== undefined) {
+    state.balance = res.balance;
+    document.getElementById("balance").innerText =
+      "₱" + Number(res.balance).toLocaleString();
+  }
+}
+
+async function loadLedger() {
+  const res = await api("/api/v1/ledger/history");
+
+  const el = document.getElementById("ledgerBox");
+  if (!res.ledger?.length) {
+    el.innerText = "No records";
+    return;
+  }
+
+  el.innerHTML =
+    "<table class='table'>" +
+    res.ledger.map(l =>
+      `<tr>
+        <td>${l.type}</td>
+        <td>${l.amount}</td>
+        <td>${l.referenceId}</td>
+      </tr>`
+    ).join("") +
+    "</table>";
+}
+
+/* =========================
+   INIT
+========================= */
+function init() {
+  document.getElementById("userInfo").innerText =
+    state.user.name || state.user.email || "Guest";
+
+  loadRates();
+  loadBalance();
+  loadLedger();
+
+  setInterval(loadRates, 60000);
+}
+
+init();
+</script>
+
+</body>
+</html>
