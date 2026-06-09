@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iSCAN — Login</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #080c12;
+    --surface: #0e1520;
+    --surface2: #141d2e;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #0094ff;
+    --danger: #ff4d6a;
+    --text: #e8f0fe;
+    --muted: #5a7a9a;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+
+  .bg-grid {
+    position:fixed; inset:0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size:40px 40px;
+  }
+
+  .bg-glow {
+    position:fixed; inset:0;
+    background: radial-gradient(ellipse 60% 50% at 50% 0%,
+      rgba(0,148,255,0.12) 0%, transparent 70%);
+  }
+
+  .orb {
+    position:fixed;
+    border-radius:50%;
+    filter:blur(80px);
+  }
+
+  .orb1 {
+    width:400px; height:400px;
+    background:rgba(0,212,255,0.05);
+    top:-100px; right:-100px;
+  }
+
+  .orb2 {
+    width:300px; height:300px;
+    background:rgba(0,148,255,0.06);
+    bottom:-50px; left:-50px;
+  }
+
+  .container {
+    position:relative;
+    z-index:1;
+    width:100%;
+    max-width:420px;
+    padding:20px;
+    animation:fadeUp .6s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(24px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+
+  .logo-area {
+    text-align:center;
+    margin-bottom:36px;
+  }
+
+  .logo {
+    font-family:'Syne', sans-serif;
+    font-weight:800;
+    font-size:2.4rem;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+  }
+
+  .card {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:36px;
+    box-shadow:0 0 60px rgba(0,212,255,0.06),
+               0 24px 60px rgba(0,0,0,0.5);
+  }
+
+  .title {
+    font-family:'Syne';
+    font-weight:700;
+    font-size:1.4rem;
+    margin-bottom:24px;
+  }
+
+  .field { margin-bottom:18px; }
+
+  label {
+    display:block;
+    font-size:0.78rem;
+    color:var(--muted);
+    margin-bottom:8px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+
+  input {
+    width:100%;
+    padding:13px 16px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--surface2);
+    color:var(--text);
+    outline:none;
+  }
+
+  input:focus { border-color:var(--accent); }
+
+  .btn {
+    width:100%;
+    padding:14px;
+    margin-top:10px;
+    border:none;
+    border-radius:10px;
+    font-family:'Syne';
+    font-weight:700;
+    cursor:pointer;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#061018;
+  }
+
+  .btn:disabled {
+    opacity:.6;
+    cursor:not-allowed;
+  }
+
+  .error {
+    background:rgba(255,77,106,0.1);
+    border:1px solid rgba(255,77,106,0.3);
+    padding:12px;
+    border-radius:8px;
+    font-size:0.85rem;
+    color:var(--danger);
+    display:none;
+    margin-bottom:16px;
+  }
+
+  .success {
+    background:rgba(0,212,255,0.1);
+    border:1px solid rgba(0,212,255,0.3);
+    padding:12px;
+    border-radius:8px;
+    font-size:0.85rem;
+    color:var(--accent);
+    display:none;
+    margin-bottom:16px;
+  }
+
+  .footer {
+    text-align:center;
+    margin-top:18px;
+    font-size:0.85rem;
+    color:var(--muted);
+  }
+
+  .footer a {
+    color:var(--accent);
+    text-decoration:none;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+
+<div class="container">
+
+  <div class="logo-area">
+    <div class="logo">iSCAN.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Welcome Back</div>
+
+    <div id="error" class="error"></div>
+    <div id="success" class="success"></div>
+
+    <div class="field">
+      <label>Email</label>
+      <input id="email" type="email" />
+    </div>
+
+    <div class="field">
+      <label>Password</label>
+      <input id="password" type="password" />
+    </div>
+
+    <button class="btn" id="btn" onclick="login()">Login</button>
+
+    <div class="footer">
+      No account yet?
+      <a href="/register.html">Create Account</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showError(msg){
+  const e = document.getElementById('error');
+  e.style.display = 'block';
+  e.textContent = msg;
+  document.getElementById('success').style.display = 'none';
+}
+
+function showSuccess(msg){
+  const s = document.getElementById('success');
+  s.style.display = 'block';
+  s.textContent = msg;
+  document.getElementById('error').style.display = 'none';
+}
+
+async function login(){
+  const btn = document.getElementById('btn');
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+
+  if(!email || !password){
+    showError("Fill all fields");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Logging in...";
+
+  try {
+    const res = await fetch('/api/v1/auth/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      showError(data.message || "Login failed");
+      return;
+    }
+
+    localStorage.setItem("token", data.token);
+
+    showSuccess("Login successful");
+
+    setTimeout(() => {
+      window.location.href = "/dashboard";
+    }, 1000);
+
+  } catch(err){
+    showError("Server error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Login";
+  }
+}
+</script>
+
+</body>
+</html>
