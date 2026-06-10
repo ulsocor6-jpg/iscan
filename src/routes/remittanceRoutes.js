@@ -10,11 +10,10 @@ const router = express.Router();
 // GET live rates
 router.get('/rates', async (req, res) => {
   try {
-    const [usdcRate, ethRate] = await Promise.all([
-      getLiveRate('USDC'),
-      getLiveRate('ETH')
-    ]);
-    res.json({ success: true, rates: { USDC: usdcRate, ETH: ethRate } });
+    const [usdcRate, ethRate, ronRate] = await Promise.all([
+  getLiveRate('USDC'), getLiveRate('ETH'), getLiveRate('RON')
+]);
+res.json({ success: true, rates: { USDC: usdcRate, ETH: ethRate, RON: ronRate } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to fetch rates.' });
   }

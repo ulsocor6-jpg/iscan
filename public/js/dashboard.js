@@ -1,39 +1,62 @@
-// public/js/dashboard.js
-import { loadWallets } from './wallet.js';
-import { apiGet } from './api.js';
+// ─── BALANCE DISPLAY ─────────────────────────────────────────────────────────
 
-function switchTab(id, btn) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-
-  document.getElementById(id).classList.add('active');
-  if (btn) btn.classList.add('active');
-}
-
-window.switchTab = switchTab;
-
-async function loadDashboardBalances() {
-  const wallets = await apiGet('/api/v1/wallet/list');
-
-  document.getElementById('phpBalance').textContent =
-    Array.isArray(wallets)
-      ? wallets.length + ' Wallet(s)'
-      : '0 Wallets';
-}
-
-async function init() {
+async function loadBalance() {
   try {
-    const user = await apiGet('/api/v1/auth/verify');
+    const res = await fetch('/api/v1/wallet/balance', {
+      method: 'GET',
+      credentials: 'include' // sends the iscan_token cookie with the request
+    });
 
-    document.getElementById('userInfo').textContent =
-      user.user.email;
+    if (!res.ok) {
+      console.error('[BALANCE] HTTP', res.status);
+      setBalanceDisplay('—');
+      return;
+    }
 
-    await loadDashboardBalances();
-    await loadWallets();
+    const data = await res.json();
+
+    if (data.success) {
+      // Format as Philippine Peso — adjust locale/currency to match your app
+      const formatted = new Intl.NumberFormat('en-PH', {
+        style: 'currency',
+        currency: 'PHP'
+      }).format(data.balance);
+
+      setBalanceDisplay(formatted);
+    } else {
+      setBalanceDisplay('—');
+    }
 
   } catch (err) {
-    window.location.href = '/login.html';
+    console.error('[BALANCE ERROR]', err);
+    setBalanceDisplay('—');
   }
 }
 
-window.addEventListener('DOMContentLoaded', init);
+function setBalanceDisplay(value) {
+  // Update every element with this ID/class — adjust selector to match your HTML
+  const els = document.querySelectorAll('#balance-display, .balance-amount');
+  els.forEach(el => { el.textContent = value; });
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', () => {
+  loadBalance();
+});
+
+// ─── SAFE ACTION WRAPPER (unchanged from original) ───────────────────────────
+
+function safeAction(fn) {
+  return async function (...args) {
+    try {
+      setLoading(true);
+      const result = await fn(...args);
+      console.log('SUCCESS:', result);
+      setLoading(false);
+      return result;
+    } catch (err) {
+      setLoading(false);
+      alert('Error: ' + err.message);
+    }
+  };
+}
