@@ -28,7 +28,12 @@ export const sendToCoinsph = async ({ amount, currency, recipientPhone, referenc
 
 export const getLiveRate = async (currency = 'USDC') => {
   try {
-    const coinMap = { USDC: 'usd-coin', ETH: 'ethereum', MATIC: 'matic-network' };
+    const coinMap = {
+      USDC: 'usd-coin',
+      ETH: 'ethereum',
+      MATIC: 'matic-network',
+      RON: 'ronin'
+    };
     const coinId = coinMap[currency] || 'usd-coin';
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=php`);
     const data = await res.json();

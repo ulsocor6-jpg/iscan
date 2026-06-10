@@ -1,21 +1,59 @@
-// public/js/api.js
+const API_BASE = "http://localhost:3000/api";
 
-export async function apiGet(url) {
-  const res = await fetch(url, {
-    credentials: 'same-origin'
-  });
-  return res.json();
+async function request(endpoint, options = {}) {
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      method: options.method || "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || data.error || "Request failed");
+    }
+
+    return data;
+
+  } catch (err) {
+    console.error("API ERROR:", endpoint, err.message);
+    throw err;
+  }
 }
 
-export async function apiPost(url, body) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',
-    body: JSON.stringify(body)
-  });
+/**
+ * WALLET API
+ */
+export const WalletAPI = {
+  linkWallet: (walletId) =>
+    request("/wallet/link", {
+      method: "POST",
+      body: { walletId }
+    }),
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
-}
+  unlinkWallet: (walletId) =>
+    request("/wallet/unlink", {
+      method: "POST",
+      body: { walletId }
+    }),
+
+  getWallets: () =>
+    request("/wallet/list")
+};
+
+/**
+ * TRANSFER API
+ */
+export const TransferAPI = {
+  send: (payload) =>
+    request("/transfer", {
+      method: "POST",
+      body: payload
+    })
+};
