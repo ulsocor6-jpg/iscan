@@ -39,13 +39,16 @@ export const WalletService = {
    * Called by authController after registration
    */
   async createWallet(userId) {
+    const tempId = new mongoose.Types.ObjectId();
     return await Wallet.create({
+      _id: tempId,
       userId,
+      iscanAddress: toIscanAddr(tempId),
       availableBalance: 0,
       pendingBalance: 0,
       frozenBalance: 0,
       balance: 0,
-      status: "ACTIVE"
+      status: "active"
     });
   },
 
