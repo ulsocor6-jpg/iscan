@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { requireAuth } from '../../middleware/authMiddleware.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 import Transaction from '../models/transactionModel.js';
 import { getLiveRate, sendToCoinsph } from '../integrations/coinsph.js';
 import Audit from '../models/auditModel.js';

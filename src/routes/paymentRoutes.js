@@ -3,7 +3,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { requireAuth } from '../../middleware/authMiddleware.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 import { cashIn, webhook } from '../controllers/paymentController.js';
 import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';

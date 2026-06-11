@@ -6,7 +6,7 @@ import {
   deleteBank
 } from '../controllers/bankController.js';
 
-import { requireAuth } from '../../middleware/authMiddleware.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 

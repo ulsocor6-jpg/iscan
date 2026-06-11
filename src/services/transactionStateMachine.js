@@ -4,76 +4,22 @@ const STATES = Object.freeze({
   FRAUD_CHECK: 'fraud_check',
   RESERVED: 'reserved',
   PROCESSING: 'processing',
+  ONRAMP_PENDING: 'onramp_pending',  // NEW: waiting for GCash + crypto
+  ONRAMP_COMPLETED: 'onramp_completed', // NEW: crypto received
   SETTLED: 'settled',
   FAILED: 'failed',
   REVERSED: 'reversed'
 });
 
 const TRANSITIONS = {
-  [STATES.CREATED]: [
-    STATES.VALIDATING,
-    STATES.FAILED
-  ],
-
-  [STATES.VALIDATING]: [
-    STATES.FRAUD_CHECK,
-    STATES.FAILED
-  ],
-
-  [STATES.FRAUD_CHECK]: [
-    STATES.RESERVED,
-    STATES.FAILED
-  ],
-
-  [STATES.RESERVED]: [
-    STATES.PROCESSING,
-    STATES.FAILED
-  ],
-
-  [STATES.PROCESSING]: [
-    STATES.SETTLED,
-    STATES.FAILED
-  ],
-
-  [STATES.SETTLED]: [
-    STATES.REVERSED
-  ],
-
+  [STATES.CREATED]: [ STATES.VALIDATING, STATES.FAILED ],
+  [STATES.VALIDATING]: [ STATES.FRAUD_CHECK, STATES.FAILED ],
+  [STATES.FRAUD_CHECK]: [ STATES.RESERVED, STATES.FAILED ],
+  [STATES.RESERVED]: [ STATES.PROCESSING, STATES.ONRAMP_PENDING, STATES.FAILED ], // Added ONRAMP_PENDING
+  [STATES.PROCESSING]: [ STATES.SETTLED, STATES.FAILED ],
+  [STATES.ONRAMP_PENDING]: [ STATES.ONRAMP_COMPLETED, STATES.FAILED ], // NEW
+  [STATES.ONRAMP_COMPLETED]: [ STATES.SETTLED ], // NEW
+  [STATES.SETTLED]: [ STATES.REVERSED ],
   [STATES.REVERSED]: [],
-
   [STATES.FAILED]: []
 };
-
-class TransactionStateMachine {
-
-  getStates() {
-    return STATES;
-  }
-
-  canTransition(from, to) {
-
-    const allowed = TRANSITIONS[from] || [];
-
-    return allowed.includes(to);
-  }
-
-  transition(transaction, nextState) {
-
-    if (
-      !this.canTransition(
-        transaction.status,
-        nextState
-      )
-    ) {
-      throw new Error(
-        `Invalid transition: ${transaction.status} -> ${nextState}`
-      );
-    }
-
-    transaction.status = nextState;
-
-    return transaction;
-  }
-}
-
-export default new TransactionStateMachine();
