@@ -56,6 +56,9 @@ app.use('/api/v1/beneficiary', beneficiaryRoutes);
 app.use('/api/v1/dashboard',   dashboardRoutes);
 app.use('/api/v1/users',       userRoutes);
 
+// ── Railway healthcheck ──
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
 // ── Page routes ──
 app.get('/',               (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/login',          (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
