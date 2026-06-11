@@ -2,7 +2,7 @@
 
 import express from 'express';
 import mongoose from 'mongoose';
-import { requireAuth } from '../../middleware/authMiddleware.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 import Transaction from '../models/transactionModel.js';
 import Ledger from '../models/ledgerModel.js';
 

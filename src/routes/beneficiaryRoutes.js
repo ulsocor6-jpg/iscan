@@ -6,8 +6,7 @@ getBeneficiaries
 }
 from "../controllers/beneficiaryController.js";
 
-import { requireAuth }
-from "../middleware/authGuard.js";
+import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 

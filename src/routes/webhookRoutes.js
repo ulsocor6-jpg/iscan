@@ -3,6 +3,49 @@ import crypto from 'crypto';
 
 import transactionService from '../services/transactionService.js';
 import ledgerService from '../services/ledgerService.js';
+import transakProvider from '../integrations/paymentProviders/transakProvider.js';
+
+// ADD THIS NEW ROUTE
+router.post('/transak', express.raw({type: 'application/json'}), async (req, res) => {
+  try {
+    const signature = req.headers['x-transak-signature'];
+    const payload = JSON.parse(req.body);
+    
+    // 1. SECURITY CHECK
+    if (!transakProvider.verifyWebhookSignature(payload, signature)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const { eventID, eventType, data } = payload;
+    const { partnerOrderId, status, cryptoAmount, transactionHash } = data;
+
+    // 2. FIND TRANSACTION by referenceId
+    const tx = await transactionService.findByReference(partnerOrderId);
+    if (!tx) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    // 3. UPDATE BASED ON STATUS
+    if (eventType === 'ORDER_COMPLETED' && status === 'COMPLETED') {
+      await transactionService.transitionTo(tx._id, 'ONRAMP_COMPLETED', {
+        cryptoAmount,
+        txHash: transactionHash
+      });
+      
+      // Credit crypto amount to internal ledger if needed
+      await ledgerService.creditCrypto(tx.userId, cryptoAmount, transactionHash);
+    }
+    
+    if (eventType === 'ORDER_FAILED') {
+      await transactionService.transitionTo(tx._id, 'FAILED');
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[TRANSAK WEBHOOK ERROR]', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 const router = express.Router();
 

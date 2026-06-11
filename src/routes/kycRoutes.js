@@ -8,7 +8,7 @@ import {
 
 import {
   requireAuth
-} from '../../middleware/authMiddleware.js';
+} from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 

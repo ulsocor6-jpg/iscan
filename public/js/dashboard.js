@@ -1,62 +1,122 @@
-// ─── BALANCE DISPLAY ─────────────────────────────────────────────────────────
+/**
+ * dashboard-api.js
+ * ISCAN Dashboard — API wiring layer
+ * Drop into public/js/ and import in dashboard.html
+ *
+ * All calls use httpOnly cookies (set at login) — no token handling needed here.
+ */
 
-async function loadBalance() {
-  try {
-    const res = await fetch('/api/v1/wallet/balance', {
-      method: 'GET',
-      credentials: 'include' // sends the iscan_token cookie with the request
-    });
+const API = '/api/v1';
 
-    if (!res.ok) {
-      console.error('[BALANCE] HTTP', res.status);
-      setBalanceDisplay('—');
+// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API}${path}`, {
+    credentials: 'include', // sends httpOnly cookie
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    // If 401, redirect to login
+    if (res.status === 401) {
+      window.location.href = '/login';
       return;
     }
-
-    const data = await res.json();
-
-    if (data.success) {
-      // Format as Philippine Peso — adjust locale/currency to match your app
-      const formatted = new Intl.NumberFormat('en-PH', {
-        style: 'currency',
-        currency: 'PHP'
-      }).format(data.balance);
-
-      setBalanceDisplay(formatted);
-    } else {
-      setBalanceDisplay('—');
-    }
-
-  } catch (err) {
-    console.error('[BALANCE ERROR]', err);
-    setBalanceDisplay('—');
+    throw new Error(data.error || `HTTP ${res.status}`);
   }
+
+  return data;
 }
 
-function setBalanceDisplay(value) {
-  // Update every element with this ID/class — adjust selector to match your HTML
-  const els = document.querySelectorAll('#balance-display, .balance-amount');
-  els.forEach(el => { el.textContent = value; });
-}
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 
-// Run on page load
-document.addEventListener('DOMContentLoaded', () => {
-  loadBalance();
-});
+export const auth = {
+  /** Returns current user or redirects to /login */
+  me: () => apiFetch('/auth/me'),
 
-// ─── SAFE ACTION WRAPPER (unchanged from original) ───────────────────────────
+  logout: async () => {
+    await apiFetch('/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }
+};
 
-function safeAction(fn) {
-  return async function (...args) {
-    try {
-      setLoading(true);
-      const result = await fn(...args);
-      console.log('SUCCESS:', result);
-      setLoading(false);
-      return result;
-    } catch (err) {
-      setLoading(false);
-      alert('Error: ' + err.message);
-    }
+// ─── WALLET / BALANCE ─────────────────────────────────────────────────────────
+
+export const wallet = {
+  /** Returns { balance: Number } */
+  balance: () => apiFetch('/internal/balance'),
+
+  /** Admin: add funds to own wallet */
+  credit: (amount) => apiFetch('/internal/credit', {
+    method: 'POST',
+    body: JSON.stringify({ amount })
+  }),
+
+  /** Admin: spend funds from own wallet */
+  debit: (amount) => apiFetch('/internal/debit', {
+    method: 'POST',
+    body: JSON.stringify({ amount })
+  })
+};
+
+// ─── LEDGER / TRANSACTION HISTORY ────────────────────────────────────────────
+
+export const ledger = {
+  /**
+   * Returns { success, entries: [...] }
+   * Each entry has: credit, debit, transactionType, description, createdAt, runningBalance
+   */
+  history: (limit = 30) => apiFetch(`/ledger/history?limit=${limit}`),
+
+  /** Flat list without running balance — lighter query */
+  feed: (limit = 30) => apiFetch(`/ledger?limit=${limit}`)
+};
+
+// ─── P2P TRANSFER ─────────────────────────────────────────────────────────────
+
+export const p2p = {
+  /**
+   * Search for a user by name, email, or phone
+   * Returns { success, users: [{ _id, name, email, phone }] }
+   */
+  searchUser: (q) => apiFetch(`/users/search?q=${encodeURIComponent(q)}`),
+
+  /**
+   * Send money to a user
+   * @param {string} receiverId  — MongoDB ObjectId of recipient
+   * @param {number} amount
+   */
+  send: (receiverId, amount) => apiFetch('/p2p/send', {
+    method: 'POST',
+    body: JSON.stringify({ receiverId, amount })
+  })
+};
+
+// ─── DASHBOARD STATS ──────────────────────────────────────────────────────────
+
+export const dashboard = {
+  overview: () => apiFetch('/dashboard/overview'),
+  risk:     () => apiFetch('/dashboard/risk'),
+  health:   () => apiFetch('/dashboard/health')
+};
+
+// ─── Bootstrap helper — call on dashboard page load ──────────────────────────
+
+/**
+ * Loads user identity + balance in parallel on page init.
+ * Usage: const { user, balance } = await dashboardInit();
+ */
+export async function dashboardInit() {
+  const [meRes, balRes] = await Promise.all([
+    auth.me(),
+    wallet.balance()
+  ]);
+
+  return {
+    user:    meRes.user  || meRes,
+    balance: balRes.balance
   };
 }

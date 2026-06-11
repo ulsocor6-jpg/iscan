@@ -110,10 +110,11 @@ export const login = async (req, res) => {
     if (!valid)
       return res.status(401).json({ message: 'Invalid email or password.' });
 
-    if (!user.isVerified)
-      return res.status(403).json({
-        message: 'Email not verified. Check your inbox or use Forgot Password to resend.'
-      });
+    // TEMP: bypass email verification for development
+// if (!user.isVerified)
+//   return res.status(403).json({
+//     message: 'Email not verified. Check your inbox or use Forgot Password to resend.'
+//   });
 
     const token = jwt.sign(
       { id: user._id, email: user.email, firstName: user.firstName },

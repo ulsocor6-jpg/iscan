@@ -1,45 +1,32 @@
-import Redis from 'ioredis';
-import crypto from 'crypto';
+const locks = new Map();
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-
-/**
- * Distributed Lock Service (ISCAN CORE SAFETY)
- */
-class LockService {
-
-  generateLockId() {
-    return crypto.randomUUID();
-  }
-
-  async acquireLock(key, ttl = 5000) {
-    const lockId = this.generateLockId();
-
-    const result = await redis.set(
-      `lock:${key}`,
-      lockId,
-      'NX',
-      'PX',
-      ttl
-    );
-
-    if (!result) {
-      return null; // lock failed
+export const lockService = {
+  async withLock(key, fn) {
+    while (locks.get(key)) {
+      await new Promise(r => setTimeout(r, 10)); // wait 10ms
     }
-
-    return lockId;
-  }
-
-  async releaseLock(key, lockId) {
-    const stored = await redis.get(`lock:${key}`);
-
-    if (stored === lockId) {
-      await redis.del(`lock:${key}`);
-      return true;
+    locks.set(key, true);
+    try {
+      return await fn();
+    } finally {
+      locks.delete(key);
     }
+  },
 
-    return false;
+  async withMultiLock(keys, fn) {
+    const sorted = [...keys].sort();
+    for (const key of sorted) {
+      while (locks.get(key)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
+      locks.set(key, true);
+    }
+    try {
+      return await fn();
+    } finally {
+      sorted.forEach(k => locks.delete(k));
+    }
   }
-}
+};
 
-export default new LockService();
+export default lockService;
