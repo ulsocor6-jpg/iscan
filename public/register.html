@@ -6,10 +6,7 @@
 <title>iSCAN — Create Account</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #080c12; --surface: #0e1520; --surface2: #141d2e; --border: #1e2d45;
-    --accent: #00d4ff; --accent2: #0094ff; --danger: #ff4d6a; --text: #e8f0fe; --muted: #5a7a9a;
-  }
+  :root { --bg: #080c12; --surface: #0e1520; --surface2: #141d2e; --border: #1e2d45; --accent: #00d4ff; --accent2: #0094ff; --danger: #ff4d6a; --text: #e8f0fe; --muted: #5a7a9a; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .bg-grid { position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px); background-size: 40px 40px; }
@@ -44,100 +41,56 @@
 <div class="bg-glow"></div>
 <div class="orb orb1"></div>
 <div class="orb orb2"></div>
-
 <div class="container">
   <div class="logo-area"><div class="logo">iSCAN<span>.</span></div></div>
   <div class="card">
     <div class="card-title">Create Account</div>
-
     <div class="error-box" id="errorBox"></div>
     <div class="success-box" id="successBox"></div>
-
     <div class="name-row">
       <div class="field"><label>First Name</label><input type="text" id="firstName" autocomplete="given-name"></div>
       <div class="field"><label>Last Name</label><input type="text" id="lastName" autocomplete="family-name"></div>
     </div>
     <div class="field"><label>Email Address</label><input type="email" id="email" autocomplete="email"></div>
     <div class="field"><label>Password</label><input type="password" id="password" autocomplete="new-password"></div>
-
     <button class="btn" id="regBtn" onclick="handleRegister()">Register</button>
     <div class="footer-link">Already have an account? <a href="/login">Sign In</a></div>
   </div>
 </div>
-
 <script>
-  function showError(message) {
-    const box = document.getElementById('errorBox');
-    box.textContent = message;
-    box.classList.add('show');
-    document.getElementById('successBox').classList.remove('show');
-  }
-
-  function showSuccess(message) {
-    const box = document.getElementById('successBox');
-    box.textContent = message;
-    box.classList.add('show');
-    document.getElementById('errorBox').classList.remove('show');
-  }
-
-  function clearMessages() {
-    document.getElementById('errorBox').classList.remove('show');
-    document.getElementById('successBox').classList.remove('show');
-  }
+  function showError(msg) { const b = document.getElementById('errorBox'); b.textContent = msg; b.classList.add('show'); document.getElementById('successBox').classList.remove('show'); }
+  function showSuccess(msg) { const b = document.getElementById('successBox'); b.textContent = msg; b.classList.add('show'); document.getElementById('errorBox').classList.remove('show'); }
+  function clearMessages() { document.getElementById('errorBox').classList.remove('show'); document.getElementById('successBox').classList.remove('show'); }
 
   async function handleRegister() {
     clearMessages();
-
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
     const email     = document.getElementById('email').value.trim();
     const password  = document.getElementById('password').value;
     const btn       = document.getElementById('regBtn');
-
-    if (!firstName || !lastName || !email || !password) {
-      showError('Please fill in all fields.');
-      return;
-    }
-
-    if (password.length < 6) {
-      showError('Password must be at least 6 characters.');
-      return;
-    }
-
+    if (!firstName || !lastName || !email || !password) { showError('Please fill in all fields.'); return; }
+    if (password.length < 6) { showError('Password must be at least 6 characters.'); return; }
     btn.disabled = true;
     btn.textContent = 'Creating account...';
-
     try {
       const res = await fetch('/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName, lastName, email, password })
       });
-
       const result = await res.json();
-
-      if (!res.ok) {
-        showError(result.message || 'Registration failed. Please try again.');
-        btn.disabled = false;
-        btn.textContent = 'Register';
-        return;
-      }
-
-      // Success — redirect to login
+      if (!res.ok) { showError(result.message || 'Registration failed.'); btn.disabled = false; btn.textContent = 'Register'; return; }
       showSuccess('Account created! Taking you to login...');
       btn.textContent = 'Account created ✓';
       setTimeout(() => { window.location.href = '/login'; }, 1500);
-
     } catch (e) {
       showError('Network error. Please try again.');
       btn.disabled = false;
       btn.textContent = 'Register';
     }
   }
-
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') handleRegister();
-  });
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
 </script>
 </body>
 </html>
