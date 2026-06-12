@@ -61,7 +61,7 @@
     <div class="field"><label>Password</label><input type="password" id="password" autocomplete="new-password"></div>
 
     <button class="btn" id="regBtn" onclick="handleRegister()">Register</button>
-    <div class="footer-link">Already have an account? <a href="/login.html">Sign In</a></div>
+    <div class="footer-link">Already have an account? <a href="/login">Sign In</a></div>
   </div>
 </div>
 
@@ -89,10 +89,10 @@
     clearMessages();
 
     const firstName = document.getElementById('firstName').value.trim();
-    const lastName = document.getElementById('lastName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const btn = document.getElementById('regBtn');
+    const lastName  = document.getElementById('lastName').value.trim();
+    const email     = document.getElementById('email').value.trim();
+    const password  = document.getElementById('password').value;
+    const btn       = document.getElementById('regBtn');
 
     if (!firstName || !lastName || !email || !password) {
       showError('Please fill in all fields.');
@@ -118,19 +118,20 @@
 
       if (!res.ok) {
         showError(result.message || 'Registration failed. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Register';
         return;
       }
 
-      showSuccess('Account created! Check your email for a verification link.');
-      btn.textContent = 'Check your email';
+      // Success — redirect to login
+      showSuccess('Account created! Taking you to login...');
+      btn.textContent = 'Account created ✓';
+      setTimeout(() => { window.location.href = '/login'; }, 1500);
 
     } catch (e) {
-      showError('Network error. Is the server running?');
-    } finally {
+      showError('Network error. Please try again.');
       btn.disabled = false;
-      if (btn.textContent === 'Creating account...') {
-        btn.textContent = 'Register';
-      }
+      btn.textContent = 'Register';
     }
   }
 
