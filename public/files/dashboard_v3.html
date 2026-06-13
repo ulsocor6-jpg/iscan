@@ -138,6 +138,7 @@ select option{background:#0b1220;}
     <button onclick="switchSub('receive-tab',this)">📥 Receive</button>
     <button onclick="switchSub('scan-tab',this)">📷 Scan QR</button>
     <button onclick="switchSub('iscan-tab',this)">⚡ ISCAN Transfer</button>
+    <button onclick="switchSub('cashin-tab',this)">💳 Cash In</button>
   </div>
 
   <!-- SEND CRYPTO -->
@@ -247,6 +248,18 @@ select option{background:#0b1220;}
   </div>
 </div>
 
+
+  <!-- CASH IN -->
+  <div id="cashin-tab" class="sub-screen">
+    <div class="card" style="max-width:500px;">
+      <h3>💳 Cash In via GCash / Card</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Deposit PHP to your ISCAN wallet instantly using GCash or debit/credit card.</p>
+      <input id="cashinAmount" type="number" placeholder="Amount (PHP) — min ₱20" min="20" max="100000">
+      <button class="btn btn-green" style="margin-top:8px;" onclick="startCashIn()">Generate Payment Link</button>
+      <div id="cashinMsg" class="msg"></div>
+    </div>
+  </div>
+
 <!-- LEDGER -->
 <div id="ledger" class="screen">
   <div class="card">
@@ -322,7 +335,29 @@ select option{background:#0b1220;}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+async function startCashIn() {
+  const amount = parseFloat(document.getElementById('cashinAmount').value);
+  const msg = document.getElementById('cashinMsg');
+  if (!amount || amount < 20) { msg.style.color='#ef4444'; msg.textContent='Minimum ₱20'; return; }
+  msg.style.color='#94a3b8'; msg.textContent='Creating payment link...';
+  try {
+    const res = await fetch('/api/v1/payment/cashin', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    msg.style.color='#22c55e';
+    msg.innerHTML = `Payment link ready! <a href="${data.checkoutUrl}" target="_blank" style="color:#60a5fa;text-decoration:underline;">Click here to pay via GCash/Card</a>`;
+  } catch(err) {
+    msg.style.color='#ef4444'; msg.textContent='Error: ' + err.message;
+  }
+}
+
+</script>
 <script>
 // ── CHAIN MAP ─────────────────────────────────────────────
 var CHAIN_MAP = {
