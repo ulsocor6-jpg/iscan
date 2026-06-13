@@ -335,52 +335,29 @@ select option{background:#0b1220;}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
-async function startCashIn() {
-  const amount = parseFloat(document.getElementById('cashinAmount').value);
-  const msg = document.getElementById('cashinMsg');
-  if (!amount || amount < 20) { msg.style.color='#ef4444'; msg.textContent='Minimum ₱20'; return; }
-  msg.style.color='#94a3b8'; msg.textContent='Creating payment link...';
-  try {
-    const res = await fetch('/api/v1/payment/cashin', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed');
-    msg.style.color='#22c55e';
-    msg.innerHTML = `Payment link ready! <a href="${data.checkoutUrl}" target="_blank" style="color:#60a5fa;text-decoration:underline;">Click here to pay via GCash/Card</a>`;
-  } catch(err) {
-    msg.style.color='#ef4444'; msg.textContent='Error: ' + err.message;
-  }
-}
-
-
-async function startCashIn() {
-  const amount = parseFloat(document.getElementById('cashinAmount').value);
-  const msg = document.getElementById('cashinMsg');
-  if (!amount || amount < 20) { msg.style.color='#ef4444'; msg.textContent='Minimum ₱20'; return; }
-  msg.style.color='#94a3b8'; msg.textContent='Creating payment link...';
-  try {
-    const res = await fetch('/api/v1/payment/cashin', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed');
-    msg.style.color='#22c55e';
-    msg.innerHTML = 'Payment link ready! <a href="' + data.checkoutUrl + '" target="_blank" style="color:#60a5fa;text-decoration:underline;">Click here to pay via GCash/Card</a>';
-  } catch(err) {
-    msg.style.color='#ef4444'; msg.textContent='Error: ' + err.message;
-  }
-}
-
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+
+async function startCashIn() {
+  const amount = parseFloat(document.getElementById('cashinAmount').value);
+  const msg = document.getElementById('cashinMsg');
+  if (!amount || amount < 20) { msg.style.color='#ef4444'; msg.textContent='Minimum ₱20'; return; }
+  msg.style.color='#94a3b8'; msg.textContent='Creating payment link...';
+  try {
+    const res = await fetch('/api/v1/payment/cashin', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    msg.style.color='#22c55e';
+    msg.innerHTML = 'Payment link ready! <a href="' + data.checkoutUrl + '" target="_blank" style="color:#60a5fa;text-decoration:underline;">Click here to pay via GCash / Card ↗</a>';
+  } catch(err) {
+    msg.style.color='#ef4444'; msg.textContent='Error: ' + err.message;
+  }
+}
 // ── CHAIN MAP ─────────────────────────────────────────────
 var CHAIN_MAP = {
   '0x1':    { name:'Ethereum',       token:'ETH',  color:'#627eea' },
