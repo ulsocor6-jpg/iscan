@@ -101,21 +101,28 @@ select option{background:#0b1220;}
 
 <!-- OVERVIEW -->
 <div id="overview" class="screen active">
-  <div class="grid">
-    <div class="card">
-      <h3>💰 ISCAN Internal Balance</h3>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;">
+    <div class="card" style="background:linear-gradient(135deg,#0f2744,#111827);border-color:#2563eb;">
+      <h3 style="color:#93c5fd;">💰 ISCAN Balance</h3>
       <div class="balance-big" id="iscanBalance">₱0.00</div>
-      <div class="balance-sub">PHP ledger balance</div>
+      <div class="balance-sub">Available PHP balance</div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-green btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">➕ Cash In</button>
+        <button class="btn btn-amber btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">➖ Cash Out</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">↔ Transfer</button>
+      </div>
       <div class="iscan-box" style="margin-top:12px;">
         <div style="font-size:11px;color:#94a3b8;">Your ISCAN Address</div>
         <div class="iscan-addr" id="iscanAddrDisplay">—</div>
+        <button class="btn btn-sm" style="margin-top:8px;background:#1e3a5f;color:#60a5fa;border:1px solid #2563eb;width:auto;padding:4px 12px;" onclick="navigator.clipboard.writeText(document.getElementById('iscanAddrDisplay').textContent).then(()=>this.textContent='Copied!').catch(()=>{})">Copy Address</button>
       </div>
     </div>
     <div class="card">
-      <h3>🔗 Connected Wallet</h3>
-      <div id="walletOverview">
-        <div style="color:#6b7280;font-size:12px;">No wallet connected</div>
-      </div>
+      <h3>💳 Quick Cash In</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:8px;">Deposit PHP via GCash or debit/credit card instantly.</p>
+      <input id="quickCashinAmount" type="number" placeholder="Amount (PHP) — min ₱20" min="20" max="100000" style="margin-top:4px;">
+      <button class="btn btn-green" style="margin-top:10px;" onclick="quickCashIn()">Generate Payment Link</button>
+      <div id="quickCashinMsg" class="msg"></div>
     </div>
     <div class="card">
       <h3>📈 Live Rates (PHP)</h3>
@@ -123,10 +130,17 @@ select option{background:#0b1220;}
       <div class="rate-row"><span>ETH</span><span class="rate-val" id="rateETH">Loading...</span></div>
       <div class="rate-row"><span>RON</span><span class="rate-val" id="rateRON">Loading...</span></div>
       <div style="font-size:10px;color:#6b7280;margin-top:6px;" id="rateTime"></div>
+      <div style="border-top:1px solid #1f2937;margin-top:12px;padding-top:12px;">
+        <h3 style="margin-bottom:8px;">🔗 Connected Wallet</h3>
+        <div id="walletOverview"><div style="color:#6b7280;font-size:12px;">No wallet connected — go to <span style="color:#60a5fa;cursor:pointer;" onclick="switchTab('wallets',null)">Wallets tab</span></div></div>
+      </div>
     </div>
   </div>
   <div class="card">
-    <h3>📊 Recent Activity</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3>📊 Recent Activity</h3>
+      <button class="btn btn-sm" style="background:#1f2937;color:#94a3b8;border:1px solid #374151;width:auto;margin-top:0;" onclick="switchTab('ledger',null)">View All →</button>
+    </div>
     <div id="recentLedger"><p style="color:#6b7280;font-size:12px;">No activity yet.</p></div>
   </div>
 </div>
@@ -337,6 +351,27 @@ select option{background:#0b1220;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+
+
+async function quickCashIn() {
+  const amount = parseFloat(document.getElementById('quickCashinAmount').value);
+  const msg = document.getElementById('quickCashinMsg');
+  if (!amount || amount < 20) { msg.className='msg error'; msg.textContent='Minimum ₱20'; return; }
+  msg.className='msg info'; msg.textContent='Creating payment link...';
+  try {
+    const res = await fetch('/api/v1/payment/cashin', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    msg.className='msg success';
+    msg.innerHTML = '✅ Link ready! <a href="' + data.checkoutUrl + '" target="_blank" style="color:#34d399;font-weight:bold;text-decoration:underline;">Pay via GCash / Card ↗</a>';
+  } catch(err) {
+    msg.className='msg error'; msg.textContent='Error: ' + err.message;
+  }
+}
 
 async function startCashIn() {
   const amount = parseFloat(document.getElementById('cashinAmount').value);
