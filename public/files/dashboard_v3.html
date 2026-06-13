@@ -341,8 +341,8 @@ select option{background:#0b1220;}
 async function startCashIn() {
   const amount = parseFloat(document.getElementById('cashinAmount').value);
   const msg = document.getElementById('cashinMsg');
-  if (!amount || amount < 20) { msg.style.color='#ef4444'; msg.textContent='Minimum ₱20'; return; }
-  msg.style.color='#94a3b8'; msg.textContent='Creating payment link...';
+  if (!amount || amount < 20) { msg.className='msg error'; msg.textContent='Minimum ₱20'; return; }
+  msg.className='msg info'; msg.textContent='Creating payment link...';
   try {
     const res = await fetch('/api/v1/payment/cashin', {
       method: 'POST',
@@ -352,10 +352,11 @@ async function startCashIn() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
-    msg.style.color='#22c55e';
-    msg.innerHTML = 'Payment link ready! <a href="' + data.checkoutUrl + '" target="_blank" style="color:#60a5fa;text-decoration:underline;">Click here to pay via GCash / Card ↗</a>';
+    msg.className = 'msg success';
+    msg.innerHTML = '✅ Payment link ready! <a href="' + data.checkoutUrl + '" target="_blank" style="color:#34d399;text-decoration:underline;font-weight:bold;">Click here to pay via GCash / Card ↗</a>';
   } catch(err) {
-    msg.style.color='#ef4444'; msg.textContent='Error: ' + err.message;
+    msg.className = 'msg error';
+    msg.textContent = 'Error: ' + err.message;
   }
 }
 // ── CHAIN MAP ─────────────────────────────────────────────
