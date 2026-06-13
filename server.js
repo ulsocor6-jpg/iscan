@@ -126,7 +126,7 @@ app.get('/register', (req, res) => {
 });
 
 app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+  res.sendFile(path.join(__dirname, 'public', 'files', 'dashboard_v3.html'));
 });
 
 app.get('/reset-password', (req, res) => {
