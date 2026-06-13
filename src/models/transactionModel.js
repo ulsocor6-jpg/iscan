@@ -1,157 +1,157 @@
 import mongoose from 'mongoose';
 
 const transactionSchema = new mongoose.Schema(
-{
-  senderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
+  {
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true
+    },
 
-  receiverId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
+    receiverId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true
+    },
 
-  senderAddress: {
-    type: String,
-    required: true,
-    index: true
-  },
+    senderAddress: {
+      type: String,
+      required: true,
+      index: true
+    },
 
-  receiverAddress: {
-    type: String,
-    required: true,
-    index: true
-  },
+    receiverAddress: {
+      type: String,
+      required: true,
+      index: true
+    },
 
-  receiverEmail: {
-    type: String,
-    default: null
-  },
+    receiverEmail: {
+      type: String,
+      default: null
+    },
 
-  amount: {
-    type: Number,
-    required: true,
-    min: 0.00000001
-  },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
 
-  currency: {
-    type: String,
-    enum: ['PHP', 'USDC', 'ETH', 'MATIC'],
-    required: true,
-    index: true
-  },
+    currency: {
+      type: String,
+      enum: ['PHP', 'USDC', 'ETH', 'MATIC'],
+      default: 'PHP',
+      required: true,
+      index: true
+    },
 
-  fee: {
-    type: Number,
-    default: 0
-  },
+    fee: {
+      type: Number,
+      default: 0
+    },
 
-  type: {
-    type: String,
-    enum: [
-      'transfer',
-      'cashin',
-      'cashout',
-      'remittance',
-      'swap'
-    ],
-    default: 'transfer'
-  },
+    type: {
+      type: String,
+      enum: [
+        'transfer',
+        'remittance',
+        'p2p',
+        'cashin',
+        'cashout',
+        'swap'
+      ],
+      default: 'transfer'
+    },
 
-  status: {
-    type: String,
-    enum: [
-      'created',
-      'validating',
-      'fraud_check',
-      'reserved',
-      'processing',
-      'settled',
-      'failed',
-      'reversed'
-    ],
-    default: 'created',
-    index: true
-  },
+    status: {
+      type: String,
+      enum: [
+        'created',
+        'validating',
+        'fraud_check',
+        'reserved',
+        'processing',
+        'settled',
+        'failed',
+        'reversed'
+      ],
+      default: 'created',
+      index: true
+    },
 
-  fraudScore: {
-    type: Number,
-    default: 0
-  },
+    fraudScore: {
+      type: Number,
+      default: 0
+    },
 
-  fraudRisk: {
-    type: String,
-    default: 'LOW'
-  },
+    fraudRisk: {
+      type: String,
+      default: 'LOW'
+    },
 
-  ledgerGroupId: {
-    type: String,
-    required: true,
-    index: true
-  },
+    ledgerGroupId: {
+      type: String,
+      required: true,
+      default: 'ISCAN_MAIN_LEDGER',
+      index: true
+    },
 
-  reservationId: {
-    type: String,
-    default: null,
-    index: true
-  },
+    reservationId: {
+      type: String,
+      default: null
+    },
 
-  settlementMethod: {
-    type: String,
-    enum: [
-      'coinsph',
-      'maya',
-      'paymongo',
-      'bank',
-      'manual'
-    ],
-    default: 'manual'
-  },
+    settlementMethod: {
+      type: String,
+      enum: [
+        'coinsph',
+        'maya',
+        'paymongo',
+        'bank',
+        'manual'
+      ],
+      default: 'manual'
+    },
 
-  settlementRef: {
-    type: String,
-    default: null
-  },
+    settlementRef: {
+      type: String,
+      default: null
+    },
 
-  referenceId: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
+    referenceId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true
+    },
 
-  idempotencyKey: {
-    type: String,
-    unique: true,
-    sparse: true,
-    index: true
-  },
+    idempotencyKey: {
+      type: String,
+      unique: true,
+      sparse: true
+    },
 
-  notes: {
-    type: String,
-    default: ''
-  },
+    notes: {
+      type: String,
+      default: ''
+    },
 
-  metadata: {
-    type: Object,
-    default: {}
+    metadata: {
+      type: Object,
+      default: {}
+    }
+  },
+  {
+    timestamps: true
   }
-},
-{
-  timestamps: true
-}
 );
 
-// Compound indexes (single-field indexes already defined inline above)
+// Indexes
 transactionSchema.index({ senderId: 1, createdAt: -1 });
 transactionSchema.index({ receiverId: 1, createdAt: -1 });
 
-export default mongoose.model(
-  'Transaction',
-  transactionSchema
-);
+// ✅ IMPORTANT FIX: proper default export
+const Transaction = mongoose.model('Transaction', transactionSchema);
+export default Transaction;

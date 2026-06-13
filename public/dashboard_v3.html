@@ -1,0 +1,133 @@
+let _cachedWalletId = null;
+const API = ''; // or window.location.origin if needed
+
+async function loadIscanWallet() {
+  try {
+    // use cached value first
+    if (_cachedWalletId) {
+      const idEl = document.getElementById('iscan-wallet-id');
+      if (idEl) idEl.textContent = _cachedWalletId;
+
+      const canvas = document.getElementById('iscan-wallet-qr');
+      if (canvas) {
+        drawQR(canvas, 'iscan:' + _cachedWalletId);
+      }
+      return;
+    }
+
+    console.log('[ISCAN] Loading wallet...');
+
+    const data = await apiFetch('/api/v1/wallet/me');
+    console.log('[ISCAN] wallet/me response:', data);
+
+    if (!data) {
+      console.error('[ISCAN] No response from wallet/me');
+      document.getElementById('iscan-wallet-id').textContent = 'Wallet unavailable';
+      return;
+    }
+
+    const id =
+      data.iscanAddress ||
+      data.walletId ||
+      data.id ||
+      data._id ||
+      null;
+
+    const name =
+      data.name ||
+      data.ownerName ||
+      data.fullName ||
+      '';
+
+    if (!id) {
+      console.error('[ISCAN] Wallet ID missing', data);
+      document.getElementById('iscan-wallet-id').textContent = 'Wallet not created';
+      return;
+    }
+
+    _cachedWalletId = id;
+
+    document.getElementById('iscan-wallet-id').textContent = id;
+    document.getElementById('iscan-wallet-name').textContent = name;
+
+    const canvas = document.getElementById('iscan-wallet-qr');
+    if (canvas) {
+      drawQR(canvas, 'iscan:' + id + (name ? '|' + name : ''));
+    }
+
+    const trFrom = document.getElementById('tr-from');
+    if (trFrom) trFrom.value = id;
+
+    console.log('[ISCAN] Wallet loaded:', id);
+
+  } catch (err) {
+    console.error('[ISCAN] loadIscanWallet error:', err);
+    document.getElementById('iscan-wallet-id').textContent = 'Failed to load';
+  }
+}let _cachedWalletId = null;
+const API = ''; // or window.location.origin if needed
+
+async function loadIscanWallet() {
+  try {
+    // use cached value first
+    if (_cachedWalletId) {
+      const idEl = document.getElementById('iscan-wallet-id');
+      if (idEl) idEl.textContent = _cachedWalletId;
+
+      const canvas = document.getElementById('iscan-wallet-qr');
+      if (canvas) {
+        drawQR(canvas, 'iscan:' + _cachedWalletId);
+      }
+      return;
+    }
+
+    console.log('[ISCAN] Loading wallet...');
+
+    const data = await apiFetch('/api/v1/wallet/me');
+    console.log('[ISCAN] wallet/me response:', data);
+
+    if (!data) {
+      console.error('[ISCAN] No response from wallet/me');
+      document.getElementById('iscan-wallet-id').textContent = 'Wallet unavailable';
+      return;
+    }
+
+    const id =
+      data.iscanAddress ||
+      data.walletId ||
+      data.id ||
+      data._id ||
+      null;
+
+    const name =
+      data.name ||
+      data.ownerName ||
+      data.fullName ||
+      '';
+
+    if (!id) {
+      console.error('[ISCAN] Wallet ID missing', data);
+      document.getElementById('iscan-wallet-id').textContent = 'Wallet not created';
+      return;
+    }
+
+    _cachedWalletId = id;
+
+    document.getElementById('iscan-wallet-id').textContent = id;
+    document.getElementById('iscan-wallet-name').textContent = name;
+
+    const canvas = document.getElementById('iscan-wallet-qr');
+    if (canvas) {
+      drawQR(canvas, 'iscan:' + id + (name ? '|' + name : ''));
+    }
+
+    const trFrom = document.getElementById('tr-from');
+    if (trFrom) trFrom.value = id;
+
+    console.log('[ISCAN] Wallet loaded:', id);
+
+  } catch (err) {
+    console.error('[ISCAN] loadIscanWallet error:', err);
+    document.getElementById('iscan-wallet-id').textContent = 'Failed to load';
+  }
+}
