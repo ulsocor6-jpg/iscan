@@ -197,3 +197,84 @@ export const verify = async (req, res) => {
     user: req.user
   });
 };
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required.' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Don't reveal if email exists
+      return res.json({ message: 'If that email exists, a reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+    await user.save();
+
+    const resetLink = `${process.env.APP_URL}/reset-password?token=${resetToken}`;
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+    });
+
+    await transporter.sendMail({
+      from: `"ISCAN Remittance" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Reset Your ISCAN Password',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:20px;">
+          <h2 style="color:#2563eb;">Password Reset Request</h2>
+          <p>Click the button below to reset your password. This link expires in 1 hour.</p>
+          <a href="${resetLink}" style="display:inline-block;margin:20px 0;padding:14px 28px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">
+            Reset Password
+          </a>
+          <p style="color:#9ca3af;font-size:12px;">If you did not request this, ignore this email.</p>
+        </div>
+      `
+    });
+
+    res.json({ message: 'If that email exists, a reset link has been sent.' });
+
+  } catch (err) {
+    console.error('[FORGOT PASSWORD ERROR]:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ message: 'Token and password are required.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Reset link is invalid or has expired.' });
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    res.json({ success: true, message: 'Password reset successful. You can now log in.' });
+
+  } catch (err) {
+    console.error('[RESET PASSWORD ERROR]:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
