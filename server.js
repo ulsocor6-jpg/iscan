@@ -57,6 +57,7 @@ import onrampRoutes from './src/routes/onrampRoutes.js';
 import dashboardRoutes from './src/routes/dashboardRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
 import { startSettlementWorker } from './src/services/settlement/settlementWorker.js';
+import { startDepositMonitor } from './src/services/depositMonitor.js';
 
 // ================================
 // Express Setup
@@ -174,7 +175,9 @@ async function startServer() {
 
     console.log('MongoDB connected.');
 
-    startSettlementWorker(); // 🔥 START FINTECH ENGINE
+startSettlementWorker();
+
+startDepositMonitor();
 
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`ISCAN running on port ${PORT}`);
