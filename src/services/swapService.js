@@ -3,8 +3,8 @@ import crypto from 'crypto';
 import Ledger from '../models/ledgerModel.js';
 import Transaction from '../models/transactionModel.js';
 
-import { getBalance } from './transactionService.js';
-import { getRate } from './exchangeRateService.js';
+import walletService from './walletService.js';
+import { getRate } from './fx/rateProvider.js';
 
 export const swapToPHP = async ({
   userId,
@@ -16,7 +16,7 @@ export const swapToPHP = async ({
     throw new Error('Unsupported currency');
   }
 
-  const balance = await getBalance(
+  const balance = await walletService.getBalance(
     userId,
     fromCurrency
   );

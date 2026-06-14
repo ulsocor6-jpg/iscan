@@ -299,6 +299,7 @@ select option{background:#0b1220;}
             <button class="chain-btn" data-chain="0x7e4" data-name="Ronin" onclick="selectReceiveChain(this)">🔵 Ronin</button>
             <button class="chain-btn" data-chain="0xa4b1" data-name="Arbitrum" onclick="selectReceiveChain(this)">🔵 Arbitrum</button>
             <button class="chain-btn" data-chain="0xa" data-name="Optimism" onclick="selectReceiveChain(this)">🔴 Optimism</button>
+            <button class="chain-btn" data-chain="0x2105" data-name="Base" onclick="selectReceiveChain(this)">🔷 Base</button>
           </div>
         </div>
 
@@ -641,18 +642,73 @@ select option{background:#0b1220;}
 // ── CHAIN MAP ──────────────────────────────────────────────
 var CHAIN_MAP = {
   '0x1':    { name:'Ethereum',       token:'ETH',   color:'#627eea' },
-  '0x89':   { name:'Polygon',        token:'MATIC',  color:'#8247e5' },
+  '0x89':   { name:'Polygon',        token:'MATIC', color:'#8247e5' },
   '0x38':   { name:'BNB Chain',      token:'BNB',   color:'#f3ba2f' },
   '0x7e4':  { name:'Ronin',          token:'RON',   color:'#1273ea' },
   '0x7e5':  { name:'Ronin Testnet',  token:'RON',   color:'#1273ea' },
   '0xa4b1': { name:'Arbitrum',       token:'ETH',   color:'#28a0f0' },
   '0xa':    { name:'Optimism',       token:'ETH',   color:'#ff0420' },
+  '0x2105': { name:'Base',           token:'ETH',   color:'#0052ff' },
 };
 
-var USDC_CONTRACTS = {
-  '0x1':  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-  '0x89': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+// ── TOKEN CONTRACTS (unflagged, verified) ───────────────────
+// TOKEN_CONTRACTS[chainId][symbol] = contract address
+var TOKEN_CONTRACTS = {
+  '0x1': {
+    USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  },
+  '0x89': {
+    USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+    USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
+  },
+  '0x38': {
+    USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+    USDT: '0x55d398326f99059fF775485246999027B3197955',
+    WETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
+  },
+  '0x7e4': {
+    AXS:  '0x97a9107C1793BC407d6F527b77e7fff4D812bece',
+    SLP:  '0xa8754b9Fa15fc18BB59458815510E40a12cD2014',
+    USDC: '0x0B7007c13325C48911F73A2daD5FA5dCBf808aDc',
+    WETH: '0xc99a6A985eD2Cac1ef41640596C5A5f9F4E19Ef',
+  },
+  '0xa4b1': {
+    USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+    WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+    ARB:  '0x912CE59144191C1204E64559FE8253a0e49E6548',
+  },
+  '0xa': {
+    USDC: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+    USDT: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+    WETH: '0x4200000000000000000000000000000000000006',
+  },
+  '0x2105': {
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    WETH: '0x4200000000000000000000000000000000000006',
+  },
 };
+
+// Tokens shown in the Receive tab token selector per chain
+var CHAIN_TOKENS = {
+  '0x1':    ['native','USDC','USDT','WETH'],
+  '0x89':   ['native','USDC','USDT','WETH'],
+  '0x38':   ['native','USDC','USDT','WETH'],
+  '0x7e4':  ['native','AXS','SLP','USDC','WETH'],
+  '0xa4b1': ['native','USDC','USDT','WETH','ARB'],
+  '0xa':    ['native','USDC','USDT','WETH'],
+  '0x2105': ['native','USDC','WETH'],
+};
+
+// Legacy alias kept so getUSDCBalance() still works
+var USDC_CONTRACTS = Object.fromEntries(
+  Object.entries(TOKEN_CONTRACTS)
+    .map(([c,t])=>[c, t.USDC||null])
+    .filter(([,v])=>v)
+);
 
 // ── HELPERS ────────────────────────────────────────────────
 function getCookie(n){var m=document.cookie.match(new RegExp('(^| )'+n+'=([^;]+)'));return m?decodeURIComponent(m[2]):null;}
@@ -808,15 +864,78 @@ async function loadWalletsForOverview(){
     '<div style="margin-top:8px;font-size:11px;color:#6b7280;">Network: '+chainInfo.name+' | <span class="wallet-addr">'+w.address.substring(0,10)+'...'+w.address.substring(w.address.length-6)+'</span></div>';
 }
 
-// ── USDC BALANCE ────────────────────────────────────────────
-async function getUSDCBalance(provider,address,chainId){
-  var contract=USDC_CONTRACTS[chainId];
-  if(!contract)return 0;
-  try{
-    var data='0x70a08231000000000000000000000000'+address.slice(2).padStart(64,'0');
-    var result=await provider.request({method:'eth_call',params:[{to:contract,data},'latest']});
-    return parseInt(result,16)/1e6;
-  }catch(e){return 0;}
+// ── TOKEN BALANCES (generic ERC-20 + native) ───────────────
+var TOKEN_DECIMALS = { USDC:6, USDT:6, WETH:18, AXS:18, SLP:18, ARB:18 };
+
+async function getTokenBalance(provider, address, chainId, symbol) {
+  var contract = (TOKEN_CONTRACTS[chainId]||{})[symbol];
+  if (!contract) return 0;
+  try {
+    var data = '0x70a08231' + '000000000000000000000000' + address.slice(2).padStart(40,'0');
+    var result = await provider.request({method:'eth_call', params:[{to:contract,data},'latest']});
+    var dec = TOKEN_DECIMALS[symbol] !== undefined ? TOKEN_DECIMALS[symbol] : 18;
+    return parseInt(result,16) / Math.pow(10, dec);
+  } catch(e) { return 0; }
+}
+
+// Legacy alias
+async function getUSDCBalance(provider, address, chainId) {
+  return getTokenBalance(provider, address, chainId, 'USDC');
+}
+
+// Fetch ALL token balances for a wallet on a given chain
+async function getAllTokenBalances(provider, address, chainId) {
+  var native = 0;
+  try {
+    var bw = await provider.request({method:'eth_getBalance', params:[address,'latest']});
+    native = parseFloat((parseInt(bw,16)/1e18).toFixed(6));
+  } catch(e){}
+  var nativeSym = (CHAIN_MAP[chainId]||{token:'ETH'}).token;
+  var balances = { native, [nativeSym]: native };
+  var tokens = (CHAIN_TOKENS[chainId]||[]).filter(t=>t!=='native');
+  await Promise.all(tokens.map(async sym => {
+    balances[sym] = parseFloat((await getTokenBalance(provider, address, chainId, sym)).toFixed(6));
+  }));
+  return balances;
+}
+
+// ── TOKEN CHIP RENDERER ─────────────────────────────────────
+var TOKEN_COLORS = {
+  ETH:'#627eea', MATIC:'#8247e5', BNB:'#f3ba2f', RON:'#1273ea',
+  USDC:'#2775ca', USDT:'#26a17b', WETH:'#627eea',
+  AXS:'#1273ea', SLP:'#00d4ff', ARB:'#28a0f0',
+};
+function renderTokenChips(w, chainInfo) {
+  var chips = [];
+  // Always show native balance
+  var nativeSym = chainInfo.token;
+  var nativeColor = chainInfo.color || TOKEN_COLORS[nativeSym] || '#94a3b8';
+  chips.push('<span class="token-chip" style="color:'+nativeColor+'">'+(w.nativeBalance||0)+' '+nativeSym+'</span>');
+  // Show any extra token balances stored in tokenBalances map
+  var tb = w.tokenBalances || {};
+  var knownTokens = (CHAIN_TOKENS[w.chainId]||[]).filter(t=>t!=='native');
+  knownTokens.forEach(function(sym) {
+    if(sym === nativeSym) return; // already shown
+    var val = tb[sym] !== undefined ? tb[sym] : (sym==='USDC' ? (w.usdcBalance||0) : 0);
+    if(val > 0) {
+      var col = TOKEN_COLORS[sym] || '#94a3b8';
+      chips.push('<span class="token-chip" style="color:'+col+'">'+parseFloat(val).toFixed(4)+' '+sym+'</span>');
+    }
+  });
+  return chips.join('');
+}
+
+// ── RECEIVE TAB: dynamic token selector per chain ────────────
+function updateTokenSelectorForChain(chainId) {
+  var tokens = CHAIN_TOKENS[chainId] || ['native','USDC','USDT'];
+  var nativeSym = (CHAIN_MAP[chainId]||{token:'ETH'}).token;
+  var sel = document.getElementById('tokenSelector');
+  if(!sel) return;
+  sel.innerHTML = tokens.map(function(t, i) {
+    var label = t === 'native' ? nativeSym : t;
+    return '<button class="chain-btn'+(i===0?' active':'')+'" data-token="'+t+'" onclick="selectReceiveToken(this)">'+label+'</button>';
+  }).join('');
+  _receiveToken = 'native';
 }
 
 // ── CONNECT WALLET ──────────────────────────────────────────
@@ -830,18 +949,31 @@ async function connectWallet(type){
     }
     try{
       showMsg('walletMsg','info','Connecting Ronin — approve in the Ronin Wallet popup...');
-      // Force permission prompt
-      await roninProvider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
-      var accounts=await roninProvider.request({method:'eth_requestAccounts'});
-      if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned.');return;}
-      var address=accounts[0];
-      var chainId='0x7e4'; // Ronin mainnet
-      var chainInfo=CHAIN_MAP[chainId];
-      var nativeBal=0;
-      try{var bw=await roninProvider.request({method:'eth_getBalance',params:[address,'latest']});nativeBal=(parseInt(bw,16)/1e18).toFixed(4);}catch(e){}
-      var r=await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,provider:'ronin',chainId,nativeBalance:parseFloat(nativeBal),nativeToken:'RON',usdcBalance:0})});
+      // NOTE: wallet_requestPermissions is NOT supported in Ronin provider v6.7+
+      // Use eth_requestAccounts directly — it will show the approval popup on its own
+      var accounts = await roninProvider.request({method:'eth_requestAccounts'});
+      if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from Ronin.');return;}
+      var address = accounts[0];
+      var chainId = '0x7e4'; // Ronin mainnet always
+      var chainInfo = CHAIN_MAP[chainId];
+
+      // Fetch all token balances available on Ronin
+      var allBals = await getAllTokenBalances(roninProvider, address, chainId);
+      var nativeBal = allBals[chainInfo.token] || 0;
+
+      var payload = {
+        address, provider:'ronin', chainId,
+        nativeBalance: nativeBal,
+        nativeToken: 'RON',
+        usdcBalance: allBals['USDC'] || 0,
+        tokenBalances: allBals  // full map stored for display
+      };
+      var r = await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       if(r.ok||r.data.success){
-        showMsg('walletMsg','success','✅ Ronin connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+nativeBal+' RON');
+        var tokenSummary = Object.entries(allBals)
+          .filter(([k,v])=>k!=='native'&&v>0)
+          .map(([k,v])=>v.toFixed(4)+' '+k).join(' | ') || nativeBal+' RON';
+        showMsg('walletMsg','success','✅ Ronin connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+tokenSummary);
         _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
       }else showMsg('walletMsg','error',r.data.error||'Failed to link Ronin wallet.');
     }catch(err){
@@ -852,15 +984,28 @@ async function connectWallet(type){
   }
 
   // ── MetaMask ──
+  // When multiple wallets are installed (Trust, Coinbase, Ronin) they all inject
+  // window.ethereum and may fake isMetaMask=true. We must pick the real MetaMask.
   if(!window.ethereum){
     showMsg('walletMsg','error','MetaMask not detected. Install from metamask.io and refresh.');
     return;
   }
-  // Prefer MetaMask specifically if multiple providers injected
   var provider=null;
-  if(window.ethereum.providers){provider=window.ethereum.providers.find(p=>p.isMetaMask&&!p.isRonin)||null;}
-  if(!provider&&window.ethereum.isMetaMask&&!window.ethereum.isRonin)provider=window.ethereum;
-  if(!provider){showMsg('walletMsg','error','MetaMask not found. Make sure it is installed and enabled.');return;}
+  // Multi-provider EIP-5749: find the one that is MetaMask only (not Trust, Coinbase, Ronin)
+  if(window.ethereum.providers && Array.isArray(window.ethereum.providers)){
+    provider = window.ethereum.providers.find(p =>
+      p.isMetaMask && !p.isRonin && !p.isTrust && !p.isTrustWallet && !p.isCoinbaseWallet
+    ) || null;
+  }
+  // Single provider fallback
+  if(!provider && window.ethereum.isMetaMask && !window.ethereum.isRonin &&
+     !window.ethereum.isTrust && !window.ethereum.isTrustWallet && !window.ethereum.isCoinbaseWallet){
+    provider = window.ethereum;
+  }
+  if(!provider){
+    showMsg('walletMsg','error','MetaMask not found. If you have Trust Wallet or Coinbase Wallet installed, disable them temporarily or use a separate browser profile for MetaMask.');
+    return;
+  }
 
   try{
     showMsg('walletMsg','info','Connecting MetaMask — approve in the extension popup...');
@@ -869,14 +1014,27 @@ async function connectWallet(type){
     var accounts=await provider.request({method:'eth_requestAccounts'});
     if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from MetaMask.');return;}
     var address=accounts[0];
-    var chainId=await provider.request({method:'eth_chainId'});
-    var chainInfo=CHAIN_MAP[chainId]||{name:'Unknown',token:'ETH',color:'#94a3b8'};
-    var nativeBal=0;
-    try{var bw=await provider.request({method:'eth_getBalance',params:[address,'latest']});nativeBal=(parseInt(bw,16)/1e18).toFixed(4);}catch(e){}
-    var usdcBal=await getUSDCBalance(provider,address,chainId);
-    var r=await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,provider:'metamask',chainId,nativeBalance:parseFloat(nativeBal),nativeToken:chainInfo.token,usdcBalance:usdcBal})});
+    var chainId = await provider.request({method:'eth_chainId'});
+    var chainInfo = CHAIN_MAP[chainId] || {name:'Unknown', token:'ETH', color:'#94a3b8'};
+    showMsg('walletMsg','info','Detected '+chainInfo.name+' — reading token balances...');
+
+    // Fetch all token balances for the detected chain
+    var allBals = await getAllTokenBalances(provider, address, chainId);
+    var nativeBal = allBals[chainInfo.token] || 0;
+
+    var payload = {
+      address, provider:'metamask', chainId,
+      nativeBalance: nativeBal,
+      nativeToken: chainInfo.token,
+      usdcBalance: allBals['USDC'] || 0,
+      tokenBalances: allBals
+    };
+    var r = await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(r.ok||r.data.success){
-      showMsg('walletMsg','success','✅ '+chainInfo.name+' connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+nativeBal+' '+chainInfo.token+(usdcBal>0?' | '+usdcBal.toFixed(2)+' USDC':''));
+      var tokenSummary = Object.entries(allBals)
+        .filter(([k,v])=>k!=='native'&&v>0)
+        .map(([k,v])=>v.toFixed(4)+' '+k).join(' | ') || nativeBal+' '+chainInfo.token;
+      showMsg('walletMsg','success','✅ '+chainInfo.name+' connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+tokenSummary);
       _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
     }else showMsg('walletMsg','error',r.data.error||'Failed to link wallet.');
   }catch(err){
@@ -932,8 +1090,7 @@ async function loadWallets(){
         '<button class="btn-unlink" onclick="unlinkWallet(\''+w.address+'\')">🔌 Unlink</button>'+
       '</div>'+
       '<div class="wallet-tokens" style="margin-top:8px;">'+
-        '<span class="token-chip" style="color:'+chainInfo.color+'">'+(w.nativeBalance||0)+' '+chainInfo.token+'</span>'+
-        (w.usdcBalance>0?'<span class="token-chip" style="color:#2775ca">'+(parseFloat(w.usdcBalance)||0).toFixed(2)+' USDC</span>':'')+
+        renderTokenChips(w, chainInfo)+
       '</div>'+
     '</div>';
   }).join('');
@@ -956,7 +1113,8 @@ var _receiveChain='0x1', _receiveToken='native', _linkedWallets=[];
 function selectReceiveChain(btn){
   document.querySelectorAll('#chainSelector .chain-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  _receiveChain=btn.dataset.chain;
+  _receiveChain = btn.dataset.chain;
+  updateTokenSelectorForChain(_receiveChain); // rebuild token list for this chain
   updateReceiveQR();
 }
 function selectReceiveToken(btn){
@@ -1344,6 +1502,8 @@ loadRecentLedger();
 loadWalletsForOverview();
 // Pre-load ISCAN address so it's ready everywhere
 loadIscanAddressAll();
+// Init token selector for default chain (Ethereum)
+updateTokenSelectorForChain('0x1');
 </script>
 </body>
 </html>

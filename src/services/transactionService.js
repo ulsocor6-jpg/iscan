@@ -1,81 +1,77 @@
-import Ledger from "../models/ledgerModel.js";
-import Transaction from "../models/transactionModel.js";
-import Wallet from "../models/walletModel.js";
+import Ledger from '../models/ledgerModel.js';
+import Transaction from '../models/transactionModel.js';
+import WalletService from './walletService.js';
+import crypto from 'crypto';
 
-/**
- * LEDGER BALANCE (SOURCE OF TRUTH)
- */
-const getBalance = async (userId) => {
-  const entries = await Ledger.find({ userId });
+class TransactionService {
 
-  let balance = 0;
-
-  for (const row of entries) {
-    balance += Number(row.credit || 0);
-    balance -= Number(row.debit || 0);
-  }
-
-  return balance;
-};
-
-/**
- * PROCESS TRANSACTION (LEDGER ONLY)
- */
-export const processTransaction = async ({
-  senderId,
-  receiverId,
-  amount,
-  currency = "USDC",
-  type = "transfer",
-  referenceId
-}) => {
-  const transferAmount = parseFloat(amount);
-
-  if (!senderId || !receiverId || !transferAmount) {
-    throw new Error("Invalid transaction data");
-  }
-
-  // 🔍 Validate balance from ledger ONLY
-  const senderBalance = await getBalance(senderId);
-
-  if (senderBalance < transferAmount) {
-    throw new Error("Insufficient balance");
-  }
-
-  // 📒 DEBIT sender (ledger truth)
-  await Ledger.create({
-    referenceId,
-    userId: senderId,
-    transactionType: type,
-    debit: transferAmount,
-    credit: 0,
-    currency,
-    status: "completed",
-    description: "Transaction debit"
-  });
-
-  // 📒 CREDIT receiver (ledger truth)
-  await Ledger.create({
-    referenceId,
-    userId: receiverId,
-    transactionType: type,
-    debit: 0,
-    credit: transferAmount,
-    currency,
-    status: "completed",
-    description: "Transaction credit"
-  });
-
-  // 📒 AUDIT LOG ONLY (NOT MONEY SOURCE)
-  const tx = await Transaction.create({
-    referenceId,
+  async transfer({
     senderId,
     receiverId,
-    amount: transferAmount,
-    currency,
-    type,
-    status: "settled"
-  });
+    amount,
+    asset = 'USDT',
+    referenceId
+  }) {
 
-  return tx;
-};
+    const txRef = referenceId || crypto.randomUUID();
+
+    const senderBalance = await WalletService.getBalance(senderId, asset);
+
+    if (senderBalance < amount) {
+      throw new Error('Insufficient balance');
+    }
+
+    // =========================
+    // 1. WRITE LEDGER (SOURCE OF TRUTH)
+    // =========================
+    await Ledger.create([
+      {
+        referenceId: txRef,
+        userId: senderId,
+        transactionType: 'transfer',
+        debit: amount,
+        credit: 0,
+        currency: asset,
+        status: 'completed',
+        description: `Sent ${amount} ${asset}`
+      },
+      {
+        referenceId: txRef,
+        userId: receiverId,
+        transactionType: 'transfer',
+        debit: 0,
+        credit: amount,
+        currency: asset,
+        status: 'completed',
+        description: `Received ${amount} ${asset}`
+      }
+    ]);
+
+    // =========================
+    // 2. SYNC CACHE WALLET
+    // =========================
+    await WalletService.debit(senderId, asset, amount);
+    await WalletService.credit(receiverId, asset, amount);
+
+    // =========================
+    // 3. TRANSACTION RECORD
+    // =========================
+    const tx = await Transaction.create({
+      referenceId: txRef,
+      senderId,
+      receiverId,
+      amount,
+      currency: asset,
+      type: 'transfer',
+      status: 'settled'
+    });
+
+    return {
+      success: true,
+      referenceId: txRef,
+      transaction: tx
+    };
+  }
+}
+
+export default new TransactionService();

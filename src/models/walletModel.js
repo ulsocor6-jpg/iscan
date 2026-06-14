@@ -1,90 +1,92 @@
 import mongoose from 'mongoose';
 
-const linkedWalletSchema = new mongoose.Schema({
-  address: {
-    type: String,
-    required: true
-  },
+const linkedWalletSchema = new mongoose.Schema(
+  {
+    address: {
+      type: String,
+      required: true
+    },
 
-  provider: {
-    type: String,
-    enum: [
-      'metamask',
-      'ronin',
-      'coinbase',
-      'trustwallet',
-      'other'
-    ],
-    default: 'metamask'
-  },
+    provider: {
+      type: String,
+      enum: [
+        'metamask',
+        'ronin',
+        'coinbase',
+        'trustwallet',
+        'other'
+      ],
+      default: 'metamask'
+    },
 
-  chainId: {
-    type: String,
-    default: '0x1'
-  },
+    chainId: {
+      type: String,
+      default: '0x1'
+    },
 
-  network: {
-    type: String,
-    default: 'Ethereum'
-  },
+    network: {
+      type: String,
+      default: 'Ethereum'
+    },
 
-  nativeToken: {
-    type: String,
-    default: 'ETH'
-  },
+    nativeToken: {
+      type: String,
+      default: 'ETH'
+    },
 
-  nativeBalance: {
-    type: Number,
-    default: 0
-  },
+    nativeBalance: {
+      type: Number,
+      default: 0
+    },
 
-  usdcBalance: {
-    type: Number,
-    default: 0
-  },
+    usdcBalance: {
+      type: Number,
+      default: 0
+    },
 
-  addedAt: {
-    type: Date,
-    default: Date.now
+    addedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  { _id: false }
+);
+
+const walletSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      unique: true
+    },
+
+    iscanAddress: {
+      type: String,
+      required: true,
+      unique: true
+    },
+
+    balances: {
+      type: Map,
+      of: Number,
+      default: {}
+    },
+
+    linkedWallets: {
+      type: [linkedWalletSchema],
+      default: []
+    },
+
+    status: {
+      type: String,
+      enum: ['active', 'suspended'],
+      default: 'active'
+    }
+  },
+  {
+    timestamps: true
   }
-
-}, { _id: false });
-
-const walletSchema = new mongoose.Schema({
-
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    unique: true
-  },
-
-  iscanAddress: {
-    type: String,
-    required: true,
-    unique: true
-  },
-
-  balance: {
-    type: Number,
-    default: 0
-  },
-
-  currency: {
-    type: String,
-    default: 'PHP'
-  },
-
-  linkedWallets: [linkedWalletSchema],
-
-  status: {
-    type: String,
-    enum: ['active', 'suspended'],
-    default: 'active'
-  }
-
-}, {
-  timestamps: true
-});
+);
 
 export default mongoose.model('Wallet', walletSchema);

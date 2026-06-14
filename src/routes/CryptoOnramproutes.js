@@ -4,17 +4,16 @@ import {
   getQuote,
   initiateConversion,
   getOnrampHistory,
+  createDepositAddress,
   getDepositStatus,
 } from '../controllers/cryptoOnrampController.js';
 
 const router = express.Router();
 
-router.get('/rate', requireAuth, getQuote);
-
+router.get('/rate',                      requireAuth, getQuote);
+router.post('/deposit-address',          requireAuth, createDepositAddress);
 router.get('/deposit-status/:depositId', requireAuth, getDepositStatus);
-
-router.post('/convert', requireAuth, initiateConversion);
-
-router.get('/history', requireAuth, getOnrampHistory);
+router.post('/convert',                  requireAuth, initiateConversion);
+router.get('/history',                   requireAuth, getOnrampHistory);
 
 export default router;

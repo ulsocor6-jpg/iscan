@@ -254,78 +254,77 @@ select option{background:#0b1220;}
     </div>
   </div>
 
-  <!-- RECEIVE — unified wallet -->
+  <!-- RECEIVE — shows ISCAN internal wallet + crypto address -->
   <div id="receive-tab" class="sub-screen">
-    <div class="card" style="max-width:680px;margin:auto;">
-      <h3 style="margin-bottom:4px;">⚡ ISCAN Unified Wallet</h3>
-      <p style="color:#6b7280;font-size:12px;margin-bottom:16px;">One account. Any chain. Select how you want to deposit — all funds settle to the same ISCAN balance.</p>
+    <div class="grid">
 
-      <!-- Wallet type selector -->
-      <div style="display:flex;gap:8px;margin-bottom:18px;">
-        <button class="chain-btn active" id="rwTypeISCAN" onclick="selectReceiveType('iscan',this)" style="flex:1;padding:12px;font-size:13px;">
-          ⚡ ISCAN Internal
-        </button>
-        <button class="chain-btn" id="rwTypeCrypto" onclick="selectReceiveType('crypto',this)" style="flex:1;padding:12px;font-size:13px;">
-          🔗 Blockchain Deposit
-        </button>
-      </div>
-
-      <!-- ISCAN panel -->
-      <div id="rwPanelISCAN">
+      <!-- ISCAN Internal Wallet (primary) -->
+      <div class="card">
+        <h3>⚡ Your ISCAN Internal Address</h3>
+        <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">Share this address to receive instant fee-free transfers from other ISCAN users.</p>
         <div class="iscan-receive-panel">
           <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">ISCAN Internal Address</div>
           <div class="iscan-receive-addr" id="receiveIscanAddr">Loading...</div>
-          <canvas id="iscanQrCanvas" width="180" height="180" style="display:block;margin:12px auto;border-radius:8px;background:white;padding:5px;"></canvas>
+          <canvas id="iscanQrCanvas" width="160" height="160" style="display:block;margin:12px auto;border-radius:8px;background:white;padding:5px;"></canvas>
           <button class="btn btn-primary" style="margin-top:4px;" onclick="copyIscanReceiveAddr()">📋 Copy ISCAN Address</button>
         </div>
-        <div style="margin-top:10px;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;display:flex;gap:10px;align-items:center;">
-          <span style="font-size:18px;">✅</span>
-          <div>
-            <div style="font-size:12px;color:#22c55e;font-weight:600;">Zero fees · Instant settlement</div>
-            <div style="font-size:11px;color:#6b7280;">For transfers between ISCAN users. PHP balance updates immediately.</div>
-          </div>
+        <div style="margin-top:12px;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;">
+          <div style="font-size:11px;color:#22c55e;font-weight:600;margin-bottom:4px;">✅ No blockchain fees</div>
+          <div style="font-size:11px;color:#6b7280;">Instant settlement between ISCAN users. Use for PHP transfers.</div>
         </div>
       </div>
 
-      <!-- Crypto panel -->
-      <div id="rwPanelCrypto" style="display:none;">
-        <!-- Chain selector -->
-        <div style="margin-bottom:12px;">
-          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Chain</div>
+      <!-- Crypto Receive -->
+      <div class="card">
+        <h3>🔗 Crypto Receive QR</h3>
+        <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">Select a chain and token — your wallet address and QR will appear.</p>
+
+        <!-- Step 1: Chain selector -->
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">1 — Select Chain</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;" id="chainSelector">
-            <button class="chain-btn active" data-chain="0x1" data-name="Ethereum" onclick="selectReceiveChain(this)">🔷 Ethereum</button>
-            <button class="chain-btn" data-chain="0x89" data-name="Polygon" onclick="selectReceiveChain(this)">🟣 Polygon</button>
-            <button class="chain-btn" data-chain="0x38" data-name="BNB Chain" onclick="selectReceiveChain(this)">🟡 BNB</button>
-            <button class="chain-btn" data-chain="0x7e4" data-name="Ronin" onclick="selectReceiveChain(this)">🔵 Ronin</button>
-            <button class="chain-btn" data-chain="0xa4b1" data-name="Arbitrum" onclick="selectReceiveChain(this)">🔵 Arbitrum</button>
-            <button class="chain-btn" data-chain="0xa" data-name="Optimism" onclick="selectReceiveChain(this)">🔴 Optimism</button>
+            <button class="chain-btn active" data-chain="0x1" onclick="selectReceiveChain(this)">Ethereum</button>
+            <button class="chain-btn" data-chain="0x89" onclick="selectReceiveChain(this)">Polygon</button>
+            <button class="chain-btn" data-chain="0x38" onclick="selectReceiveChain(this)">BNB</button>
+            <button class="chain-btn" data-chain="0x7e4" onclick="selectReceiveChain(this)">Ronin</button>
+            <button class="chain-btn" data-chain="0xa4b1" onclick="selectReceiveChain(this)">Arbitrum</button>
           </div>
         </div>
 
-        <!-- Token selector -->
-        <div style="margin-bottom:14px;">
-          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Token</div>
+        <!-- Step 2: Token selector -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">2 — Select Token</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;" id="tokenSelector">
             <button class="chain-btn active" data-token="native" onclick="selectReceiveToken(this)">Native</button>
             <button class="chain-btn" data-token="USDC" onclick="selectReceiveToken(this)">USDC</button>
-            <button class="chain-btn" data-token="USDT" onclick="selectReceiveToken(this)">USDT</button>
           </div>
         </div>
 
-        <!-- QR output -->
-        <div id="cryptoReceiveOutput" style="display:none;text-align:center;background:linear-gradient(135deg,#0f2744,#111827);border:1px solid #2563eb;border-radius:12px;padding:20px;">
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;" id="rwChainLabel">Ethereum · USDC</div>
-          <canvas id="qrCanvas" width="200" height="200" style="display:block;margin:10px auto;border-radius:8px;background:white;padding:6px;"></canvas>
-          <div style="font-family:monospace;font-size:12px;color:#60a5fa;word-break:break-all;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;margin-top:8px;" id="myWalletAddr"></div>
+        <!-- Address + QR output -->
+        <div id="cryptoReceiveOutput" style="text-align:center;display:none;">
+          <canvas id="qrCanvas" width="180" height="180" style="display:block;margin:0 auto;border-radius:8px;background:white;padding:5px;"></canvas>
+          <div style="margin-top:10px;font-family:monospace;font-size:11px;color:#60a5fa;word-break:break-all;padding:8px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;" id="myWalletAddr"></div>
           <button class="btn btn-primary" style="margin-top:10px;" onclick="copyMyAddress()">📋 Copy Address</button>
-          <div style="margin-top:10px;font-size:11px;color:#6b7280;">Deposits on this chain auto-settle to your ISCAN balance after confirmation.</div>
         </div>
-        <div id="cryptoReceiveNoWallet" style="padding:16px;background:#0b1220;border:1px solid #374151;border-radius:10px;text-align:center;">
-          <div style="font-size:22px;margin-bottom:8px;">🔌</div>
-          <div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">No wallet linked for this chain</div>
-          <button class="btn btn-primary btn-sm" style="width:auto;" onclick="switchTab('wallets',document.querySelector('[onclick*=wallets]'))">Go to Wallets →</button>
+        <div id="cryptoReceiveNoWallet" style="padding:12px;background:#0b1220;border:1px solid #374151;border-radius:8px;text-align:center;color:#6b7280;font-size:12px;">
+          No wallet connected for this chain. Go to <span style="color:#60a5fa;cursor:pointer;" onclick="switchTab('wallets',null)">Wallets tab</span> to connect.
+        </div>
+
+        <!-- Amount request -->
+        <div style="margin-top:14px;border-top:1px solid #1f2937;padding-top:14px;">
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">3 — Request Specific Amount (optional)</div>
+          <input id="requestAmount" type="number" placeholder="Amount">
+          <select id="requestCurrency">
+            <option value="USDC">USDC</option>
+            <option value="ETH">ETH</option>
+            <option value="RON">RON</option>
+          </select>
+          <input id="requestNote" placeholder="Note (e.g. For rent)">
+          <button class="btn btn-amber" onclick="generateRequestQR()">Generate QR</button>
+          <div id="requestMsg" class="msg"></div>
         </div>
       </div>
+
     </div>
   </div>
 
@@ -459,7 +458,12 @@ select option{background:#0b1220;}
             <input id="or-mobile" type="tel" placeholder="9XXXXXXXXX" maxlength="10">
           </div>
         </div>
-
+        <div>
+          <div class="step-label">5 — On-Chain Transaction Hash</div>
+          <div class="input-wrap">
+            <input id="or-txhash" type="text" placeholder="0x… (paste your USDC/USDT send tx hash)" style="font-family:monospace;font-size:12px;">
+          </div>
+        </div>
         <div class="status-banner" id="or-status"></div>
         <div class="gcash-notice" id="or-gcash-notice" style="display:none">
           GCash will open a verification page. <a href="#" id="or-gcash-link" target="_blank">Click here if it didn't open automatically →</a>
@@ -500,10 +504,11 @@ select option{background:#0b1220;}
         window.submitConversion=async function(){
           var usdAmount=parseFloat(document.getElementById('or-usd-amount').value);
           var mobileRaw=document.getElementById('or-mobile').value.trim();
-          var txHash='';
+          var txHash=document.getElementById('or-txhash').value.trim();
           var mobileNumber='+63'+mobileRaw;
           if(!usdAmount||usdAmount<1)return showOrStatus('error','Enter a valid USD amount (min $1).');
           if(!/^9\d{9}$/.test(mobileRaw))return showOrStatus('error','Enter a valid PH mobile number (9XXXXXXXXX).');
+          if(!txHash.startsWith('0x')||txHash.length<60)return showOrStatus('error','Paste a valid on-chain transaction hash.');
           var btn=document.getElementById('or-submit-btn');btn.disabled=true;btn.textContent='Processing…';
           showOrStatus('pending','⏳ Converting $'+usdAmount+' '+_token+' → PHP via '+_channel.toUpperCase()+'…');
           document.getElementById('or-gcash-notice').style.display='none';
@@ -520,7 +525,7 @@ select option{background:#0b1220;}
           finally{btn.disabled=false;btn.innerHTML='Convert &amp; Send to <span id="or-channel-label">'+(_channel==='maya'?'Maya':'GCash')+'</span>';}
         };
         function showOrStatus(type,msg){var el=document.getElementById('or-status');el.className='status-banner '+type;el.textContent=msg;el.style.display='block';}
-        function resetOrForm(){document.getElementById('or-usd-amount').value='';document.getElementById('or-mobile').value='';document.getElementById('or-breakdown').style.display='none';document.getElementById('or-status').style.display='none';}
+        function resetOrForm(){document.getElementById('or-usd-amount').value='';document.getElementById('or-mobile').value='';document.getElementById('or-txhash').value='';document.getElementById('or-breakdown').style.display='none';document.getElementById('or-status').style.display='none';}
         refreshRate();setInterval(refreshRate,60000);
       })();
       </script>
@@ -691,14 +696,7 @@ function switchSub(id,btn){
   btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
-  if(id==='receive-tab'){
-    loadMyWalletForQR();loadIscanAddressAll();
-    // Default to ISCAN panel
-    document.getElementById('rwPanelISCAN').style.display='block';
-    document.getElementById('rwPanelCrypto').style.display='none';
-    document.getElementById('rwTypeISCAN').classList.add('active');
-    document.getElementById('rwTypeCrypto').classList.remove('active');
-  }
+  if(id==='receive-tab'){loadMyWalletForQR();loadIscanAddressAll();updateReceiveQR();}
   if(id==='iscan-tab')loadIscanAddressAll();
 }
 
@@ -829,9 +827,7 @@ async function connectWallet(type){
       return;
     }
     try{
-      showMsg('walletMsg','info','Connecting Ronin — approve in the Ronin Wallet popup...');
-      // Force permission prompt
-      await roninProvider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
+      showMsg('walletMsg','info','Connecting Ronin Wallet...');
       var accounts=await roninProvider.request({method:'eth_requestAccounts'});
       if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned.');return;}
       var address=accounts[0];
@@ -863,9 +859,7 @@ async function connectWallet(type){
   if(!provider){showMsg('walletMsg','error','MetaMask not found. Make sure it is installed and enabled.');return;}
 
   try{
-    showMsg('walletMsg','info','Connecting MetaMask — approve in the extension popup...');
-    // Force account picker every time by requesting permissions first
-    await provider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
+    showMsg('walletMsg','info','Connecting MetaMask...');
     var accounts=await provider.request({method:'eth_requestAccounts'});
     if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from MetaMask.');return;}
     var address=accounts[0];
@@ -941,15 +935,6 @@ async function loadWallets(){
   if(wallets[0])myAddress=wallets[0].address;
 }
 
-function selectReceiveType(type, btn){
-  document.querySelectorAll('#rwTypeISCAN,#rwTypeCrypto').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('rwPanelISCAN').style.display = type==='iscan' ? 'block' : 'none';
-  document.getElementById('rwPanelCrypto').style.display = type==='crypto' ? 'block' : 'none';
-  if(type==='crypto') updateReceiveQR();
-  if(type==='iscan') loadIscanAddressAll();
-}
-
 // ── RECEIVE TAB: chain/token selector logic ─────────────────
 var _receiveChain='0x1', _receiveToken='native', _linkedWallets=[];
 
@@ -968,12 +953,10 @@ function selectReceiveToken(btn){
 async function updateReceiveQR(){
   var r=await api('/api/v1/wallet/list');
   _linkedWallets=r.data&&r.data.wallets||[];
+  // Find wallet matching selected chain
   var matched=_linkedWallets.find(w=>w.chainId===_receiveChain);
   var out=document.getElementById('cryptoReceiveOutput');
   var noWallet=document.getElementById('cryptoReceiveNoWallet');
-  var chainBtn=document.querySelector('#chainSelector .chain-btn[data-chain="'+_receiveChain+'"]');
-  var chainName=chainBtn?chainBtn.dataset.name||chainBtn.textContent.trim():'Unknown';
-  var tokenLabel=_receiveToken==='native'?(CHAIN_MAP[_receiveChain]||{token:'Native'}).token:_receiveToken;
   if(!matched){
     if(out)out.style.display='none';
     if(noWallet)noWallet.style.display='block';
@@ -981,9 +964,10 @@ async function updateReceiveQR(){
   }
   if(noWallet)noWallet.style.display='none';
   if(out)out.style.display='block';
-  var labelEl=document.getElementById('rwChainLabel');
-  if(labelEl)labelEl.textContent=chainName+' · '+tokenLabel;
-  renderQR(matched.address);
+  var chainInfo=CHAIN_MAP[_receiveChain]||{token:'ETH'};
+  var tokenLabel=_receiveToken==='native'?chainInfo.token:_receiveToken;
+  var qrText=matched.address; // optionally: 'ethereum:'+address+'?token=USDC'
+  renderQR(qrText);
   myAddress=matched.address;
 }
 
@@ -1055,10 +1039,10 @@ async function executeSwap(){
   if(!amount||amount<=0){showMsg('swapMsg','error','Enter a valid amount.');return;}
   if(from===to){showMsg('swapMsg','error','Select different tokens.');return;}
   showMsg('swapMsg','info','Processing swap...');
-  var r=await api('/api/v1/swap/php',{
+  var r=await api('/api/v1/swap/execute',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({amount,currency:from,toToken:to})
+    body:JSON.stringify({fromToken:from,toToken:to,amount})
   });
   if(r.ok&&(r.data.success||r.data.referenceId)){
     showMsg('swapMsg','success','✅ Swap complete! Ref: '+(r.data.referenceId||'—'));

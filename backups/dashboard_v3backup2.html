@@ -83,9 +83,6 @@ select option{background:#0b1220;}
 .activity-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1f2937;font-size:12px;}
 .activity-row:last-child{border:none;}
 .network-badge{font-size:10px;padding:2px 7px;border-radius:12px;font-weight:600;background:#1f2937;color:#94a3b8;}
-.chain-btn{padding:6px 12px;border:1px solid #1f2937;background:#0b1220;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;}
-.chain-btn.active{border-color:#2563eb;background:#1e3a5f;color:#60a5fa;}
-.chain-btn:hover{border-color:#3b82f6;color:white;}
 /* ── ISCAN receive panel ── */
 .iscan-receive-panel{background:linear-gradient(135deg,#0f2744,#111827);border:1px solid #2563eb;border-radius:12px;padding:20px;text-align:center;}
 .iscan-receive-addr{font-family:monospace;font-size:15px;color:#60a5fa;word-break:break-all;margin:12px 0;font-weight:700;letter-spacing:0.5px;background:#0b1220;padding:10px 14px;border-radius:8px;border:1px solid #1f2937;}
@@ -254,78 +251,51 @@ select option{background:#0b1220;}
     </div>
   </div>
 
-  <!-- RECEIVE — unified wallet -->
+  <!-- RECEIVE — shows ISCAN internal wallet + crypto address -->
   <div id="receive-tab" class="sub-screen">
-    <div class="card" style="max-width:680px;margin:auto;">
-      <h3 style="margin-bottom:4px;">⚡ ISCAN Unified Wallet</h3>
-      <p style="color:#6b7280;font-size:12px;margin-bottom:16px;">One account. Any chain. Select how you want to deposit — all funds settle to the same ISCAN balance.</p>
+    <div class="grid">
 
-      <!-- Wallet type selector -->
-      <div style="display:flex;gap:8px;margin-bottom:18px;">
-        <button class="chain-btn active" id="rwTypeISCAN" onclick="selectReceiveType('iscan',this)" style="flex:1;padding:12px;font-size:13px;">
-          ⚡ ISCAN Internal
-        </button>
-        <button class="chain-btn" id="rwTypeCrypto" onclick="selectReceiveType('crypto',this)" style="flex:1;padding:12px;font-size:13px;">
-          🔗 Blockchain Deposit
-        </button>
-      </div>
-
-      <!-- ISCAN panel -->
-      <div id="rwPanelISCAN">
+      <!-- ISCAN Internal Wallet (primary) -->
+      <div class="card">
+        <h3>⚡ Your ISCAN Internal Address</h3>
+        <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">Share this address to receive instant fee-free transfers from other ISCAN users.</p>
         <div class="iscan-receive-panel">
           <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">ISCAN Internal Address</div>
           <div class="iscan-receive-addr" id="receiveIscanAddr">Loading...</div>
-          <canvas id="iscanQrCanvas" width="180" height="180" style="display:block;margin:12px auto;border-radius:8px;background:white;padding:5px;"></canvas>
+          <canvas id="iscanQrCanvas" width="160" height="160" style="display:block;margin:12px auto;border-radius:8px;background:white;padding:5px;"></canvas>
           <button class="btn btn-primary" style="margin-top:4px;" onclick="copyIscanReceiveAddr()">📋 Copy ISCAN Address</button>
         </div>
-        <div style="margin-top:10px;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;display:flex;gap:10px;align-items:center;">
-          <span style="font-size:18px;">✅</span>
-          <div>
-            <div style="font-size:12px;color:#22c55e;font-weight:600;">Zero fees · Instant settlement</div>
-            <div style="font-size:11px;color:#6b7280;">For transfers between ISCAN users. PHP balance updates immediately.</div>
-          </div>
+        <div style="margin-top:12px;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;">
+          <div style="font-size:11px;color:#22c55e;font-weight:600;margin-bottom:4px;">✅ No blockchain fees</div>
+          <div style="font-size:11px;color:#6b7280;">Instant settlement between ISCAN users. Use for PHP transfers.</div>
         </div>
       </div>
 
-      <!-- Crypto panel -->
-      <div id="rwPanelCrypto" style="display:none;">
-        <!-- Chain selector -->
-        <div style="margin-bottom:12px;">
-          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Chain</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="chainSelector">
-            <button class="chain-btn active" data-chain="0x1" data-name="Ethereum" onclick="selectReceiveChain(this)">🔷 Ethereum</button>
-            <button class="chain-btn" data-chain="0x89" data-name="Polygon" onclick="selectReceiveChain(this)">🟣 Polygon</button>
-            <button class="chain-btn" data-chain="0x38" data-name="BNB Chain" onclick="selectReceiveChain(this)">🟡 BNB</button>
-            <button class="chain-btn" data-chain="0x7e4" data-name="Ronin" onclick="selectReceiveChain(this)">🔵 Ronin</button>
-            <button class="chain-btn" data-chain="0xa4b1" data-name="Arbitrum" onclick="selectReceiveChain(this)">🔵 Arbitrum</button>
-            <button class="chain-btn" data-chain="0xa" data-name="Optimism" onclick="selectReceiveChain(this)">🔴 Optimism</button>
+      <!-- Crypto Receive -->
+      <div class="card">
+        <h3>🔗 Crypto Receive QR</h3>
+        <p style="color:#6b7280;font-size:12px;margin-bottom:8px;">Share your connected wallet address to receive crypto on-chain.</p>
+        <div style="text-align:center;">
+          <canvas id="qrCanvas" width="180" height="180"></canvas>
+          <div style="margin-top:10px;font-family:monospace;font-size:11px;color:#60a5fa;word-break:break-all;" id="myWalletAddr">
+            <span style="color:#6b7280;">Connect a wallet in the Wallets tab first</span>
           </div>
+          <button class="btn btn-primary" style="margin-top:10px;" onclick="copyMyAddress()">Copy Crypto Address</button>
         </div>
-
-        <!-- Token selector -->
-        <div style="margin-bottom:14px;">
-          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Token</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="tokenSelector">
-            <button class="chain-btn active" data-token="native" onclick="selectReceiveToken(this)">Native</button>
-            <button class="chain-btn" data-token="USDC" onclick="selectReceiveToken(this)">USDC</button>
-            <button class="chain-btn" data-token="USDT" onclick="selectReceiveToken(this)">USDT</button>
-          </div>
-        </div>
-
-        <!-- QR output -->
-        <div id="cryptoReceiveOutput" style="display:none;text-align:center;background:linear-gradient(135deg,#0f2744,#111827);border:1px solid #2563eb;border-radius:12px;padding:20px;">
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;" id="rwChainLabel">Ethereum · USDC</div>
-          <canvas id="qrCanvas" width="200" height="200" style="display:block;margin:10px auto;border-radius:8px;background:white;padding:6px;"></canvas>
-          <div style="font-family:monospace;font-size:12px;color:#60a5fa;word-break:break-all;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;margin-top:8px;" id="myWalletAddr"></div>
-          <button class="btn btn-primary" style="margin-top:10px;" onclick="copyMyAddress()">📋 Copy Address</button>
-          <div style="margin-top:10px;font-size:11px;color:#6b7280;">Deposits on this chain auto-settle to your ISCAN balance after confirmation.</div>
-        </div>
-        <div id="cryptoReceiveNoWallet" style="padding:16px;background:#0b1220;border:1px solid #374151;border-radius:10px;text-align:center;">
-          <div style="font-size:22px;margin-bottom:8px;">🔌</div>
-          <div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">No wallet linked for this chain</div>
-          <button class="btn btn-primary btn-sm" style="width:auto;" onclick="switchTab('wallets',document.querySelector('[onclick*=wallets]'))">Go to Wallets →</button>
+        <div style="margin-top:14px;border-top:1px solid #1f2937;padding-top:14px;">
+          <h3 style="margin-bottom:8px;font-size:13px;">Request Specific Amount</h3>
+          <input id="requestAmount" type="number" placeholder="Amount">
+          <select id="requestCurrency">
+            <option value="USDC">USDC</option>
+            <option value="ETH">ETH</option>
+            <option value="RON">RON</option>
+          </select>
+          <input id="requestNote" placeholder="Note (e.g. For rent)">
+          <button class="btn btn-amber" onclick="generateRequestQR()">Generate QR</button>
+          <div id="requestMsg" class="msg"></div>
         </div>
       </div>
+
     </div>
   </div>
 
@@ -459,7 +429,12 @@ select option{background:#0b1220;}
             <input id="or-mobile" type="tel" placeholder="9XXXXXXXXX" maxlength="10">
           </div>
         </div>
-
+        <div>
+          <div class="step-label">5 — On-Chain Transaction Hash</div>
+          <div class="input-wrap">
+            <input id="or-txhash" type="text" placeholder="0x… (paste your USDC/USDT send tx hash)" style="font-family:monospace;font-size:12px;">
+          </div>
+        </div>
         <div class="status-banner" id="or-status"></div>
         <div class="gcash-notice" id="or-gcash-notice" style="display:none">
           GCash will open a verification page. <a href="#" id="or-gcash-link" target="_blank">Click here if it didn't open automatically →</a>
@@ -500,10 +475,11 @@ select option{background:#0b1220;}
         window.submitConversion=async function(){
           var usdAmount=parseFloat(document.getElementById('or-usd-amount').value);
           var mobileRaw=document.getElementById('or-mobile').value.trim();
-          var txHash='';
+          var txHash=document.getElementById('or-txhash').value.trim();
           var mobileNumber='+63'+mobileRaw;
           if(!usdAmount||usdAmount<1)return showOrStatus('error','Enter a valid USD amount (min $1).');
           if(!/^9\d{9}$/.test(mobileRaw))return showOrStatus('error','Enter a valid PH mobile number (9XXXXXXXXX).');
+          if(!txHash.startsWith('0x')||txHash.length<60)return showOrStatus('error','Paste a valid on-chain transaction hash.');
           var btn=document.getElementById('or-submit-btn');btn.disabled=true;btn.textContent='Processing…';
           showOrStatus('pending','⏳ Converting $'+usdAmount+' '+_token+' → PHP via '+_channel.toUpperCase()+'…');
           document.getElementById('or-gcash-notice').style.display='none';
@@ -520,7 +496,7 @@ select option{background:#0b1220;}
           finally{btn.disabled=false;btn.innerHTML='Convert &amp; Send to <span id="or-channel-label">'+(_channel==='maya'?'Maya':'GCash')+'</span>';}
         };
         function showOrStatus(type,msg){var el=document.getElementById('or-status');el.className='status-banner '+type;el.textContent=msg;el.style.display='block';}
-        function resetOrForm(){document.getElementById('or-usd-amount').value='';document.getElementById('or-mobile').value='';document.getElementById('or-breakdown').style.display='none';document.getElementById('or-status').style.display='none';}
+        function resetOrForm(){document.getElementById('or-usd-amount').value='';document.getElementById('or-mobile').value='';document.getElementById('or-txhash').value='';document.getElementById('or-breakdown').style.display='none';document.getElementById('or-status').style.display='none';}
         refreshRate();setInterval(refreshRate,60000);
       })();
       </script>
@@ -588,35 +564,23 @@ select option{background:#0b1220;}
 
 <!-- WALLETS -->
 <div id="wallets" class="screen">
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;">
+  <div class="card">
+    <h3>🔗 Connected Wallets</h3>
+    <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Connect your Web3 wallet. Balances show per network.</p>
 
-    <!-- Connect Wallets card -->
-    <div class="card">
-      <h3>🔗 Connect a Wallet</h3>
-      <p style="color:#6b7280;font-size:12px;margin-bottom:14px;">Link your Web3 wallet to enable crypto deposits and on-chain QR generation.</p>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn-icon" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;" onclick="connectWallet('metamask')">
-          <span style="font-size:20px;">🦊</span>
-          <div style="text-align:left;">
-            <div style="font-weight:700;font-size:13px;color:#f9fafb;">MetaMask</div>
-            <div style="font-size:11px;color:#6b7280;">Ethereum, Polygon, BNB, Arbitrum, Optimism</div>
-          </div>
-        </button>
-        <button class="btn-icon" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;" onclick="connectWallet('ronin')">
-          <span style="font-size:20px;">🔵</span>
-          <div style="text-align:left;">
-            <div style="font-weight:700;font-size:13px;color:#f9fafb;">Ronin Wallet</div>
-            <div style="font-size:11px;color:#6b7280;">Ronin Network — RON, AXS, SLP, USDC</div>
-          </div>
-        </button>
-      </div>
-      <div id="walletMsg" class="msg" style="margin-top:10px;"></div>
+    <!-- Connect buttons -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+      <button class="btn-icon" onclick="connectWallet('metamask')">🦊 MetaMask</button>
     </div>
+    <div id="walletMsg" class="msg"></div>
 
-    <!-- ISCAN Internal Address card -->
-    <div class="card" style="background:linear-gradient(135deg,#0f2744,#111827);border-color:#2563eb;">
-      <h3 style="color:#93c5fd;">⚡ Your ISCAN Address</h3>
-      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Use for instant fee-free internal transfers — no blockchain required.</p>
+    <!-- Wallet list with unlink buttons -->
+    <div id="walletList" style="margin-top:12px;"></div>
+
+    <!-- ISCAN Address block -->
+    <div style="margin-top:20px;">
+      <h3 style="margin-bottom:8px;">⚡ Your ISCAN Address</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:8px;">Use this for internal ISCAN transfers — no blockchain fees, instant settlement.</p>
       <div class="iscan-box">
         <div style="font-size:11px;color:#94a3b8;">ISCAN Internal Address</div>
         <div class="iscan-addr" id="iscanAddrWallet">Loading...</div>
@@ -625,13 +589,6 @@ select option{background:#0b1220;}
         </div>
       </div>
     </div>
-
-  </div>
-
-  <!-- Connected wallets list -->
-  <div class="card" style="margin-top:14px;">
-    <h3 style="margin-bottom:12px;">📋 Linked Wallets</h3>
-    <div id="walletList"><p style="color:#6b7280;font-size:12px;">No wallets connected yet.</p></div>
   </div>
 </div>
 
@@ -691,14 +648,7 @@ function switchSub(id,btn){
   btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
-  if(id==='receive-tab'){
-    loadMyWalletForQR();loadIscanAddressAll();
-    // Default to ISCAN panel
-    document.getElementById('rwPanelISCAN').style.display='block';
-    document.getElementById('rwPanelCrypto').style.display='none';
-    document.getElementById('rwTypeISCAN').classList.add('active');
-    document.getElementById('rwTypeCrypto').classList.remove('active');
-  }
+  if(id==='receive-tab'){loadMyWalletForQR();loadIscanAddressAll();}
   if(id==='iscan-tab')loadIscanAddressAll();
 }
 
@@ -819,172 +769,150 @@ async function getUSDCBalance(provider,address,chainId){
   }catch(e){return 0;}
 }
 
-// ── CONNECT WALLET ──────────────────────────────────────────
+// ── CONNECT WALLET (MetaMask only — uses window.ethereum) ───
 async function connectWallet(type){
-  // ── Ronin Wallet ──
-  if(type==='ronin'){
-    var roninProvider=window.ronin&&window.ronin.provider;
-    if(!roninProvider){
-      showMsg('walletMsg','error','Ronin Wallet not detected. Install from roninchain.com/wallet and refresh.');
-      return;
-    }
-    try{
-      showMsg('walletMsg','info','Connecting Ronin — approve in the Ronin Wallet popup...');
-      // Force permission prompt
-      await roninProvider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
-      var accounts=await roninProvider.request({method:'eth_requestAccounts'});
-      if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned.');return;}
-      var address=accounts[0];
-      var chainId='0x7e4'; // Ronin mainnet
-      var chainInfo=CHAIN_MAP[chainId];
-      var nativeBal=0;
-      try{var bw=await roninProvider.request({method:'eth_getBalance',params:[address,'latest']});nativeBal=(parseInt(bw,16)/1e18).toFixed(4);}catch(e){}
-      var r=await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,provider:'ronin',chainId,nativeBalance:parseFloat(nativeBal),nativeToken:'RON',usdcBalance:0})});
-      if(r.ok||r.data.success){
-        showMsg('walletMsg','success','✅ Ronin connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+nativeBal+' RON');
-        _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
-      }else showMsg('walletMsg','error',r.data.error||'Failed to link Ronin wallet.');
-    }catch(err){
-      if(err.code===4001)showMsg('walletMsg','error','Rejected. Please approve in Ronin Wallet.');
-      else showMsg('walletMsg','error','Ronin error: '+err.message);
-    }
+  // ── MetaMask: always use window.ethereum, never a custom RPC ──
+  if(type!=='metamask'){
+    showMsg('walletMsg','error','Only MetaMask is supported at this time.');
     return;
   }
 
-  // ── MetaMask ──
   if(!window.ethereum){
-    showMsg('walletMsg','error','MetaMask not detected. Install from metamask.io and refresh.');
+    showMsg('walletMsg','error','MetaMask not detected. Please install MetaMask from metamask.io and refresh.');
     return;
   }
-  // Prefer MetaMask specifically if multiple providers injected
+
+  // If multiple wallets injected, prefer MetaMask
   var provider=null;
-  if(window.ethereum.providers){provider=window.ethereum.providers.find(p=>p.isMetaMask&&!p.isRonin)||null;}
-  if(!provider&&window.ethereum.isMetaMask&&!window.ethereum.isRonin)provider=window.ethereum;
-  if(!provider){showMsg('walletMsg','error','MetaMask not found. Make sure it is installed and enabled.');return;}
+  if(window.ethereum.providers){
+    provider=window.ethereum.providers.find(p=>p.isMetaMask)||null;
+  }
+  if(!provider&&window.ethereum.isMetaMask){
+    provider=window.ethereum;
+  }
+  if(!provider){
+    showMsg('walletMsg','error','MetaMask not detected. Please install MetaMask from metamask.io.');
+    return;
+  }
 
   try{
-    showMsg('walletMsg','info','Connecting MetaMask — approve in the extension popup...');
-    // Force account picker every time by requesting permissions first
-    await provider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
-    var accounts=await provider.request({method:'eth_requestAccounts'});
-    if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from MetaMask.');return;}
-    var address=accounts[0];
-    var chainId=await provider.request({method:'eth_chainId'});
-    var chainInfo=CHAIN_MAP[chainId]||{name:'Unknown',token:'ETH',color:'#94a3b8'};
-    var nativeBal=0;
-    try{var bw=await provider.request({method:'eth_getBalance',params:[address,'latest']});nativeBal=(parseInt(bw,16)/1e18).toFixed(4);}catch(e){}
-    var usdcBal=await getUSDCBalance(provider,address,chainId);
-    var r=await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,provider:'metamask',chainId,nativeBalance:parseFloat(nativeBal),nativeToken:chainInfo.token,usdcBalance:usdcBal})});
-    if(r.ok||r.data.success){
-      showMsg('walletMsg','success','✅ '+chainInfo.name+' connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+nativeBal+' '+chainInfo.token+(usdcBal>0?' | '+usdcBal.toFixed(2)+' USDC':''));
-      _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
-    }else showMsg('walletMsg','error',r.data.error||'Failed to link wallet.');
-  }catch(err){
-    if(err.code===4001)showMsg('walletMsg','error','Rejected. Please approve in MetaMask.');
-    else showMsg('walletMsg','error','MetaMask error: '+err.message);
-  }
-}
+    showMsg('walletMsg','info','Connecting to MetaMask...');
 
-function _syncIscanAddress(data){
-  if(!data||!data.iscanAddress)return;
-  myIscanAddress=data.iscanAddress;
-  ['iscanAddrWallet','iscanAddrDisplay','myIscanAddr','receiveIscanAddr'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=myIscanAddress;});
-  renderIscanQR(myIscanAddress);
+    // Request accounts — this opens the MetaMask popup
+    var accounts=await provider.request({method:'eth_requestAccounts'});
+    if(!accounts||accounts.length===0){
+      showMsg('walletMsg','error','No accounts returned from MetaMask.');
+      return;
+    }
+    var address=accounts[0];
+
+    // Get chain
+    var chainId=await provider.request({method:'eth_chainId'});
+    var chainInfo=CHAIN_MAP[chainId]||{name:'Unknown Network',token:'ETH',color:'#94a3b8'};
+
+    // Native balance
+    var bw=await provider.request({method:'eth_getBalance',params:[address,'latest']});
+    var nativeBal=(parseInt(bw,16)/1e18).toFixed(4);
+
+    // USDC balance
+    var usdcBal=await getUSDCBalance(provider,address,chainId);
+
+    // Save to backend
+    var r=await api('/api/v1/wallet/link',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({address,provider:'metamask',chainId,nativeBalance:parseFloat(nativeBal),nativeToken:chainInfo.token,usdcBalance:usdcBal})
+    });
+
+    if(r.ok||r.data.success){
+      showMsg('walletMsg','success',
+        '✅ '+chainInfo.name+' connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+
+        ' | '+nativeBal+' '+chainInfo.token+
+        (usdcBal>0?' | '+usdcBal.toFixed(2)+' USDC':'')
+      );
+      if(r.data.iscanAddress){
+        myIscanAddress=r.data.iscanAddress;
+        var wEl=document.getElementById('iscanAddrWallet');if(wEl)wEl.textContent=myIscanAddress;
+        var oEl=document.getElementById('iscanAddrDisplay');if(oEl)oEl.textContent=myIscanAddress;
+        var iEl=document.getElementById('myIscanAddr');if(iEl)iEl.textContent=myIscanAddress;
+        var rEl=document.getElementById('receiveIscanAddr');if(rEl)rEl.textContent=myIscanAddress;
+        renderIscanQR(myIscanAddress);
+      }
+      myAddress=address;
+      loadWallets();
+      loadWalletsForOverview();
+    }else{
+      showMsg('walletMsg','error',r.data.error||'Failed to link wallet.');
+    }
+  }catch(err){
+    if(err.code===4001){
+      showMsg('walletMsg','error','Connection rejected. Please approve the MetaMask request.');
+    }else{
+      showMsg('walletMsg','error','MetaMask error: '+err.message);
+    }
+  }
 }
 
 // ── UNLINK WALLET ───────────────────────────────────────────
 async function unlinkWallet(address){
-  if(!confirm('Unlink wallet '+address.substring(0,10)+'...?\nThis removes it from ISCAN only — your actual wallet is unaffected.'))return;
-  var r=await api('/api/v1/wallet/unlink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address})});
+  if(!confirm('Unlink wallet '+address.substring(0,10)+'...? This cannot be undone.'))return;
+  var r=await api('/api/v1/wallet/unlink',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({address})
+  });
   if(r.ok&&r.data.success){
-    showMsg('walletMsg','success','Wallet unlinked successfully.');
-    loadWallets();loadWalletsForOverview();updateReceiveQR();
-  }else showMsg('walletMsg','error',r.data.error||'Unlink failed.');
+    showMsg('walletMsg','success','Wallet unlinked.');
+    loadWallets();
+    loadWalletsForOverview();
+  }else{
+    showMsg('walletMsg','error',r.data.error||'Unlink failed.');
+  }
 }
 
-// ── LOAD WALLETS (renders list with unlink buttons) ─────────
+// ── LOAD WALLETS (with unlink buttons) ──────────────────────
 async function loadWallets(){
   var r=await api('/api/v1/wallet/list');
   var el=document.getElementById('walletList');
-  if(!el)return;
   var wallets=r.data&&r.data.wallets;
   var iscanAddr=r.data&&r.data.iscanAddress;
-  if(iscanAddr)_syncIscanAddress(r.data);
+
+  if(iscanAddr){
+    myIscanAddress=iscanAddr;
+    var wEl=document.getElementById('iscanAddrWallet');if(wEl)wEl.textContent=iscanAddr;
+    var oEl=document.getElementById('iscanAddrDisplay');if(oEl)oEl.textContent=iscanAddr;
+    var iEl=document.getElementById('myIscanAddr');if(iEl)iEl.textContent=iscanAddr;
+    var rEl=document.getElementById('receiveIscanAddr');if(rEl)rEl.textContent=iscanAddr;
+    renderIscanQR(iscanAddr);
+  }
+
   if(!wallets||wallets.length===0){
-    el.innerHTML='<p style="color:#6b7280;font-size:12px;">No wallets linked yet. Connect one above.</p>';
+    el.innerHTML='<p style="color:#6b7280;font-size:12px;">No wallets connected.</p>';
     return;
   }
+
   el.innerHTML=wallets.map(function(w){
     var chainInfo=CHAIN_MAP[w.chainId]||{name:'Unknown',token:w.nativeToken||'?',color:'#94a3b8'};
     var shortAddr=w.address.substring(0,10)+'...'+w.address.substring(w.address.length-6);
-    var providerLabel=(w.provider||'wallet').toUpperCase();
-    var providerBadgeColor=w.provider==='ronin'?'#cfe2ff':'#fff3cd';
-    var providerTextColor=w.provider==='ronin'?'#084298':'#856404';
     return '<div class="wallet-item">'+
       '<div class="wallet-header">'+
         '<div>'+
-          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'+
-            '<span class="network-badge" style="color:'+chainInfo.color+';border:1px solid '+chainInfo.color+'40;background:'+chainInfo.color+'15;">'+chainInfo.name+'</span>'+
-            '<span class="badge" style="background:'+providerBadgeColor+';color:'+providerTextColor+';">'+providerLabel+'</span>'+
-          '</div>'+
           '<span class="wallet-addr">'+shortAddr+'</span>'+
+          '<div style="margin-top:4px;">'+
+            '<span class="network-badge" style="color:'+chainInfo.color+'">'+chainInfo.name+'</span>'+
+            ' <span class="badge metamask" style="margin-left:4px;">'+((w.provider||'metamask').toUpperCase())+'</span>'+
+          '</div>'+
         '</div>'+
         '<button class="btn-unlink" onclick="unlinkWallet(\''+w.address+'\')">🔌 Unlink</button>'+
       '</div>'+
-      '<div class="wallet-tokens" style="margin-top:8px;">'+
+      '<div class="wallet-tokens">'+
         '<span class="token-chip" style="color:'+chainInfo.color+'">'+(w.nativeBalance||0)+' '+chainInfo.token+'</span>'+
-        (w.usdcBalance>0?'<span class="token-chip" style="color:#2775ca">'+(parseFloat(w.usdcBalance)||0).toFixed(2)+' USDC</span>':'')+
+        (w.usdcBalance>0?'<span class="token-chip" style="color:#2775ca">'+(w.usdcBalance||0).toFixed(2)+' USDC</span>':'')+
       '</div>'+
     '</div>';
   }).join('');
-  // Set default active address for QR
+
   if(wallets[0])myAddress=wallets[0].address;
-}
-
-function selectReceiveType(type, btn){
-  document.querySelectorAll('#rwTypeISCAN,#rwTypeCrypto').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('rwPanelISCAN').style.display = type==='iscan' ? 'block' : 'none';
-  document.getElementById('rwPanelCrypto').style.display = type==='crypto' ? 'block' : 'none';
-  if(type==='crypto') updateReceiveQR();
-  if(type==='iscan') loadIscanAddressAll();
-}
-
-// ── RECEIVE TAB: chain/token selector logic ─────────────────
-var _receiveChain='0x1', _receiveToken='native', _linkedWallets=[];
-
-function selectReceiveChain(btn){
-  document.querySelectorAll('#chainSelector .chain-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  _receiveChain=btn.dataset.chain;
-  updateReceiveQR();
-}
-function selectReceiveToken(btn){
-  document.querySelectorAll('#tokenSelector .chain-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  _receiveToken=btn.dataset.token;
-  updateReceiveQR();
-}
-async function updateReceiveQR(){
-  var r=await api('/api/v1/wallet/list');
-  _linkedWallets=r.data&&r.data.wallets||[];
-  var matched=_linkedWallets.find(w=>w.chainId===_receiveChain);
-  var out=document.getElementById('cryptoReceiveOutput');
-  var noWallet=document.getElementById('cryptoReceiveNoWallet');
-  var chainBtn=document.querySelector('#chainSelector .chain-btn[data-chain="'+_receiveChain+'"]');
-  var chainName=chainBtn?chainBtn.dataset.name||chainBtn.textContent.trim():'Unknown';
-  var tokenLabel=_receiveToken==='native'?(CHAIN_MAP[_receiveChain]||{token:'Native'}).token:_receiveToken;
-  if(!matched){
-    if(out)out.style.display='none';
-    if(noWallet)noWallet.style.display='block';
-    return;
-  }
-  if(noWallet)noWallet.style.display='none';
-  if(out)out.style.display='block';
-  var labelEl=document.getElementById('rwChainLabel');
-  if(labelEl)labelEl.textContent=chainName+' · '+tokenLabel;
-  renderQR(matched.address);
-  myAddress=matched.address;
 }
 
 // ── QR ──────────────────────────────────────────────────────
@@ -992,33 +920,30 @@ var myAddress='',qrInstance=null;
 async function loadMyWalletForQR(){
   var r=await api('/api/v1/wallet/list');
   var wallets=r.data&&r.data.wallets;
-  _linkedWallets=wallets||[];
-  if(wallets&&wallets.length>0){myAddress=wallets[0].address;updateReceiveQR();}
+  if(wallets&&wallets.length>0){myAddress=wallets[0].address;renderQR(myAddress);}
 }
 function renderQR(text){
   var el=document.getElementById('qrCanvas');
-  if(!el||!text)return;
-  try{el.getContext('2d').clearRect(0,0,180,180);}catch(e){}
+  if(!el)return;
+  el.getContext('2d').clearRect(0,0,180,180);
   try{
     if(qrInstance){qrInstance.clear();qrInstance.makeCode(text);}
     else qrInstance=new QRCode(el,{text,width:180,height:180,colorDark:'#000',colorLight:'#fff'});
   }catch(e){}
-  var addrEl=document.getElementById('myWalletAddr');
-  if(addrEl)addrEl.textContent=text;
+  document.getElementById('myWalletAddr').textContent=text;
 }
 function generateRequestQR(){
   var amount=document.getElementById('requestAmount').value;
   var currency=document.getElementById('requestCurrency').value;
   var note=document.getElementById('requestNote').value;
-  if(!myAddress){showMsg('requestMsg','error','Connect a wallet and select a chain first.');return;}
+  if(!myAddress){showMsg('requestMsg','error','Connect a wallet first.');return;}
   if(!amount){showMsg('requestMsg','error','Enter an amount.');return;}
-  var out=document.getElementById('cryptoReceiveOutput');if(out)out.style.display='block';
   renderQR(JSON.stringify({address:myAddress,amount:parseFloat(amount),currency,note}));
   showMsg('requestMsg','success','QR generated for '+amount+' '+currency);
 }
 function copyMyAddress(){
-  if(!myAddress){alert('No crypto wallet address available for this chain.');return;}
-  navigator.clipboard.writeText(myAddress).then(()=>alert('Address copied!')).catch(()=>{});
+  if(!myAddress){alert('No crypto wallet connected.');return;}
+  navigator.clipboard.writeText(myAddress).then(()=>alert('Crypto address copied!'));
 }
 
 // ── SWAP ─────────────────────────────────────────────────────
@@ -1055,10 +980,10 @@ async function executeSwap(){
   if(!amount||amount<=0){showMsg('swapMsg','error','Enter a valid amount.');return;}
   if(from===to){showMsg('swapMsg','error','Select different tokens.');return;}
   showMsg('swapMsg','info','Processing swap...');
-  var r=await api('/api/v1/swap/php',{
+  var r=await api('/api/v1/swap/execute',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({amount,currency:from,toToken:to})
+    body:JSON.stringify({fromToken:from,toToken:to,amount})
   });
   if(r.ok&&(r.data.success||r.data.referenceId)){
     showMsg('swapMsg','success','✅ Swap complete! Ref: '+(r.data.referenceId||'—'));
