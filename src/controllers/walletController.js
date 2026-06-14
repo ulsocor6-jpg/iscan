@@ -11,6 +11,16 @@ const CHAIN_MAP = {
   '0xa': { name: 'Optimism', token: 'ETH' }
 };
 
+/* =========================
+   HELPERS
+========================= */
+function formatBalances(wallet) {
+  if (!wallet?.balances) return {};
+  return wallet.balances instanceof Map
+    ? Object.fromEntries(wallet.balances)
+    : wallet.balances;
+}
+
 async function getOrCreateWallet(userId) {
   let wallet = await Wallet.findOne({ userId });
 
@@ -20,7 +30,7 @@ async function getOrCreateWallet(userId) {
       iscanAddress:
         'ISCAN-' +
         crypto.randomBytes(8).toString('hex').toUpperCase(),
-      balance: 0,
+      balances: new Map(),
       linkedWallets: []
     });
   }
@@ -28,6 +38,9 @@ async function getOrCreateWallet(userId) {
   return wallet;
 }
 
+/* =========================
+   LINK WALLET
+========================= */
 export const linkWallet = async (req, res) => {
   try {
     const {
@@ -86,7 +99,7 @@ export const linkWallet = async (req, res) => {
       success: true,
       iscanAddress: wallet.iscanAddress,
       walletId: wallet.iscanAddress,
-      balance: wallet.balance,
+      balances: formatBalances(wallet),
       wallets: wallet.linkedWallets
     });
 
@@ -99,6 +112,9 @@ export const linkWallet = async (req, res) => {
   }
 };
 
+/* =========================
+   GET WALLETS
+========================= */
 export const getWallets = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
@@ -107,7 +123,7 @@ export const getWallets = async (req, res) => {
       success: true,
       walletId: wallet.iscanAddress,
       iscanAddress: wallet.iscanAddress,
-      balance: wallet.balance,
+      balances: formatBalances(wallet),
       wallets: wallet.linkedWallets
     });
 
@@ -120,6 +136,9 @@ export const getWallets = async (req, res) => {
   }
 };
 
+/* =========================
+   GET WALLET ME
+========================= */
 export const getWalletMe = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
@@ -130,7 +149,7 @@ export const getWalletMe = async (req, res) => {
       iscanAddress: wallet.iscanAddress,
       id: wallet.iscanAddress,
       _id: wallet.iscanAddress,
-      balance: wallet.balance
+      balances: formatBalances(wallet)
     });
 
   } catch (err) {
@@ -142,14 +161,24 @@ export const getWalletMe = async (req, res) => {
   }
 };
 
+/* =========================
+   GET WALLET BALANCE
+========================= */
 export const getWalletBalance = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
 
+    const asset = req.query.asset || 'USDT';
+
+    const balance =
+      wallet.balances?.get?.(asset) ||
+      wallet.balances?.[asset] ||
+      0;
+
     return res.json({
       success: true,
-      balance: wallet.balance || 0,
-      availableBalance: wallet.balance || 0
+      asset,
+      balance
     });
 
   } catch (err) {
@@ -161,6 +190,9 @@ export const getWalletBalance = async (req, res) => {
   }
 };
 
+/* =========================
+   UNLINK WALLET
+========================= */
 export const unlinkWallet = async (req, res) => {
   try {
     const { address } = req.body;

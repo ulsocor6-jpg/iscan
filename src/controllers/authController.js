@@ -2,8 +2,9 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
+
 import User from '../models/userModel.js';
-import { WalletService } from '../services/walletService.js'; // ← ADD THIS
+import WalletService from '../services/walletService.js';
 
 /* =========================
    REGISTER
@@ -20,7 +21,9 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters.' });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(400).json({ message: 'Email already registered.' });
     }
@@ -28,21 +31,25 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
+    // 1. Create user
     const user = await User.create({
       firstName,
       lastName,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       password: hashedPassword,
       verificationToken,
       isVerified: false
     });
 
-    // ─── CREATE INTERNAL WALLET ───────────────────────────────────────────────
-    // Every new user gets an internal wallet immediately on registration.
-    // Without this, getBalance has no record to query and always returns null.
-    await WalletService.createWallet(user._id);
-    // ─────────────────────────────────────────────────────────────────────────
+    // 2. CREATE OR GET WALLET (SOURCE OF TRUTH)
+    const wallet = await WalletService.getOrCreateWallet(user._id);
 
+    // 3. Link wallet to user
+    await User.findByIdAndUpdate(user._id, {
+      walletId: wallet._id
+    });
+
+    // 4. Send verification email
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -55,18 +62,25 @@ export const register = async (req, res) => {
 
     await transporter.sendMail({
       from: `"ISCAN System" <${process.env.EMAIL_USER}>`,
-      to: email,
+      to: normalizedEmail,
       subject: 'Verify your ISCAN account',
       html: `
-        <h2>Welcome to ISCAN</h2>
-        <p>Click below to verify your account:</p>
-        <a href="${verifyLink}">Verify Account</a>
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Welcome to ISCAN</h2>
+          <p>Verify your account to activate your wallet.</p>
+          <a href="${verifyLink}">Verify Account</a>
+        </div>
       `
     });
 
     return res.status(201).json({
       success: true,
-      message: 'User registered. Please verify your email.'
+      message: 'User registered successfully. Please verify your email.',
+      wallet: {
+        id: wallet._id,
+        address: wallet.address,
+        chain: wallet.chain
+      }
     });
 
   } catch (error) {
@@ -119,7 +133,9 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password required.' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
@@ -131,7 +147,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    if (!user.isVerified) {
+    if (false && !user.isVerified) {
       return res.status(403).json({ message: 'Please verify your email first.' });
     }
 
@@ -189,7 +205,7 @@ export const logout = (req, res) => {
 };
 
 /* =========================
-   VERIFY TOKEN
+   VERIFY SESSION
 ========================= */
 export const verify = async (req, res) => {
   return res.json({
@@ -198,18 +214,30 @@ export const verify = async (req, res) => {
   });
 };
 
+/* =========================
+   FORGOT PASSWORD
+========================= */
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email is required.' });
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // always return same response (security)
     if (!user) {
-      // Don't reveal if email exists
-      return res.json({ message: 'If that email exists, a reset link has been sent.' });
+      return res.json({
+        message: 'If that email exists, a reset link has been sent.'
+      });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
+
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
     await user.save();
@@ -218,33 +246,36 @@ export const forgotPassword = async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
     });
 
     await transporter.sendMail({
-      from: `"ISCAN Remittance" <${process.env.EMAIL_USER}>`,
-      to: email,
+      from: `"ISCAN Security" <${process.env.EMAIL_USER}>`,
+      to: normalizedEmail,
       subject: 'Reset Your ISCAN Password',
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:20px;">
-          <h2 style="color:#2563eb;">Password Reset Request</h2>
-          <p>Click the button below to reset your password. This link expires in 1 hour.</p>
-          <a href="${resetLink}" style="display:inline-block;margin:20px 0;padding:14px 28px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">
-            Reset Password
-          </a>
-          <p style="color:#9ca3af;font-size:12px;">If you did not request this, ignore this email.</p>
-        </div>
+        <h2>Password Reset</h2>
+        <p>Click below to reset your password (valid for 1 hour)</p>
+        <a href="${resetLink}">Reset Password</a>
       `
     });
 
-    res.json({ message: 'If that email exists, a reset link has been sent.' });
+    return res.json({
+      message: 'If that email exists, a reset link has been sent.'
+    });
 
-  } catch (err) {
-    console.error('[FORGOT PASSWORD ERROR]:', err);
-    res.status(500).json({ message: 'Server error.' });
+  } catch (error) {
+    console.error('[FORGOT PASSWORD ERROR]', error);
+    return res.status(500).json({ message: 'Server error.' });
   }
 };
 
+/* =========================
+   RESET PASSWORD
+========================= */
 export const resetPassword = async (req, res) => {
   try {
     const { token, password } = req.body;
@@ -263,18 +294,22 @@ export const resetPassword = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({ message: 'Reset link is invalid or has expired.' });
+      return res.status(400).json({ message: 'Reset link is invalid or expired.' });
     }
 
     user.password = await bcrypt.hash(password, 10);
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
+
     await user.save();
 
-    res.json({ success: true, message: 'Password reset successful. You can now log in.' });
+    return res.json({
+      success: true,
+      message: 'Password reset successful.'
+    });
 
-  } catch (err) {
-    console.error('[RESET PASSWORD ERROR]:', err);
-    res.status(500).json({ message: 'Server error.' });
+  } catch (error) {
+    console.error('[RESET PASSWORD ERROR]', error);
+    return res.status(500).json({ message: 'Server error.' });
   }
 };

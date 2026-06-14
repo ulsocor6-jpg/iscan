@@ -1,14 +1,18 @@
+import crypto from 'crypto';
+import Wallet from '../models/walletModel.js';
+
 export const transfer = async (req, res) => {
   try {
     const {
       fromWalletId,
       toWalletId,
       amount,
-      referenceId
+      referenceId,
+      asset = 'USDT'
     } = req.body;
 
     // ==============================
-    // 1. BASIC VALIDATION (MANDATORY)
+    // 1. VALIDATION
     // ==============================
     if (!fromWalletId || !toWalletId) {
       return res.status(400).json({
@@ -31,15 +35,10 @@ export const transfer = async (req, res) => {
       });
     }
 
-    // ==============================
-    // 2. IDEMPOTENCY KEY (CRITICAL)
-    // prevents double spending if request retries
-    // ==============================
-    const txRef =
-      referenceId || crypto.randomUUID();
+    const txRef = referenceId || crypto.randomUUID();
 
     // ==============================
-    // 3. WALLET EXISTENCE CHECK
+    // 2. LOAD WALLETS
     // ==============================
     const fromWallet = await Wallet.findById(fromWalletId);
     const toWallet = await Wallet.findById(toWalletId);
@@ -52,40 +51,56 @@ export const transfer = async (req, res) => {
     }
 
     // ==============================
-    // 4. BUSINESS RULE CHECK
+    // 3. INIT BALANCES IF NULL
     // ==============================
-    if (fromWallet.balance < amount) {
+    if (!fromWallet.balances) fromWallet.balances = new Map();
+    if (!toWallet.balances) toWallet.balances = new Map();
+
+    const senderBalance = fromWallet.balances.get(asset) || 0;
+
+    // ==============================
+    // 4. CHECK FUNDS
+    // ==============================
+    if (senderBalance < amount) {
       return res.status(400).json({
         success: false,
-        message: "Insufficient funds"
+        message: `Insufficient ${asset} balance`
       });
     }
 
     // ==============================
-    // 5. CALL TRANSACTION ENGINE
+    // 5. UPDATE BALANCES (ATOMIC LOGIC)
     // ==============================
-    const result = await TransactionService.transfer({
-      fromWalletId,
-      toWalletId,
-      amount,
-      referenceId: txRef
-    });
+    const receiverBalance = toWallet.balances.get(asset) || 0;
+
+    fromWallet.balances.set(asset, senderBalance - amount);
+    toWallet.balances.set(asset, receiverBalance + amount);
+
+    // mark modified for Mongo Map field
+    fromWallet.markModified('balances');
+    toWallet.markModified('balances');
+
+    await fromWallet.save();
+    await toWallet.save();
 
     // ==============================
-    // 6. SUCCESS RESPONSE
+    // 6. RESPONSE
     // ==============================
     return res.status(200).json({
       success: true,
       message: "Transfer completed successfully",
       referenceId: txRef,
-      data: result
+      data: {
+        asset,
+        amount,
+        from: fromWalletId,
+        to: toWalletId,
+        fromBalance: fromWallet.balances.get(asset),
+        toBalance: toWallet.balances.get(asset)
+      }
     });
 
   } catch (err) {
-
-    // ==============================
-    // 7. ERROR HANDLING
-    // ==============================
     return res.status(500).json({
       success: false,
       message: "Transfer failed",

@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISCAN Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;}
+body{background:#0b1220;color:#e5e7eb;}
+nav{background:#0f172a;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1f2937;flex-wrap:wrap;gap:8px;}
+.nav-left{display:flex;gap:6px;flex-wrap:wrap;}
+nav button{background:transparent;border:1px solid #1f2937;color:#94a3b8;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;transition:all 0.2s;}
+nav button.active{background:#2563eb;border-color:#2563eb;color:white;}
+nav button:hover{border-color:#3b82f6;color:white;}
+.nav-right{display:flex;align-items:center;gap:10px;}
+#userInfo{color:#94a3b8;font-size:12px;}
+.btn-logout{background:#ef4444!important;border-color:#ef4444!important;color:white!important;font-size:12px!important;padding:7px 12px!important;border-radius:8px;cursor:pointer;border:none;}
+.screen{display:none;padding:20px;max-width:1100px;margin:auto;}
+.screen.active{display:block;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:14px;}
+.card{background:#111827;border:1px solid #1f2937;padding:18px;border-radius:14px;}
+.card h3{margin:0 0 12px;color:#f9fafb;font-size:14px;}
+.balance-big{font-size:26px;font-weight:700;color:#22c55e;margin:4px 0 2px;}
+.balance-sub{font-size:11px;color:#6b7280;}
+.token-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1f2937;font-size:13px;}
+.token-row:last-child{border:none;}
+.token-val{color:#f9fafb;font-weight:600;}
+.token-label{display:flex;align-items:center;gap:6px;color:#94a3b8;}
+.token-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.rate-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1f2937;font-size:13px;}
+.rate-row:last-child{border:none;}
+.rate-val{color:#60a5fa;font-weight:600;}
+input,select{width:100%;padding:9px 11px;border-radius:8px;border:1px solid #1f2937;background:#0b1220;color:white;margin-top:7px;font-size:13px;outline:none;box-sizing:border-box;}
+input:focus,select:focus{border-color:#3b82f6;}
+select option{background:#0b1220;}
+.btn{padding:9px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;margin-top:8px;transition:all 0.2s;width:100%;}
+.btn-primary{background:#2563eb;color:white;}
+.btn-green{background:#16a34a;color:white;}
+.btn-amber{background:#d97706;color:white;}
+.btn-red{background:#dc2626;color:white;}
+.btn-sm{padding:5px 10px;font-size:11px;width:auto;margin-top:0;}
+.btn-icon{background:#1f2937;color:white;border:1px solid #374151;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:13px;margin-right:6px;margin-top:8px;transition:all 0.2s;}
+.btn-icon:hover{border-color:#3b82f6;color:#60a5fa;}
+.btn-unlink{background:#450a0a;color:#f87171;border:1px solid #7f1d1d;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;transition:all 0.2s;}
+.btn-unlink:hover{background:#7f1d1d;color:white;}
+.msg{margin-top:8px;padding:9px 12px;border-radius:8px;font-size:12px;display:none;}
+.msg.success{background:#064e3b;color:#34d399;display:block;}
+.msg.error{background:#450a0a;color:#f87171;display:block;}
+.msg.info{background:#1e3a5f;color:#60a5fa;display:block;}
+.ledger-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;}
+.ledger-table th{text-align:left;padding:8px 10px;color:#6b7280;border-bottom:1px solid #1f2937;font-weight:500;font-size:11px;text-transform:uppercase;}
+.ledger-table td{padding:9px 10px;border-bottom:1px solid #0f172a;}
+.ledger-table tr:hover td{background:#0f172a;}
+.debit{color:#f87171;font-weight:600;}
+.credit{color:#34d399;font-weight:600;}
+.ref{font-family:monospace;color:#60a5fa;font-size:10px;}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;}
+.badge.completed,.badge.success{background:#064e3b;color:#34d399;}
+.badge.pending{background:#78350f;color:#fcd34d;}
+.badge.failed{background:#450a0a;color:#f87171;}
+.badge.reversed{background:#1e1b4b;color:#a5b4fc;}
+.badge.metamask{background:#fff3cd;color:#856404;}
+.badge.ronin{background:#cfe2ff;color:#084298;}
+#qrCanvas{display:block;margin:12px auto 0;border-radius:10px;background:white;padding:6px;}
+#scanVideo{width:100%;border-radius:10px;display:none;margin-top:10px;}
+#scanResult{margin-top:8px;padding:9px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;font-family:monospace;font-size:11px;color:#60a5fa;display:none;word-break:break-all;}
+.wallet-item{background:#0b1220;border:1px solid #1f2937;border-radius:10px;margin-top:8px;padding:12px;font-size:12px;}
+.wallet-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.wallet-addr{font-family:monospace;color:#60a5fa;font-size:11px;}
+.wallet-tokens{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.token-chip{background:#1f2937;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;}
+.iscan-box{background:linear-gradient(135deg,#1e3a5f,#0f172a);border:1px solid #2563eb;border-radius:10px;padding:12px;margin-top:8px;}
+.iscan-addr{font-family:monospace;font-size:13px;color:#60a5fa;word-break:break-all;margin-top:4px;font-weight:700;letter-spacing:0.5px;}
+.preview-box{background:#0b1220;border:1px solid #374151;border-radius:8px;padding:10px;margin-top:10px;font-size:12px;display:none;}
+.preview-row{display:flex;justify-content:space-between;padding:3px 0;color:#94a3b8;}
+.preview-row span:last-child{color:#f9fafb;font-weight:600;}
+.preview-total{border-top:1px solid #1f2937;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;color:#22c55e;font-weight:700;font-size:14px;}
+.tab-group{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.tab-group button{flex:1;min-width:90px;padding:8px;border:1px solid #1f2937;background:transparent;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:12px;}
+.tab-group button.active{background:#2563eb;border-color:#2563eb;color:white;}
+.sub-screen{display:none;}
+.sub-screen.active{display:block;}
+.activity-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1f2937;font-size:12px;}
+.activity-row:last-child{border:none;}
+.network-badge{font-size:10px;padding:2px 7px;border-radius:12px;font-weight:600;background:#1f2937;color:#94a3b8;}
+.chain-btn{padding:6px 12px;border:1px solid #1f2937;background:#0b1220;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;}
+.chain-btn.active{border-color:#2563eb;background:#1e3a5f;color:#60a5fa;}
+.chain-btn:hover{border-color:#3b82f6;color:white;}
+/* ── ISCAN receive panel ── */
+.iscan-receive-panel{background:linear-gradient(135deg,#0f2744,#111827);border:1px solid #2563eb;border-radius:12px;padding:20px;text-align:center;}
+.iscan-receive-addr{font-family:monospace;font-size:15px;color:#60a5fa;word-break:break-all;margin:12px 0;font-weight:700;letter-spacing:0.5px;background:#0b1220;padding:10px 14px;border-radius:8px;border:1px solid #1f2937;}
+/* ── CSS variables for crypto panel ── */
+:root{--border:#1f2937;--surface2:#111827;--muted:#6b7280;--accent:#2de8a2;--text:#f9fafb;}
+.input-wrap{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:#0b1220;overflow:hidden;margin-top:0;}
+.input-wrap input{border:none;background:transparent;margin-top:0;flex:1;}
+.input-wrap input:focus{outline:none;border:none;box-shadow:none;}
+.input-prefix{padding:9px 10px;color:var(--muted);font-size:13px;border-right:1px solid var(--border);background:#0f172a;white-space:nowrap;}
+#crypto-onramp-panel .btn-primary{width:100%;padding:11px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;border:none;background:#2563eb;color:white;margin-top:0;transition:background .15s;}
+#crypto-onramp-panel .btn-primary:hover{background:#1d4ed8;}
+#crypto-onramp-panel .btn-primary:disabled{opacity:.55;cursor:not-allowed;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-left">
+    <button class="active" onclick="switchTab('overview',this)">Dashboard</button>
+    <button onclick="switchTab('pay',this)">Pay & Receive</button>
+    <button onclick="switchTab('ledger',this)">Ledger</button>
+    <button onclick="switchTab('settlement',this)">Settlement</button>
+    <button onclick="switchTab('audit',this)">Audit Trail</button>
+    <button onclick="switchTab('accounts',this)">Accounts</button>
+    <button onclick="switchTab('wallets',this)">Wallets</button>
+  </div>
+  <div class="nav-right">
+    <span id="userInfo">—</span>
+    <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+  </div>
+</nav>
+
+<!-- OVERVIEW -->
+<div id="overview" class="screen active">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;">
+    <div class="card" style="background:linear-gradient(135deg,#0f2744,#111827);border-color:#2563eb;">
+      <h3 style="color:#93c5fd;">💰 ISCAN Balance</h3>
+      <div class="balance-big" id="iscanBalance">₱0.00</div>
+      <div class="balance-sub">Available PHP balance</div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-green btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">➕ Cash In</button>
+        <button class="btn btn-amber btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">➖ Cash Out</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;margin-top:0;" onclick="switchTab('pay',document.querySelector('[onclick*=pay]'))">↔ Transfer</button>
+      </div>
+      <div class="iscan-box" style="margin-top:12px;">
+        <div style="font-size:11px;color:#94a3b8;">Your ISCAN Address</div>
+        <div class="iscan-addr" id="iscanAddrDisplay">—</div>
+        <button class="btn btn-sm" style="margin-top:8px;background:#1e3a5f;color:#60a5fa;border:1px solid #2563eb;width:auto;padding:4px 12px;" onclick="navigator.clipboard.writeText(document.getElementById('iscanAddrDisplay').textContent).then(()=>this.textContent='Copied!').catch(()=>{})">Copy Address</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>💳 Quick Cash In</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:8px;">Deposit PHP via GCash or debit/credit card instantly.</p>
+      <input id="quickCashinAmount" type="number" placeholder="Amount (PHP) — min ₱20" min="20" max="100000" style="margin-top:4px;">
+      <button class="btn btn-green" style="margin-top:10px;" onclick="quickCashIn()">Generate Payment Link</button>
+      <div id="quickCashinMsg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>📈 Live Rates (PHP)</h3>
+      <div class="rate-row"><span>USDC</span><span class="rate-val" id="rateUSDC">Loading...</span></div>
+      <div class="rate-row"><span>ETH</span><span class="rate-val" id="rateETH">Loading...</span></div>
+      <div class="rate-row"><span>RON</span><span class="rate-val" id="rateRON">Loading...</span></div>
+      <div style="font-size:10px;color:#6b7280;margin-top:6px;" id="rateTime"></div>
+      <div style="border-top:1px solid #1f2937;margin-top:12px;padding-top:12px;">
+        <h3 style="margin-bottom:8px;">🔗 Connected Wallet</h3>
+        <div id="walletOverview"><div style="color:#6b7280;font-size:12px;">No wallet connected — go to <span style="color:#60a5fa;cursor:pointer;" onclick="switchTab('wallets',null)">Wallets tab</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3>📊 Recent Activity</h3>
+      <button class="btn btn-sm" style="background:#1f2937;color:#94a3b8;border:1px solid #374151;width:auto;margin-top:0;" onclick="switchTab('ledger',null)">View All →</button>
+    </div>
+    <div id="recentLedger"><p style="color:#6b7280;font-size:12px;">No activity yet.</p></div>
+  </div>
+</div>
+
+<!-- PAY & RECEIVE -->
+<div id="pay" class="screen">
+  <div class="tab-group">
+    <button class="active" onclick="switchSub('send-tab',this)">📤 Send / Pay</button>
+    <button onclick="switchSub('receive-tab',this)">📥 Receive</button>
+    <button onclick="switchSub('scan-tab',this)">📷 Scan QR</button>
+    <button onclick="switchSub('iscan-tab',this)">⚡ ISCAN Transfer</button>
+    <button onclick="switchSub('cashin-tab',this)">💳 Cash In</button>
+    <button onclick="switchSub('crypto-cashin-tab',this)">🪙 Crypto Cash In</button>
+  </div>
+
+  <!-- SEND -->
+  <div id="send-tab" class="sub-screen active">
+    <div class="grid">
+      <div class="card">
+        <h3>Send Remittance</h3>
+        <div class="tab-group">
+          <button class="active" onclick="switchMode('crypto',this)">Crypto</button>
+          <button onclick="switchMode('email',this)">By Email</button>
+          <button onclick="switchMode('bill',this)">Bills</button>
+        </div>
+        <div id="mode-crypto">
+          <input id="senderAddr" placeholder="Your wallet address">
+          <input id="receiverAddr" placeholder="Recipient wallet address">
+        </div>
+        <div id="mode-email" style="display:none;">
+          <input id="receiverEmail" placeholder="Recipient ISCAN email">
+        </div>
+        <div id="mode-bill" style="display:none;">
+          <select id="billerType">
+            <option value="">Select Biller</option>
+            <option value="meralco">Meralco</option>
+            <option value="pldt">PLDT</option>
+            <option value="maynilad">Maynilad</option>
+            <option value="globe">Globe</option>
+            <option value="smart">Smart</option>
+            <option value="other">Other</option>
+          </select>
+          <input id="billAccountNo" placeholder="Account / Reference Number">
+          <input id="billAccountName" placeholder="Account Name">
+        </div>
+        <input id="sendAmount" type="number" placeholder="Amount" min="0.0001" step="0.0001" oninput="updatePreview()">
+        <select id="sendCurrency" onchange="updatePreview()">
+          <option value="USDC">USDC</option>
+          <option value="ETH">ETH</option>
+          <option value="RON">RON</option>
+          <option value="PHP">PHP (Internal)</option>
+        </select>
+        <input id="sendNotes" placeholder="Notes (optional)">
+        <div class="preview-box" id="previewBox">
+          <div class="preview-row"><span>Amount</span><span id="previewAmount">—</span></div>
+          <div class="preview-row"><span>Rate</span><span id="previewRate">—</span></div>
+          <div class="preview-row"><span>Fee (0.5%)</span><span id="previewFee">—</span></div>
+          <div class="preview-total"><span>Recipient gets</span><span id="previewTotal">—</span></div>
+        </div>
+        <button class="btn btn-green" onclick="sendPayment()">Send</button>
+        <div id="sendMsg" class="msg"></div>
+      </div>
+
+      <!-- ── SWAP panel ── -->
+      <div class="card">
+        <h3>🔄 Swap</h3>
+        <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Swap between tokens using your connected wallet balance.</p>
+        <label style="font-size:11px;color:#6b7280;display:block;margin-top:8px;">From</label>
+        <select id="swapFrom">
+          <option value="USDC">USDC</option>
+          <option value="ETH">ETH</option>
+          <option value="RON">RON</option>
+          <option value="PHP">PHP (Internal)</option>
+        </select>
+        <label style="font-size:11px;color:#6b7280;display:block;margin-top:8px;">To</label>
+        <select id="swapTo">
+          <option value="PHP">PHP (Internal)</option>
+          <option value="USDC">USDC</option>
+          <option value="ETH">ETH</option>
+          <option value="RON">RON</option>
+        </select>
+        <input id="swapAmount" type="number" placeholder="Amount" min="0.0001" step="0.0001" oninput="updateSwapPreview()">
+        <div class="preview-box" id="swapPreviewBox">
+          <div class="preview-row"><span>You send</span><span id="swapPreviewFrom">—</span></div>
+          <div class="preview-row"><span>Rate</span><span id="swapPreviewRate">—</span></div>
+          <div class="preview-row"><span>Fee (0.3%)</span><span id="swapPreviewFee">—</span></div>
+          <div class="preview-total"><span>You receive</span><span id="swapPreviewTotal">—</span></div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:10px;" onclick="executeSwap()">Swap Now</button>
+        <div id="swapMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECEIVE — unified wallet -->
+  <div id="receive-tab" class="sub-screen">
+    <div class="card" style="max-width:680px;margin:auto;">
+      <h3 style="margin-bottom:4px;">⚡ ISCAN Unified Wallet</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:16px;">One account. Any chain. Select how you want to deposit — all funds settle to the same ISCAN balance.</p>
+
+      <!-- Wallet type selector -->
+      <div style="display:flex;gap:8px;margin-bottom:18px;">
+        <button class="chain-btn active" id="rwTypeISCAN" onclick="selectReceiveType('iscan',this)" style="flex:1;padding:12px;font-size:13px;">
+          ⚡ ISCAN Internal
+        </button>
+        <button class="chain-btn" id="rwTypeCrypto" onclick="selectReceiveType('crypto',this)" style="flex:1;padding:12px;font-size:13px;">
+          🔗 Blockchain Deposit
+        </button>
+      </div>
+
+      <!-- ISCAN panel -->
+      <div id="rwPanelISCAN">
+        <div class="iscan-receive-panel">
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">ISCAN Internal Address</div>
+          <div class="iscan-receive-addr" id="receiveIscanAddr">Loading...</div>
+          <canvas id="iscanQrCanvas" width="180" height="180" style="display:block;margin:12px auto;border-radius:8px;background:white;padding:5px;"></canvas>
+          <button class="btn btn-primary" style="margin-top:4px;" onclick="copyIscanReceiveAddr()">📋 Copy ISCAN Address</button>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;display:flex;gap:10px;align-items:center;">
+          <span style="font-size:18px;">✅</span>
+          <div>
+            <div style="font-size:12px;color:#22c55e;font-weight:600;">Zero fees · Instant settlement</div>
+            <div style="font-size:11px;color:#6b7280;">For transfers between ISCAN users. PHP balance updates immediately.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Crypto panel -->
+      <div id="rwPanelCrypto" style="display:none;">
+        <!-- Chain selector -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Chain</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="chainSelector">
+            <button class="chain-btn active" data-chain="0x1" data-name="Ethereum" onclick="selectReceiveChain(this)">🔷 Ethereum</button>
+            <button class="chain-btn" data-chain="0x89" data-name="Polygon" onclick="selectReceiveChain(this)">🟣 Polygon</button>
+            <button class="chain-btn" data-chain="0x38" data-name="BNB Chain" onclick="selectReceiveChain(this)">🟡 BNB</button>
+            <button class="chain-btn" data-chain="0x7e4" data-name="Ronin" onclick="selectReceiveChain(this)">🔵 Ronin</button>
+            <button class="chain-btn" data-chain="0xa4b1" data-name="Arbitrum" onclick="selectReceiveChain(this)">🔵 Arbitrum</button>
+            <button class="chain-btn" data-chain="0xa" data-name="Optimism" onclick="selectReceiveChain(this)">🔴 Optimism</button>
+            <button class="chain-btn" data-chain="0x2105" data-name="Base" onclick="selectReceiveChain(this)">🔷 Base</button>
+          </div>
+        </div>
+
+        <!-- Token selector -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Select Token</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="tokenSelector">
+            <button class="chain-btn active" data-token="native" onclick="selectReceiveToken(this)">Native</button>
+            <button class="chain-btn" data-token="USDC" onclick="selectReceiveToken(this)">USDC</button>
+            <button class="chain-btn" data-token="USDT" onclick="selectReceiveToken(this)">USDT</button>
+          </div>
+        </div>
+
+        <!-- QR output -->
+        <div id="cryptoReceiveOutput" style="display:none;text-align:center;background:linear-gradient(135deg,#0f2744,#111827);border:1px solid #2563eb;border-radius:12px;padding:20px;">
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;" id="rwChainLabel">Ethereum · USDC</div>
+          <canvas id="qrCanvas" width="200" height="200" style="display:block;margin:10px auto;border-radius:8px;background:white;padding:6px;"></canvas>
+          <div style="font-family:monospace;font-size:12px;color:#60a5fa;word-break:break-all;padding:10px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;margin-top:8px;" id="myWalletAddr"></div>
+          <button class="btn btn-primary" style="margin-top:10px;" onclick="copyMyAddress()">📋 Copy Address</button>
+          <div style="margin-top:10px;font-size:11px;color:#6b7280;">Deposits on this chain auto-settle to your ISCAN balance after confirmation.</div>
+        </div>
+        <div id="cryptoReceiveNoWallet" style="padding:16px;background:#0b1220;border:1px solid #374151;border-radius:10px;text-align:center;">
+          <div style="font-size:22px;margin-bottom:8px;">🔌</div>
+          <div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">No wallet linked for this chain</div>
+          <button class="btn btn-primary btn-sm" style="width:auto;" onclick="switchTab('wallets',document.querySelector('[onclick*=wallets]'))">Go to Wallets →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCAN -->
+  <div id="scan-tab" class="sub-screen">
+    <div class="card" style="max-width:460px;">
+      <h3>📷 Scan QR Code</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Scan wallet address or payment request</p>
+      <button class="btn btn-primary" onclick="startScan()">Start Camera</button>
+      <button class="btn btn-amber" style="margin-top:6px;" onclick="stopScan()">Stop</button>
+      <video id="scanVideo" autoplay playsinline></video>
+      <canvas id="scanCanvas" style="display:none;"></canvas>
+      <div id="scanResult"></div>
+      <div id="scanMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- ISCAN INTERNAL TRANSFER -->
+  <div id="iscan-tab" class="sub-screen">
+    <div class="card" style="max-width:500px;">
+      <h3>⚡ ISCAN-to-ISCAN Transfer</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Transfer PHP instantly between ISCAN users. No blockchain fees.</p>
+      <div class="iscan-box" style="margin-bottom:10px;">
+        <div style="font-size:11px;color:#94a3b8;">Your ISCAN Address</div>
+        <div class="iscan-addr" id="myIscanAddr">—</div>
+      </div>
+      <input id="iscanReceiverEmail" placeholder="Recipient email or ISCAN address">
+      <input id="iscanAmount" type="number" placeholder="Amount (PHP)" min="1">
+      <input id="iscanNotes" placeholder="Notes (optional)">
+      <button class="btn btn-green" onclick="iscanTransfer()">Transfer Instantly</button>
+      <div id="iscanMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- CASH IN -->
+  <div id="cashin-tab" class="sub-screen">
+    <div class="card" style="max-width:500px;">
+      <h3>💳 Cash In via GCash / Card</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Deposit PHP to your ISCAN wallet instantly using GCash or debit/credit card.</p>
+      <input id="cashinAmount" type="number" placeholder="Amount (PHP) — min ₱20" min="20" max="100000">
+      <button class="btn btn-green" style="margin-top:8px;" onclick="startCashIn()">Generate Payment Link</button>
+      <div id="cashinMsg" style="margin-top:12px;padding:10px;border-radius:8px;font-size:13px;min-height:20px;"></div>
+    </div>
+  </div>
+
+  <!-- CRYPTO CASH IN -->
+  <div id="crypto-cashin-tab" class="sub-screen">
+    <div class="card" style="max-width:500px;">
+      <h3>🪙 Crypto Cash In — USDC / USDT → PHP</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:14px;">Convert stablecoins to PHP and receive via Maya or GCash instantly.</p>
+      <style>
+      .crypto-panel{display:flex;flex-direction:column;gap:16px;}
+      .token-selector{display:flex;gap:8px;margin-bottom:4px;}
+      .token-btn{flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;}
+      .token-btn.active{border-color:var(--accent);background:rgba(45,232,162,.10);color:var(--accent);}
+      .token-icon{width:20px;height:20px;border-radius:50%;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+      .usdc-icon{background:#2775ca;color:#fff;}
+      .usdt-icon{background:#26a17b;color:#fff;}
+      .channel-selector{display:flex;gap:8px;}
+      .channel-btn{flex:1;padding:10px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--muted);font-size:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .15s;}
+      .channel-btn.active{border-color:var(--accent);background:rgba(45,232,162,.08);color:var(--text);}
+      .channel-btn .ch-name{font-weight:600;font-size:12.5px;}
+      .channel-btn .ch-fee{font-size:10px;color:var(--muted);}
+      .channel-btn.active .ch-fee{color:var(--accent);}
+      .rate-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;}
+      .rate-label{font-size:11px;color:var(--muted);}
+      .rate-value{font-size:15px;font-weight:700;color:var(--accent);}
+      .rate-refresh{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;transition:transform .3s;}
+      .rate-refresh:hover{color:var(--accent);}
+      .rate-refresh.spinning{animation:spin .6s linear infinite;}
+      @keyframes spin{to{transform:rotate(360deg);}}
+      .breakdown{background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12.5px;}
+      .breakdown-row{display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);color:var(--muted);}
+      .breakdown-row:last-child{border-bottom:none;}
+      .breakdown-row.total{background:rgba(45,232,162,.06);color:var(--text);font-weight:700;}
+      .breakdown-row.total .bd-val{color:var(--accent);font-size:14px;}
+      .step-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;}
+      .status-banner{display:none;padding:11px 14px;border-radius:8px;font-size:12.5px;line-height:1.5;white-space:pre-line;}
+      .status-banner.pending{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24;}
+      .status-banner.success{background:rgba(45,232,162,.08);border:1px solid rgba(45,232,162,.25);color:var(--accent);}
+      .status-banner.error{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171;}
+      .gcash-notice{font-size:11.5px;color:var(--muted);text-align:center;margin-top:-6px;}
+      .gcash-notice a{color:var(--accent);text-decoration:none;}
+      </style>
+      <div class="crypto-panel" id="crypto-onramp-panel">
+        <div>
+          <div class="step-label">1 — Select Token</div>
+          <div class="token-selector">
+            <button class="token-btn active" data-token="USDC" onclick="selectToken('USDC', this)">
+              <span class="token-icon usdc-icon">U</span> USDC
+            </button>
+            <button class="token-btn" data-token="USDT" onclick="selectToken('USDT', this)">
+              <span class="token-icon usdt-icon">₮</span> USDT
+            </button>
+          </div>
+        </div>
+        <div>
+          <div class="step-label">2 — Payout Channel</div>
+          <div class="channel-selector">
+            <button class="channel-btn active" data-channel="maya" onclick="selectChannel('maya', this)">
+              <span class="ch-name">Maya</span><span class="ch-fee">1.5% fee</span>
+            </button>
+            <button class="channel-btn" data-channel="gcash" onclick="selectChannel('gcash', this)">
+              <span class="ch-name">GCash</span><span class="ch-fee">2.0% fee</span>
+            </button>
+          </div>
+        </div>
+        <div class="rate-box">
+          <div>
+            <div class="rate-label">Live Rate</div>
+            <div class="rate-value" id="or-rate-display">Fetching…</div>
+          </div>
+          <button class="rate-refresh" id="or-refresh-btn" onclick="refreshRate()" title="Refresh rate">↻</button>
+        </div>
+        <div>
+          <div class="step-label">3 — Enter USD Amount</div>
+          <div class="input-wrap">
+            <div class="input-prefix">$</div>
+            <input id="or-usd-amount" type="number" min="1" max="10000" step="0.01" placeholder="0.00" oninput="updateBreakdown()">
+          </div>
+        </div>
+        <div class="breakdown" id="or-breakdown" style="display:none">
+          <div class="breakdown-row"><span>Gross PHP</span><span class="bd-val" id="bd-gross">—</span></div>
+          <div class="breakdown-row"><span>Fee (<span id="bd-fee-pct">—</span>)</span><span class="bd-val" id="bd-fee">—</span></div>
+          <div class="breakdown-row total"><span>You Receive</span><span class="bd-val" id="bd-net">—</span></div>
+        </div>
+        <div>
+          <div class="step-label">4 — Recipient Mobile Number</div>
+          <div class="input-wrap">
+            <div class="input-prefix">+63</div>
+            <input id="or-mobile" type="tel" placeholder="9XXXXXXXXX" maxlength="10">
+          </div>
+        </div>
+
+        <div class="status-banner" id="or-status"></div>
+        <div class="gcash-notice" id="or-gcash-notice" style="display:none">
+          GCash will open a verification page. <a href="#" id="or-gcash-link" target="_blank">Click here if it didn't open automatically →</a>
+        </div>
+        <button class="btn-primary" id="or-submit-btn" onclick="submitConversion()">
+          Convert &amp; Send to <span id="or-channel-label">Maya</span>
+        </button>
+      </div>
+      <script>
+      (function(){
+        var _token='USDC',_channel='maya',_rate=null;
+        var FEE={maya:0.015,gcash:0.020};
+        var FEE_LABEL={maya:'1.5%',gcash:'2.0%'};
+        window.selectToken=function(token,el){_token=token;document.querySelectorAll('.token-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');updateBreakdown();};
+        window.selectChannel=function(channel,el){_channel=channel;document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('or-channel-label').textContent=channel==='maya'?'Maya':'GCash';updateBreakdown();};
+        window.refreshRate=async function(){
+          var btn=document.getElementById('or-refresh-btn');btn.classList.add('spinning');
+          document.getElementById('or-rate-display').textContent='Fetching…';
+          try{
+            var res=await fetch('/api/v1/onramp/rate?token='+_token+'&channel='+_channel+'&amount=1',{credentials:'include'});
+            var data=await res.json();_rate=data.phpRate;
+            document.getElementById('or-rate-display').textContent='₱'+_rate.toFixed(4)+' / 1 '+_token;
+            updateBreakdown();
+          }catch{document.getElementById('or-rate-display').textContent='Rate unavailable';}
+          finally{btn.classList.remove('spinning');}
+        };
+        window.updateBreakdown=function(){
+          var usd=parseFloat(document.getElementById('or-usd-amount').value)||0;
+          var bd=document.getElementById('or-breakdown');
+          if(!_rate||usd<=0){bd.style.display='none';return;}
+          var gross=usd*_rate,fee=gross*FEE[_channel],net=gross-fee;
+          document.getElementById('bd-gross').textContent='₱'+gross.toFixed(2);
+          document.getElementById('bd-fee').textContent='-₱'+fee.toFixed(2);
+          document.getElementById('bd-fee-pct').textContent=FEE_LABEL[_channel];
+          document.getElementById('bd-net').textContent='₱'+net.toFixed(2);
+          bd.style.display='block';
+        };
+        window.submitConversion=async function(){
+          var usdAmount=parseFloat(document.getElementById('or-usd-amount').value);
+          var mobileRaw=document.getElementById('or-mobile').value.trim();
+          var txHash='';
+          var mobileNumber='+63'+mobileRaw;
+          if(!usdAmount||usdAmount<1)return showOrStatus('error','Enter a valid USD amount (min $1).');
+          if(!/^9\d{9}$/.test(mobileRaw))return showOrStatus('error','Enter a valid PH mobile number (9XXXXXXXXX).');
+          var btn=document.getElementById('or-submit-btn');btn.disabled=true;btn.textContent='Processing…';
+          showOrStatus('pending','⏳ Converting $'+usdAmount+' '+_token+' → PHP via '+_channel.toUpperCase()+'…');
+          document.getElementById('or-gcash-notice').style.display='none';
+          try{
+            var res=await fetch('/api/v1/onramp/convert',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:_token,usdAmount,channel:_channel,mobileNumber,txHash})});
+            var data=await res.json();
+            if(!res.ok||!data.success)throw new Error(data.error||'Conversion failed');
+            showOrStatus('success','✅ Success! ₱'+data.netPHP.toFixed(2)+' sent to '+mobileNumber+' via '+_channel.toUpperCase()+'.\nReference: '+data.referenceId);
+            if(_channel==='gcash'&&data.redirectUrl){var link=document.getElementById('or-gcash-link');link.href=data.redirectUrl;document.getElementById('or-gcash-notice').style.display='block';window.open(data.redirectUrl,'_blank');}
+            if(typeof loadBalance==='function')loadBalance();
+            if(typeof loadRecentLedger==='function')loadRecentLedger();
+            setTimeout(resetOrForm,3000);
+          }catch(err){showOrStatus('error','❌ '+err.message);}
+          finally{btn.disabled=false;btn.innerHTML='Convert &amp; Send to <span id="or-channel-label">'+(_channel==='maya'?'Maya':'GCash')+'</span>';}
+        };
+        function showOrStatus(type,msg){var el=document.getElementById('or-status');el.className='status-banner '+type;el.textContent=msg;el.style.display='block';}
+        function resetOrForm(){document.getElementById('or-usd-amount').value='';document.getElementById('or-mobile').value='';document.getElementById('or-breakdown').style.display='none';document.getElementById('or-status').style.display='none';}
+        refreshRate();setInterval(refreshRate,60000);
+      })();
+      </script>
+    </div>
+  </div>
+</div><!-- /pay screen -->
+
+<!-- LEDGER -->
+<div id="ledger" class="screen">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+      <h3>📒 Ledger Statement</h3>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#94a3b8;">Balance: <strong id="ledgerBalance" style="color:#22c55e;">₱0.00</strong></span>
+        <button class="btn btn-sm" style="background:#1f2937;color:#2de8a2;border:1px solid #2de8a2;width:auto;margin-top:0;font-size:11px;" onclick="loadOnrampHistory()">🪙 Crypto Onramp</button>
+        <button class="btn btn-sm" style="background:#1f2937;color:#94a3b8;border:1px solid #374151;width:auto;margin-top:0;font-size:11px;" onclick="loadLedger()">All Entries</button>
+      </div>
+    </div>
+    <div id="ledgerContent"><p style="color:#6b7280;font-size:12px;">Loading...</p></div>
+  </div>
+</div>
+
+<!-- SETTLEMENT -->
+<div id="settlement" class="screen">
+  <div class="card">
+    <h3>⚡ Pending Settlements</h3>
+    <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">Waiting for Coins.ph / PayMongo. Add <code>COINSPH_API_KEY</code> to .env to enable auto-settlement.</p>
+    <div id="pendingList"><p style="color:#6b7280;font-size:12px;">Loading...</p></div>
+  </div>
+</div>
+
+<!-- AUDIT -->
+<div id="audit" class="screen">
+  <div class="card">
+    <h3>🔍 Audit Trail</h3>
+    <div id="auditList"><p style="color:#6b7280;font-size:12px;">Loading...</p></div>
+  </div>
+</div>
+
+<!-- ACCOUNTS -->
+<div id="accounts" class="screen">
+  <div class="grid">
+    <div class="card">
+      <h3>👤 Profile</h3>
+      <div id="profileInfo" style="font-size:13px;color:#94a3b8;line-height:2;"></div>
+    </div>
+    <div class="card">
+      <h3>🪪 KYC</h3>
+      <div id="kycStatus" style="margin-bottom:10px;"></div>
+      <input type="file" id="kycFile" accept="image/*" style="display:none;" onchange="uploadKYC(event)">
+      <button class="btn btn-primary" onclick="document.getElementById('kycFile').click()">Upload ID</button>
+      <div id="kycMsg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>🏦 Banks</h3>
+      <input id="bankName" placeholder="Bank Name">
+      <input id="accountName" placeholder="Account Holder">
+      <input id="accountNumber" placeholder="Account Number">
+      <button class="btn btn-primary" onclick="addBank()">Add Bank</button>
+      <div id="bankMsg" class="msg"></div>
+      <div id="bankList" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WALLETS -->
+<div id="wallets" class="screen">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;">
+
+    <!-- Connect Wallets card -->
+    <div class="card">
+      <h3>🔗 Connect a Wallet</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:14px;">Link your Web3 wallet to enable crypto deposits and on-chain QR generation.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn-icon" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;" onclick="connectWallet('metamask')">
+          <span style="font-size:20px;">🦊</span>
+          <div style="text-align:left;">
+            <div style="font-weight:700;font-size:13px;color:#f9fafb;">MetaMask</div>
+            <div style="font-size:11px;color:#6b7280;">Ethereum, Polygon, BNB, Arbitrum, Optimism</div>
+          </div>
+        </button>
+        <button class="btn-icon" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;" onclick="connectWallet('ronin')">
+          <span style="font-size:20px;">🔵</span>
+          <div style="text-align:left;">
+            <div style="font-weight:700;font-size:13px;color:#f9fafb;">Ronin Wallet</div>
+            <div style="font-size:11px;color:#6b7280;">Ronin Network — RON, AXS, SLP, USDC</div>
+          </div>
+        </button>
+      </div>
+      <div id="walletMsg" class="msg" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- ISCAN Internal Address card -->
+    <div class="card" style="background:linear-gradient(135deg,#0f2744,#111827);border-color:#2563eb;">
+      <h3 style="color:#93c5fd;">⚡ Your ISCAN Address</h3>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Use for instant fee-free internal transfers — no blockchain required.</p>
+      <div class="iscan-box">
+        <div style="font-size:11px;color:#94a3b8;">ISCAN Internal Address</div>
+        <div class="iscan-addr" id="iscanAddrWallet">Loading...</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-primary btn-sm" style="width:auto;" onclick="copyIscanAddr()">📋 Copy</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Connected wallets list -->
+  <div class="card" style="margin-top:14px;">
+    <h3 style="margin-bottom:12px;">📋 Linked Wallets</h3>
+    <div id="walletList"><p style="color:#6b7280;font-size:12px;">No wallets connected yet.</p></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+
+// ── CHAIN MAP ──────────────────────────────────────────────
+var CHAIN_MAP = {
+  '0x1':    { name:'Ethereum',       token:'ETH',   color:'#627eea' },
+  '0x89':   { name:'Polygon',        token:'MATIC', color:'#8247e5' },
+  '0x38':   { name:'BNB Chain',      token:'BNB',   color:'#f3ba2f' },
+  '0x7e4':  { name:'Ronin',          token:'RON',   color:'#1273ea' },
+  '0x7e5':  { name:'Ronin Testnet',  token:'RON',   color:'#1273ea' },
+  '0xa4b1': { name:'Arbitrum',       token:'ETH',   color:'#28a0f0' },
+  '0xa':    { name:'Optimism',       token:'ETH',   color:'#ff0420' },
+  '0x2105': { name:'Base',           token:'ETH',   color:'#0052ff' },
+};
+
+// ── TOKEN CONTRACTS (unflagged, verified) ───────────────────
+// TOKEN_CONTRACTS[chainId][symbol] = contract address
+var TOKEN_CONTRACTS = {
+  '0x1': {
+    USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  },
+  '0x89': {
+    USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+    USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
+  },
+  '0x38': {
+    USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+    USDT: '0x55d398326f99059fF775485246999027B3197955',
+    WETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
+  },
+  '0x7e4': {
+    AXS:  '0x97a9107C1793BC407d6F527b77e7fff4D812bece',
+    SLP:  '0xa8754b9Fa15fc18BB59458815510E40a12cD2014',
+    USDC: '0x0B7007c13325C48911F73A2daD5FA5dCBf808aDc',
+    WETH: '0xc99a6A985eD2Cac1ef41640596C5A5f9F4E19Ef',
+  },
+  '0xa4b1': {
+    USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+    WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+    ARB:  '0x912CE59144191C1204E64559FE8253a0e49E6548',
+  },
+  '0xa': {
+    USDC: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+    USDT: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+    WETH: '0x4200000000000000000000000000000000000006',
+  },
+  '0x2105': {
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    WETH: '0x4200000000000000000000000000000000000006',
+  },
+};
+
+// Tokens shown in the Receive tab token selector per chain
+var CHAIN_TOKENS = {
+  '0x1':    ['native','USDC','USDT','WETH'],
+  '0x89':   ['native','USDC','USDT','WETH'],
+  '0x38':   ['native','USDC','USDT','WETH'],
+  '0x7e4':  ['native','AXS','SLP','USDC','WETH'],
+  '0xa4b1': ['native','USDC','USDT','WETH','ARB'],
+  '0xa':    ['native','USDC','USDT','WETH'],
+  '0x2105': ['native','USDC','WETH'],
+};
+
+// Legacy alias kept so getUSDCBalance() still works
+var USDC_CONTRACTS = Object.fromEntries(
+  Object.entries(TOKEN_CONTRACTS)
+    .map(([c,t])=>[c, t.USDC||null])
+    .filter(([,v])=>v)
+);
+
+// ── HELPERS ────────────────────────────────────────────────
+function getCookie(n){var m=document.cookie.match(new RegExp('(^| )'+n+'=([^;]+)'));return m?decodeURIComponent(m[2]):null;}
+function showMsg(id,type,text){var el=document.getElementById(id);if(!el)return;el.textContent=text;el.className='msg '+type;}
+async function api(url,opts){
+  var res=await fetch(url,Object.assign({credentials:'same-origin'},opts||{}));
+  var data=await res.json();
+  return{ok:res.ok,data:data};
+}
+
+// ── AUTH ───────────────────────────────────────────────────
+var userEmail=getCookie('iscan_email'),userName=getCookie('iscan_name');
+if(!userEmail)window.location.href='/login.html';
+document.getElementById('userInfo').textContent=userName||userEmail;
+
+// ── NAV ────────────────────────────────────────────────────
+function switchTab(id,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-left button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  var actions={
+    ledger:loadLedger,
+    settlement:loadPending,
+    audit:loadAudit,
+    accounts:()=>{loadProfile();loadBanks();},
+    wallets:loadWallets,
+    overview:()=>{loadBalance();loadRecentLedger();loadWalletsForOverview();},
+    pay:()=>{loadMyWalletForQR();loadIscanAddressAll();}
+  };
+  if(actions[id])actions[id]();
+}
+
+function switchSub(id,btn){
+  document.querySelectorAll('.sub-screen').forEach(s=>s.classList.remove('active'));
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='receive-tab'){
+    loadMyWalletForQR();loadIscanAddressAll();
+    // Default to ISCAN panel
+    document.getElementById('rwPanelISCAN').style.display='block';
+    document.getElementById('rwPanelCrypto').style.display='none';
+    document.getElementById('rwTypeISCAN').classList.add('active');
+    document.getElementById('rwTypeCrypto').classList.remove('active');
+  }
+  if(id==='iscan-tab')loadIscanAddressAll();
+}
+
+function switchMode(mode,btn){
+  ['crypto','email','bill'].forEach(m=>document.getElementById('mode-'+m).style.display='none');
+  document.getElementById('mode-'+mode).style.display='block';
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function handleLogout(){
+  try{await fetch('/api/v1/auth/logout',{method:'POST',credentials:'same-origin'});}catch(e){}
+  window.location.href='/login.html';
+}
+
+// ── LIVE RATES ──────────────────────────────────────────────
+var liveRates={USDC:null,ETH:null,RON:null};
+async function loadRates(){
+  var r=await api('/api/v1/remittance/rates');
+  if(r.ok&&r.data.rates){
+    liveRates=r.data.rates;
+    document.getElementById('rateUSDC').textContent='₱'+Number(r.data.rates.USDC||0).toLocaleString();
+    document.getElementById('rateETH').textContent='₱'+Number(r.data.rates.ETH||0).toLocaleString();
+    document.getElementById('rateRON').textContent=r.data.rates.RON?'₱'+Number(r.data.rates.RON).toLocaleString():'Fetching...';
+    document.getElementById('rateTime').textContent='Updated '+new Date().toLocaleTimeString();
+  }
+}
+
+// ── ISCAN BALANCE ───────────────────────────────────────────
+async function loadBalance(){
+  var r=await api('/api/v1/ledger/history');
+  if(r.ok){
+    var b=r.data.balance||0;
+    var fmt='₱'+Number(b).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
+    document.getElementById('iscanBalance').textContent=fmt;
+    document.getElementById('ledgerBalance').textContent=fmt;
+  }
+}
+
+// ── LOAD ISCAN ADDRESS (all display points) ─────────────────
+var myIscanAddress='';
+async function loadIscanAddressAll(){
+  var r=await api('/api/v1/wallet/list');
+  if(!r.ok)return;
+  var addr=r.data.iscanAddress||'';
+  if(!addr)return;
+  myIscanAddress=addr;
+  // wallets tab
+  var wEl=document.getElementById('iscanAddrWallet');
+  if(wEl)wEl.textContent=addr;
+  // overview card
+  var oEl=document.getElementById('iscanAddrDisplay');
+  if(oEl)oEl.textContent=addr;
+  // iscan transfer tab
+  var iEl=document.getElementById('myIscanAddr');
+  if(iEl)iEl.textContent=addr;
+  // receive tab
+  var rEl=document.getElementById('receiveIscanAddr');
+  if(rEl)rEl.textContent=addr;
+  // draw QR on receive tab
+  renderIscanQR(addr);
+}
+
+var iscanQrInstance=null;
+function renderIscanQR(text){
+  var canvas=document.getElementById('iscanQrCanvas');
+  if(!canvas||!text)return;
+  try{
+    if(iscanQrInstance){iscanQrInstance.clear();iscanQrInstance.makeCode(text);}
+    else iscanQrInstance=new QRCode(canvas,{text,width:160,height:160,colorDark:'#000000',colorLight:'#ffffff'});
+  }catch(e){}
+}
+
+function copyIscanAddr(){
+  var addr=document.getElementById('iscanAddrWallet').textContent;
+  if(!addr||addr==='Loading...'||addr==='—'){alert('ISCAN address not loaded yet.');return;}
+  navigator.clipboard.writeText(addr).then(()=>alert('ISCAN address copied!')).catch(()=>{});
+}
+
+function copyIscanReceiveAddr(){
+  var addr=document.getElementById('receiveIscanAddr').textContent;
+  if(!addr||addr==='Loading...'||addr==='—'){alert('ISCAN address not loaded yet.');return;}
+  navigator.clipboard.writeText(addr).then(()=>{
+    var btn=event.target;btn.textContent='✅ Copied!';
+    setTimeout(()=>btn.textContent='📋 Copy ISCAN Address',2000);
+  }).catch(()=>{});
+}
+
+// ── WALLET OVERVIEW ─────────────────────────────────────────
+async function loadWalletsForOverview(){
+  var r=await api('/api/v1/wallet/list');
+  if(!r.ok)return;
+  var wallets=r.data.wallets||[];
+  var iscanAddr=r.data.iscanAddress||'—';
+  var oEl=document.getElementById('iscanAddrDisplay');
+  if(oEl)oEl.textContent=iscanAddr;
+  var el=document.getElementById('walletOverview');
+  if(wallets.length===0){
+    el.innerHTML='<div style="color:#6b7280;font-size:12px;">No wallet connected — go to <strong style="color:#60a5fa;cursor:pointer;" onclick="switchTab(\'wallets\',null)">Wallets tab</strong></div>';
+    return;
+  }
+  var w=wallets[0];
+  var chainInfo=CHAIN_MAP[w.chainId]||{name:'Unknown',token:'?',color:'#94a3b8'};
+  el.innerHTML=
+    '<div class="token-row"><div class="token-label"><span class="token-dot" style="background:'+chainInfo.color+'"></span>'+chainInfo.token+'</div><span class="token-val">'+(w.nativeBalance||0)+' '+chainInfo.token+'</span></div>'+
+    '<div class="token-row"><div class="token-label"><span class="token-dot" style="background:#2775ca"></span>USDC</div><span class="token-val">'+(w.usdcBalance||0)+' USDC</span></div>'+
+    '<div style="margin-top:8px;font-size:11px;color:#6b7280;">Network: '+chainInfo.name+' | <span class="wallet-addr">'+w.address.substring(0,10)+'...'+w.address.substring(w.address.length-6)+'</span></div>';
+}
+
+// ── TOKEN BALANCES (generic ERC-20 + native) ───────────────
+var TOKEN_DECIMALS = { USDC:6, USDT:6, WETH:18, AXS:18, SLP:18, ARB:18 };
+
+async function getTokenBalance(provider, address, chainId, symbol) {
+  var contract = (TOKEN_CONTRACTS[chainId]||{})[symbol];
+  if (!contract) return 0;
+  try {
+    var data = '0x70a08231' + '000000000000000000000000' + address.slice(2).padStart(40,'0');
+    var result = await provider.request({method:'eth_call', params:[{to:contract,data},'latest']});
+    var dec = TOKEN_DECIMALS[symbol] !== undefined ? TOKEN_DECIMALS[symbol] : 18;
+    return parseInt(result,16) / Math.pow(10, dec);
+  } catch(e) { return 0; }
+}
+
+// Legacy alias
+async function getUSDCBalance(provider, address, chainId) {
+  return getTokenBalance(provider, address, chainId, 'USDC');
+}
+
+// Fetch ALL token balances for a wallet on a given chain
+async function getAllTokenBalances(provider, address, chainId) {
+  var native = 0;
+  try {
+    var bw = await provider.request({method:'eth_getBalance', params:[address,'latest']});
+    native = parseFloat((parseInt(bw,16)/1e18).toFixed(6));
+  } catch(e){}
+  var nativeSym = (CHAIN_MAP[chainId]||{token:'ETH'}).token;
+  var balances = { native, [nativeSym]: native };
+  var tokens = (CHAIN_TOKENS[chainId]||[]).filter(t=>t!=='native');
+  await Promise.all(tokens.map(async sym => {
+    balances[sym] = parseFloat((await getTokenBalance(provider, address, chainId, sym)).toFixed(6));
+  }));
+  return balances;
+}
+
+// ── TOKEN CHIP RENDERER ─────────────────────────────────────
+var TOKEN_COLORS = {
+  ETH:'#627eea', MATIC:'#8247e5', BNB:'#f3ba2f', RON:'#1273ea',
+  USDC:'#2775ca', USDT:'#26a17b', WETH:'#627eea',
+  AXS:'#1273ea', SLP:'#00d4ff', ARB:'#28a0f0',
+};
+function renderTokenChips(w, chainInfo) {
+  var chips = [];
+  // Always show native balance
+  var nativeSym = chainInfo.token;
+  var nativeColor = chainInfo.color || TOKEN_COLORS[nativeSym] || '#94a3b8';
+  chips.push('<span class="token-chip" style="color:'+nativeColor+'">'+(w.nativeBalance||0)+' '+nativeSym+'</span>');
+  // Show any extra token balances stored in tokenBalances map
+  var tb = w.tokenBalances || {};
+  var knownTokens = (CHAIN_TOKENS[w.chainId]||[]).filter(t=>t!=='native');
+  knownTokens.forEach(function(sym) {
+    if(sym === nativeSym) return; // already shown
+    var val = tb[sym] !== undefined ? tb[sym] : (sym==='USDC' ? (w.usdcBalance||0) : 0);
+    if(val > 0) {
+      var col = TOKEN_COLORS[sym] || '#94a3b8';
+      chips.push('<span class="token-chip" style="color:'+col+'">'+parseFloat(val).toFixed(4)+' '+sym+'</span>');
+    }
+  });
+  return chips.join('');
+}
+
+// ── RECEIVE TAB: dynamic token selector per chain ────────────
+function updateTokenSelectorForChain(chainId) {
+  var tokens = CHAIN_TOKENS[chainId] || ['native','USDC','USDT'];
+  var nativeSym = (CHAIN_MAP[chainId]||{token:'ETH'}).token;
+  var sel = document.getElementById('tokenSelector');
+  if(!sel) return;
+  sel.innerHTML = tokens.map(function(t, i) {
+    var label = t === 'native' ? nativeSym : t;
+    return '<button class="chain-btn'+(i===0?' active':'')+'" data-token="'+t+'" onclick="selectReceiveToken(this)">'+label+'</button>';
+  }).join('');
+  _receiveToken = 'native';
+}
+
+// ── CONNECT WALLET ──────────────────────────────────────────
+async function connectWallet(type){
+  // ── Ronin Wallet ──
+  if(type==='ronin'){
+    var roninProvider=window.ronin&&window.ronin.provider;
+    if(!roninProvider){
+      showMsg('walletMsg','error','Ronin Wallet not detected. Install from roninchain.com/wallet and refresh.');
+      return;
+    }
+    try{
+      showMsg('walletMsg','info','Connecting Ronin — approve in the Ronin Wallet popup...');
+      // NOTE: wallet_requestPermissions is NOT supported in Ronin provider v6.7+
+      // Use eth_requestAccounts directly — it will show the approval popup on its own
+      var accounts = await roninProvider.request({method:'eth_requestAccounts'});
+      if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from Ronin.');return;}
+      var address = accounts[0];
+      var chainId = '0x7e4'; // Ronin mainnet always
+      var chainInfo = CHAIN_MAP[chainId];
+
+      // Fetch all token balances available on Ronin
+      var allBals = await getAllTokenBalances(roninProvider, address, chainId);
+      var nativeBal = allBals[chainInfo.token] || 0;
+
+      var payload = {
+        address, provider:'ronin', chainId,
+        nativeBalance: nativeBal,
+        nativeToken: 'RON',
+        usdcBalance: allBals['USDC'] || 0,
+        tokenBalances: allBals  // full map stored for display
+      };
+      var r = await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(r.ok||r.data.success){
+        var tokenSummary = Object.entries(allBals)
+          .filter(([k,v])=>k!=='native'&&v>0)
+          .map(([k,v])=>v.toFixed(4)+' '+k).join(' | ') || nativeBal+' RON';
+        showMsg('walletMsg','success','✅ Ronin connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+tokenSummary);
+        _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
+      }else showMsg('walletMsg','error',r.data.error||'Failed to link Ronin wallet.');
+    }catch(err){
+      if(err.code===4001)showMsg('walletMsg','error','Rejected. Please approve in Ronin Wallet.');
+      else showMsg('walletMsg','error','Ronin error: '+err.message);
+    }
+    return;
+  }
+
+  // ── MetaMask ──
+  // When multiple wallets are installed (Trust, Coinbase, Ronin) they all inject
+  // window.ethereum and may fake isMetaMask=true. We must pick the real MetaMask.
+  if(!window.ethereum){
+    showMsg('walletMsg','error','MetaMask not detected. Install from metamask.io and refresh.');
+    return;
+  }
+  var provider=null;
+  // Multi-provider EIP-5749: find the one that is MetaMask only (not Trust, Coinbase, Ronin)
+  if(window.ethereum.providers && Array.isArray(window.ethereum.providers)){
+    provider = window.ethereum.providers.find(p =>
+      p.isMetaMask && !p.isRonin && !p.isTrust && !p.isTrustWallet && !p.isCoinbaseWallet
+    ) || null;
+  }
+  // Single provider fallback
+  if(!provider && window.ethereum.isMetaMask && !window.ethereum.isRonin &&
+     !window.ethereum.isTrust && !window.ethereum.isTrustWallet && !window.ethereum.isCoinbaseWallet){
+    provider = window.ethereum;
+  }
+  if(!provider){
+    showMsg('walletMsg','error','MetaMask not found. If you have Trust Wallet or Coinbase Wallet installed, disable them temporarily or use a separate browser profile for MetaMask.');
+    return;
+  }
+
+  try{
+    showMsg('walletMsg','info','Connecting MetaMask — approve in the extension popup...');
+    // Force account picker every time by requesting permissions first
+    await provider.request({method:'wallet_requestPermissions',params:[{eth_accounts:{}}]});
+    var accounts=await provider.request({method:'eth_requestAccounts'});
+    if(!accounts||!accounts.length){showMsg('walletMsg','error','No accounts returned from MetaMask.');return;}
+    var address=accounts[0];
+    var chainId = await provider.request({method:'eth_chainId'});
+    var chainInfo = CHAIN_MAP[chainId] || {name:'Unknown', token:'ETH', color:'#94a3b8'};
+    showMsg('walletMsg','info','Detected '+chainInfo.name+' — reading token balances...');
+
+    // Fetch all token balances for the detected chain
+    var allBals = await getAllTokenBalances(provider, address, chainId);
+    var nativeBal = allBals[chainInfo.token] || 0;
+
+    var payload = {
+      address, provider:'metamask', chainId,
+      nativeBalance: nativeBal,
+      nativeToken: chainInfo.token,
+      usdcBalance: allBals['USDC'] || 0,
+      tokenBalances: allBals
+    };
+    var r = await api('/api/v1/wallet/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok||r.data.success){
+      var tokenSummary = Object.entries(allBals)
+        .filter(([k,v])=>k!=='native'&&v>0)
+        .map(([k,v])=>v.toFixed(4)+' '+k).join(' | ') || nativeBal+' '+chainInfo.token;
+      showMsg('walletMsg','success','✅ '+chainInfo.name+' connected: '+address.substring(0,6)+'...'+address.substring(address.length-4)+' | '+tokenSummary);
+      _syncIscanAddress(r.data);myAddress=address;loadWallets();loadWalletsForOverview();updateReceiveQR();
+    }else showMsg('walletMsg','error',r.data.error||'Failed to link wallet.');
+  }catch(err){
+    if(err.code===4001)showMsg('walletMsg','error','Rejected. Please approve in MetaMask.');
+    else showMsg('walletMsg','error','MetaMask error: '+err.message);
+  }
+}
+
+function _syncIscanAddress(data){
+  if(!data||!data.iscanAddress)return;
+  myIscanAddress=data.iscanAddress;
+  ['iscanAddrWallet','iscanAddrDisplay','myIscanAddr','receiveIscanAddr'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=myIscanAddress;});
+  renderIscanQR(myIscanAddress);
+}
+
+// ── UNLINK WALLET ───────────────────────────────────────────
+async function unlinkWallet(address){
+  if(!confirm('Unlink wallet '+address.substring(0,10)+'...?\nThis removes it from ISCAN only — your actual wallet is unaffected.'))return;
+  var r=await api('/api/v1/wallet/unlink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address})});
+  if(r.ok&&r.data.success){
+    showMsg('walletMsg','success','Wallet unlinked successfully.');
+    loadWallets();loadWalletsForOverview();updateReceiveQR();
+  }else showMsg('walletMsg','error',r.data.error||'Unlink failed.');
+}
+
+// ── LOAD WALLETS (renders list with unlink buttons) ─────────
+async function loadWallets(){
+  var r=await api('/api/v1/wallet/list');
+  var el=document.getElementById('walletList');
+  if(!el)return;
+  var wallets=r.data&&r.data.wallets;
+  var iscanAddr=r.data&&r.data.iscanAddress;
+  if(iscanAddr)_syncIscanAddress(r.data);
+  if(!wallets||wallets.length===0){
+    el.innerHTML='<p style="color:#6b7280;font-size:12px;">No wallets linked yet. Connect one above.</p>';
+    return;
+  }
+  el.innerHTML=wallets.map(function(w){
+    var chainInfo=CHAIN_MAP[w.chainId]||{name:'Unknown',token:w.nativeToken||'?',color:'#94a3b8'};
+    var shortAddr=w.address.substring(0,10)+'...'+w.address.substring(w.address.length-6);
+    var providerLabel=(w.provider||'wallet').toUpperCase();
+    var providerBadgeColor=w.provider==='ronin'?'#cfe2ff':'#fff3cd';
+    var providerTextColor=w.provider==='ronin'?'#084298':'#856404';
+    return '<div class="wallet-item">'+
+      '<div class="wallet-header">'+
+        '<div>'+
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'+
+            '<span class="network-badge" style="color:'+chainInfo.color+';border:1px solid '+chainInfo.color+'40;background:'+chainInfo.color+'15;">'+chainInfo.name+'</span>'+
+            '<span class="badge" style="background:'+providerBadgeColor+';color:'+providerTextColor+';">'+providerLabel+'</span>'+
+          '</div>'+
+          '<span class="wallet-addr">'+shortAddr+'</span>'+
+        '</div>'+
+        '<button class="btn-unlink" onclick="unlinkWallet(\''+w.address+'\')">🔌 Unlink</button>'+
+      '</div>'+
+      '<div class="wallet-tokens" style="margin-top:8px;">'+
+        renderTokenChips(w, chainInfo)+
+      '</div>'+
+    '</div>';
+  }).join('');
+  // Set default active address for QR
+  if(wallets[0])myAddress=wallets[0].address;
+}
+
+function selectReceiveType(type, btn){
+  document.querySelectorAll('#rwTypeISCAN,#rwTypeCrypto').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('rwPanelISCAN').style.display = type==='iscan' ? 'block' : 'none';
+  document.getElementById('rwPanelCrypto').style.display = type==='crypto' ? 'block' : 'none';
+  if(type==='crypto') updateReceiveQR();
+  if(type==='iscan') loadIscanAddressAll();
+}
+
+// ── RECEIVE TAB: chain/token selector logic ─────────────────
+var _receiveChain='0x1', _receiveToken='native', _linkedWallets=[];
+
+function selectReceiveChain(btn){
+  document.querySelectorAll('#chainSelector .chain-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _receiveChain = btn.dataset.chain;
+  updateTokenSelectorForChain(_receiveChain); // rebuild token list for this chain
+  updateReceiveQR();
+}
+function selectReceiveToken(btn){
+  document.querySelectorAll('#tokenSelector .chain-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _receiveToken=btn.dataset.token;
+  updateReceiveQR();
+}
+async function updateReceiveQR(){
+  var r=await api('/api/v1/wallet/list');
+  _linkedWallets=r.data&&r.data.wallets||[];
+  var matched=_linkedWallets.find(w=>w.chainId===_receiveChain);
+  var out=document.getElementById('cryptoReceiveOutput');
+  var noWallet=document.getElementById('cryptoReceiveNoWallet');
+  var chainBtn=document.querySelector('#chainSelector .chain-btn[data-chain="'+_receiveChain+'"]');
+  var chainName=chainBtn?chainBtn.dataset.name||chainBtn.textContent.trim():'Unknown';
+  var tokenLabel=_receiveToken==='native'?(CHAIN_MAP[_receiveChain]||{token:'Native'}).token:_receiveToken;
+  if(!matched){
+    if(out)out.style.display='none';
+    if(noWallet)noWallet.style.display='block';
+    return;
+  }
+  if(noWallet)noWallet.style.display='none';
+  if(out)out.style.display='block';
+  var labelEl=document.getElementById('rwChainLabel');
+  if(labelEl)labelEl.textContent=chainName+' · '+tokenLabel;
+  renderQR(matched.address);
+  myAddress=matched.address;
+}
+
+// ── QR ──────────────────────────────────────────────────────
+var myAddress='',qrInstance=null;
+async function loadMyWalletForQR(){
+  var r=await api('/api/v1/wallet/list');
+  var wallets=r.data&&r.data.wallets;
+  _linkedWallets=wallets||[];
+  if(wallets&&wallets.length>0){myAddress=wallets[0].address;updateReceiveQR();}
+}
+function renderQR(text){
+  var el=document.getElementById('qrCanvas');
+  if(!el||!text)return;
+  try{el.getContext('2d').clearRect(0,0,180,180);}catch(e){}
+  try{
+    if(qrInstance){qrInstance.clear();qrInstance.makeCode(text);}
+    else qrInstance=new QRCode(el,{text,width:180,height:180,colorDark:'#000',colorLight:'#fff'});
+  }catch(e){}
+  var addrEl=document.getElementById('myWalletAddr');
+  if(addrEl)addrEl.textContent=text;
+}
+function generateRequestQR(){
+  var amount=document.getElementById('requestAmount').value;
+  var currency=document.getElementById('requestCurrency').value;
+  var note=document.getElementById('requestNote').value;
+  if(!myAddress){showMsg('requestMsg','error','Connect a wallet and select a chain first.');return;}
+  if(!amount){showMsg('requestMsg','error','Enter an amount.');return;}
+  var out=document.getElementById('cryptoReceiveOutput');if(out)out.style.display='block';
+  renderQR(JSON.stringify({address:myAddress,amount:parseFloat(amount),currency,note}));
+  showMsg('requestMsg','success','QR generated for '+amount+' '+currency);
+}
+function copyMyAddress(){
+  if(!myAddress){alert('No crypto wallet address available for this chain.');return;}
+  navigator.clipboard.writeText(myAddress).then(()=>alert('Address copied!')).catch(()=>{});
+}
+
+// ── SWAP ─────────────────────────────────────────────────────
+function updateSwapPreview(){
+  var amount=parseFloat(document.getElementById('swapAmount').value);
+  var from=document.getElementById('swapFrom').value;
+  var to=document.getElementById('swapTo').value;
+  var box=document.getElementById('swapPreviewBox');
+  if(!amount||amount<=0){box.style.display='none';return;}
+  if(from===to){box.style.display='none';showMsg('swapMsg','error','Select different tokens.');return;}
+  box.style.display='block';
+  var fee=parseFloat((amount*0.003).toFixed(6));
+  var net=amount-fee;
+  // If converting to/from PHP use live rate
+  var rateStr='1:1 (internal)';
+  if(from!=='PHP'&&to==='PHP'&&liveRates[from]){
+    var php=(net*liveRates[from]);
+    document.getElementById('swapPreviewFrom').textContent=amount+' '+from;
+    document.getElementById('swapPreviewRate').textContent='₱'+Number(liveRates[from]).toLocaleString();
+    document.getElementById('swapPreviewFee').textContent=fee+' '+from;
+    document.getElementById('swapPreviewTotal').textContent='₱'+php.toFixed(2);
+    return;
+  }
+  document.getElementById('swapPreviewFrom').textContent=amount+' '+from;
+  document.getElementById('swapPreviewRate').textContent=rateStr;
+  document.getElementById('swapPreviewFee').textContent=fee+' '+from;
+  document.getElementById('swapPreviewTotal').textContent=net.toFixed(6)+' '+to;
+}
+
+async function executeSwap(){
+  var amount=parseFloat(document.getElementById('swapAmount').value);
+  var from=document.getElementById('swapFrom').value;
+  var to=document.getElementById('swapTo').value;
+  if(!amount||amount<=0){showMsg('swapMsg','error','Enter a valid amount.');return;}
+  if(from===to){showMsg('swapMsg','error','Select different tokens.');return;}
+  showMsg('swapMsg','info','Processing swap...');
+  var r=await api('/api/v1/swap/php',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({amount,currency:from,toToken:to})
+  });
+  if(r.ok&&(r.data.success||r.data.referenceId)){
+    showMsg('swapMsg','success','✅ Swap complete! Ref: '+(r.data.referenceId||'—'));
+    document.getElementById('swapAmount').value='';
+    document.getElementById('swapPreviewBox').style.display='none';
+    loadBalance();
+  }else{
+    showMsg('swapMsg','error',r.data.error||r.data.message||'Swap failed.');
+  }
+}
+
+// ── SEND PREVIEW ─────────────────────────────────────────────
+function updatePreview(){
+  var amount=parseFloat(document.getElementById('sendAmount').value);
+  var currency=document.getElementById('sendCurrency').value;
+  var box=document.getElementById('previewBox');
+  if(!amount||amount<=0){box.style.display='none';return;}
+  box.style.display='block';
+  if(currency==='PHP'){
+    document.getElementById('previewAmount').textContent='₱'+amount.toLocaleString();
+    document.getElementById('previewRate').textContent='Internal PHP';
+    document.getElementById('previewFee').textContent='₱'+(amount*0.005).toFixed(2);
+    document.getElementById('previewTotal').textContent='₱'+(amount*0.995).toFixed(2);
+    return;
+  }
+  var rate=liveRates[currency];
+  if(!rate){box.style.display='none';showMsg('sendMsg','info','Rate for '+currency+' not available yet.');return;}
+  var fee=parseFloat((amount*0.005).toFixed(6));
+  var php=parseFloat(((amount-fee)*rate).toFixed(2));
+  document.getElementById('previewAmount').textContent=amount+' '+currency;
+  document.getElementById('previewRate').textContent='₱'+Number(rate).toLocaleString();
+  document.getElementById('previewFee').textContent=fee+' '+currency;
+  document.getElementById('previewTotal').textContent='₱'+Number(php).toLocaleString();
+}
+
+// ── SEND PAYMENT ──────────────────────────────────────────────
+async function sendPayment(){
+  var amount=parseFloat(document.getElementById('sendAmount').value);
+  var currency=document.getElementById('sendCurrency').value;
+  var notes=document.getElementById('sendNotes').value.trim();
+  if(!amount||amount<=0){showMsg('sendMsg','error','Enter a valid amount.');return;}
+  var activeMode='crypto';
+  ['crypto','email','bill'].forEach(m=>{if(document.getElementById('mode-'+m).style.display!=='none')activeMode=m;});
+  if(activeMode==='email'){
+    var email=document.getElementById('receiverEmail').value.trim();
+    if(!email){showMsg('sendMsg','error','Enter recipient email.');return;}
+    var r2=await api('/api/v1/transfer/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receiverEmail:email,amount})});
+    if(r2.ok){showMsg('sendMsg','success','Sent! Ref: '+r2.data.referenceId);loadBalance();}
+    else showMsg('sendMsg','error',r2.data.error||'Transfer failed.');
+    return;
+  }
+  var body={amount,currency,notes};
+  if(activeMode==='crypto'){
+    body.senderAddress=document.getElementById('senderAddr').value.trim();
+    body.receiverAddress=document.getElementById('receiverAddr').value.trim();
+    if(!body.senderAddress||!body.receiverAddress){showMsg('sendMsg','error','Fill in both wallet addresses.');return;}
+  }else{
+    var biller=document.getElementById('billerType').value;
+    var accNo=document.getElementById('billAccountNo').value.trim();
+    if(!biller||!accNo){showMsg('sendMsg','error','Select biller and enter account number.');return;}
+    body.senderAddress='ISCAN-BILLS';
+    body.receiverAddress='BILLS-'+biller.toUpperCase();
+    body.notes='Bill payment: '+biller+' — '+accNo;
+  }
+  var r=await api('/api/v1/remittance/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){
+    var tx=r.data.transaction;
+    showMsg('sendMsg','success','Sent! Ref: '+tx.referenceId+(tx.phpEquivalent?' | Recipient gets ₱'+Number(tx.phpEquivalent).toLocaleString():''));
+    document.getElementById('previewBox').style.display='none';
+    document.getElementById('sendAmount').value='';
+  }else showMsg('sendMsg','error',r.data.message||'Send failed.');
+}
+
+// ── ISCAN TRANSFER ────────────────────────────────────────────
+async function iscanTransfer(){
+  var receiverEmail=document.getElementById('iscanReceiverEmail').value.trim();
+  var amount=parseFloat(document.getElementById('iscanAmount').value);
+  if(!receiverEmail||!amount||amount<=0){showMsg('iscanMsg','error','Enter recipient and amount.');return;}
+  var r=await api('/api/v1/transfer/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receiverEmail,amount})});
+  if(r.ok){
+    showMsg('iscanMsg','success','Transfer complete! Ref: '+r.data.referenceId);
+    document.getElementById('iscanAmount').value='';
+    loadBalance();
+  }else showMsg('iscanMsg','error',r.data.error||'Transfer failed.');
+}
+
+// ── CASH IN ───────────────────────────────────────────────────
+async function quickCashIn(){
+  var amount=parseFloat(document.getElementById('quickCashinAmount').value);
+  var msg=document.getElementById('quickCashinMsg');
+  if(!amount||amount<20){msg.className='msg error';msg.textContent='Minimum ₱20';return;}
+  msg.className='msg info';msg.textContent='Creating payment link...';
+  try{
+    var res=await fetch('/api/v1/payment/cashin',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})});
+    var data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Failed');
+    msg.className='msg success';
+    msg.innerHTML='✅ Link ready! <a href="'+data.checkoutUrl+'" target="_blank" style="color:#34d399;font-weight:bold;text-decoration:underline;">Pay via GCash / Card ↗</a>';
+  }catch(err){msg.className='msg error';msg.textContent='Error: '+err.message;}
+}
+async function startCashIn(){
+  var amount=parseFloat(document.getElementById('cashinAmount').value);
+  var msg=document.getElementById('cashinMsg');
+  if(!amount||amount<20){msg.className='msg error';msg.textContent='Minimum ₱20';return;}
+  msg.className='msg info';msg.textContent='Creating payment link...';
+  try{
+    var res=await fetch('/api/v1/payment/cashin',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})});
+    var data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Failed');
+    msg.className='msg success';
+    msg.innerHTML='✅ Payment link ready! <a href="'+data.checkoutUrl+'" target="_blank" style="color:#34d399;text-decoration:underline;font-weight:bold;">Click here to pay via GCash / Card ↗</a>';
+  }catch(err){msg.className='msg error';msg.textContent='Error: '+err.message;}
+}
+
+// ── SCANNER ───────────────────────────────────────────────────
+var scanStream=null,scanInterval=null;
+async function startScan(){
+  try{
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    var v=document.getElementById('scanVideo');v.srcObject=scanStream;v.style.display='block';
+    showMsg('scanMsg','info','Camera active. Point at a QR code.');
+    scanInterval=setInterval(scanFrame,500);
+  }catch(e){showMsg('scanMsg','error','Camera denied: '+e.message);}
+}
+function stopScan(){
+  if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
+  document.getElementById('scanVideo').style.display='none';
+  clearInterval(scanInterval);
+}
+function scanFrame(){
+  var v=document.getElementById('scanVideo'),c=document.getElementById('scanCanvas');
+  if(v.readyState!==v.HAVE_ENOUGH_DATA)return;
+  c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  if('BarcodeDetector' in window){
+    new BarcodeDetector({formats:['qr_code']}).detect(c).then(codes=>{
+      if(codes.length){handleScanResult(codes[0].rawValue);stopScan();}
+    }).catch(()=>{});
+  }
+}
+function handleScanResult(raw){
+  var el=document.getElementById('scanResult');el.style.display='block';
+  try{
+    var d=JSON.parse(raw);
+    el.textContent='Address: '+d.address+(d.amount?'\nAmount: '+d.amount+' '+d.currency:'')+(d.note?'\nNote: '+d.note:'');
+    document.getElementById('receiverAddr').value=d.address;
+    if(d.amount)document.getElementById('sendAmount').value=d.amount;
+    if(d.currency)document.getElementById('sendCurrency').value=d.currency;
+    showMsg('scanMsg','success','Scanned! Send form auto-filled. Go to Send tab.');
+  }catch(e){
+    el.textContent=raw;
+    document.getElementById('receiverAddr').value=raw;
+    showMsg('scanMsg','success','Address filled in send form.');
+  }
+}
+
+// ── LEDGER ────────────────────────────────────────────────────
+async function loadLedger(){
+  var r=await api('/api/v1/ledger/history'),el=document.getElementById('ledgerContent');
+  if(!r.ok||!r.data.entries||r.data.entries.length===0){el.innerHTML='<p style="color:#6b7280;font-size:12px;">No ledger entries yet.</p>';return;}
+  document.getElementById('ledgerBalance').textContent='₱'+Number(r.data.balance||0).toLocaleString('en',{minimumFractionDigits:2});
+  el.innerHTML='<table class="ledger-table"><thead><tr><th>Type</th><th>Debit</th><th>Credit</th><th>Reference ID</th><th>Description</th><th>Timestamp</th><th>Status</th></tr></thead><tbody>'+
+    r.data.entries.map(e=>'<tr>'+
+      '<td style="color:#94a3b8;">'+e.transactionType+'</td>'+
+      '<td class="debit">'+(e.debit>0?'₱'+Number(e.debit).toLocaleString('en',{minimumFractionDigits:2}):'—')+'</td>'+
+      '<td class="credit">'+(e.credit>0?'₱'+Number(e.credit).toLocaleString('en',{minimumFractionDigits:2}):'—')+'</td>'+
+      '<td class="ref">'+e.referenceId+'</td>'+
+      '<td style="color:#6b7280;font-size:11px;">'+e.description+'</td>'+
+      '<td style="color:#6b7280;font-size:11px;">'+new Date(e.createdAt).toLocaleString()+'</td>'+
+      '<td><span class="badge '+e.status+'">'+e.status.toUpperCase()+'</span></td>'+
+    '</tr>').join('')+'</tbody></table>';
+}
+
+async function loadOnrampHistory(){
+  var el=document.getElementById('ledgerContent');
+  el.innerHTML='<p style="color:#6b7280;font-size:12px;">Loading crypto onramp history…</p>';
+  var r=await api('/api/v1/onramp/history');
+  if(!r.ok||!r.data.entries||r.data.entries.length===0){el.innerHTML='<p style="color:#6b7280;font-size:12px;">No crypto onramp transactions yet.</p>';return;}
+  el.innerHTML='<div style="margin-bottom:8px;font-size:11px;color:#2de8a2;font-weight:600;">🪙 Showing crypto onramp entries only</div>'+
+    '<table class="ledger-table"><thead><tr><th>Token</th><th>USD</th><th>PHP Rate</th><th>Fee</th><th>Net PHP</th><th>Channel</th><th>Reference</th><th>Date</th><th>Status</th></tr></thead><tbody>'+
+    r.data.entries.map(function(e){
+      var desc=e.description||'';
+      var tokenMatch=desc.match(/^(USDC|USDT)/);var token=tokenMatch?tokenMatch[1]:'—';
+      var rateMatch=desc.match(/Rate: ₱([\d.]+)/);var rate=rateMatch?'₱'+rateMatch[1]:'—';
+      var chanMatch=desc.match(/via (\w+)/);var chan=chanMatch?chanMatch[1]:'—';
+      return '<tr>'+
+        '<td><span class="badge" style="background:'+(token==='USDC'?'#1a3a5c':'#1a3d2e')+';color:'+(token==='USDC'?'#60a5fa':'#34d399')+'">'+token+'</span></td>'+
+        '<td style="color:#f9fafb;font-weight:600;">'+(e.amount&&rate!=='—'?'$'+(e.amount/(parseFloat(rate.replace('₱',''))||1)).toFixed(2):'—')+'</td>'+
+        '<td style="color:#94a3b8;font-size:11px;">'+rate+'</td>'+
+        '<td style="color:#f87171;font-size:11px;">'+(e.feePHP?'₱'+Number(e.feePHP).toLocaleString('en',{minimumFractionDigits:2}):'—')+'</td>'+
+        '<td class="credit">₱'+Number(e.amount||0).toLocaleString('en',{minimumFractionDigits:2})+'</td>'+
+        '<td style="color:#94a3b8;font-size:11px;text-transform:capitalize;">'+chan+'</td>'+
+        '<td class="ref">'+e.referenceId+'</td>'+
+        '<td style="color:#6b7280;font-size:11px;">'+new Date(e.createdAt).toLocaleString()+'</td>'+
+        '<td><span class="badge '+e.status+'">'+e.status.toUpperCase()+'</span></td>'+
+      '</tr>';
+    }).join('')+'</tbody></table>';
+}
+
+async function loadRecentLedger(){
+  var r=await api('/api/v1/ledger/history'),el=document.getElementById('recentLedger');
+  if(!r.ok||!r.data.entries||r.data.entries.length===0){el.innerHTML='<p style="color:#6b7280;font-size:12px;">No activity yet.</p>';return;}
+  el.innerHTML=r.data.entries.slice(0,5).map(e=>{
+    var c=e.credit>0;
+    return '<div class="activity-row">'+
+      '<div><span style="color:#94a3b8;">'+e.transactionType+'</span> <span class="ref"> '+e.referenceId+'</span></div>'+
+      '<span class="'+(c?'credit':'debit')+'">'+(c?'+':'−')+'₱'+Number(c?e.credit:e.debit).toLocaleString()+'</span>'+
+    '</div>';
+  }).join('');
+}
+
+// ── SETTLEMENT ────────────────────────────────────────────────
+async function loadPending(){
+  var r=await api('/api/v1/remittance/pending'),el=document.getElementById('pendingList');
+  if(!r.ok||!r.data.transactions||r.data.transactions.length===0){el.innerHTML='<p style="color:#6b7280;font-size:12px;">No pending settlements.</p>';return;}
+  el.innerHTML='<table class="ledger-table"><thead><tr><th>Reference</th><th>Amount</th><th>PHP Value</th><th>Date</th><th>Action</th></tr></thead><tbody>'+
+    r.data.transactions.map(tx=>'<tr>'+
+      '<td class="ref">'+tx.referenceId+'</td>'+
+      '<td>'+tx.amount+' '+tx.currency+'</td>'+
+      '<td class="credit">₱'+Number(tx.phpEquivalent||0).toLocaleString()+'</td>'+
+      '<td style="color:#6b7280;font-size:11px;">'+new Date(tx.createdAt).toLocaleDateString()+'</td>'+
+      '<td><button class="btn btn-green btn-sm" onclick="settleNow(\''+tx._id+'\')">Settle</button></td>'+
+    '</tr>').join('')+'</tbody></table>';
+}
+async function settleNow(id){
+  var phone=prompt('Recipient Coins.ph phone (e.g. 09171234567):');
+  if(!phone)return;
+  var r=await api('/api/v1/remittance/settle/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({recipientPhone:phone})});
+  alert(r.ok?(r.data.result&&r.data.result.mock?'Queued (Coins.ph API pending)':'Settled!'):'Failed: '+(r.data&&r.data.message));
+  if(r.ok)loadPending();
+}
+
+// ── AUDIT ─────────────────────────────────────────────────────
+async function loadAudit(){
+  var r=await api('/api/v1/remittance/audit'),el=document.getElementById('auditList');
+  if(!r.ok||!r.data.logs||r.data.logs.length===0){el.innerHTML='<p style="color:#6b7280;font-size:12px;">No records yet.</p>';return;}
+  el.innerHTML='<table class="ledger-table"><thead><tr><th>Action</th><th>Entity</th><th>Reference</th><th>Timestamp</th><th>Status</th></tr></thead><tbody>'+
+    r.data.logs.map(l=>'<tr>'+
+      '<td style="color:#c084fc;font-weight:600;">'+l.action+'</td>'+
+      '<td style="color:#94a3b8;">'+l.entity+'</td>'+
+      '<td class="ref">'+(l.details&&l.details.referenceId?l.details.referenceId:'—')+'</td>'+
+      '<td style="color:#6b7280;font-size:11px;">'+new Date(l.createdAt).toLocaleString()+'</td>'+
+      '<td><span class="badge '+(l.status||'success')+'">'+l.status.toUpperCase()+'</span></td>'+
+    '</tr>').join('')+'</tbody></table>';
+}
+
+// ── ACCOUNTS ──────────────────────────────────────────────────
+function loadProfile(){
+  document.getElementById('profileInfo').innerHTML=
+    '<div><strong>Email:</strong> '+userEmail+'</div>'+
+    '<div><strong>Name:</strong> '+(userName||'—')+'</div>';
+  document.getElementById('kycStatus').innerHTML=
+    '<span class="badge pending">UNVERIFIED</span>'+
+    '<p style="margin-top:6px;color:#6b7280;font-size:11px;">Upload a government ID to verify and unlock higher limits.</p>';
+}
+async function uploadKYC(e){
+  var file=e.target.files[0];if(!file)return;
+  var fd=new FormData();fd.append('image',file);
+  var res=await fetch('/api/v1/kyc/upload-id',{method:'POST',credentials:'same-origin',body:fd});
+  var d=await res.json();
+  showMsg('kycMsg',d.success?'success':'error',d.success?'ID uploaded.':d.error||'Failed.');
+}
+async function addBank(){
+  var bN=document.getElementById('bankName').value.trim();
+  var aN=document.getElementById('accountName').value.trim();
+  var aNo=document.getElementById('accountNumber').value.trim();
+  if(!bN||!aN||!aNo){showMsg('bankMsg','error','Fill all fields.');return;}
+  var r=await api('/api/v1/bank/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bankName:bN,accountName:aN,accountNumber:aNo})});
+  if(r.ok){showMsg('bankMsg','success','Bank added.');document.getElementById('bankName').value='';document.getElementById('accountName').value='';document.getElementById('accountNumber').value='';loadBanks();}
+  else showMsg('bankMsg','error',r.data.error||'Failed.');
+}
+async function loadBanks(){
+  var r=await api('/api/v1/bank/list'),el=document.getElementById('bankList');
+  if(!r.ok||!r.data.banks||r.data.banks.length===0){el.innerHTML='<p style="color:#6b7280;font-size:11px;margin-top:6px;">No banks linked.</p>';return;}
+  el.innerHTML=r.data.banks.map(b=>'<div class="wallet-item"><div><strong>'+b.bankName+'</strong><br><span style="color:#6b7280;font-size:11px;">'+b.accountName+' — '+b.accountNumber+'</span></div></div>').join('');
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+loadRates();
+setInterval(loadRates,60000);
+loadBalance();
+loadRecentLedger();
+loadWalletsForOverview();
+// Pre-load ISCAN address so it's ready everywhere
+loadIscanAddressAll();
+// Init token selector for default chain (Ethereum)
+updateTokenSelectorForChain('0x1');
+</script>
+</body>
+</html>
