@@ -50,23 +50,44 @@ class DashboardService {
         .limit(20)
         .lean();
 
+    const CHAIN_META = {
+      ETHEREUM: { name: 'Ethereum', token: 'ETH',  color: '#627EEA' },
+      POLYGON:  { name: 'Polygon',  token: 'MATIC', color: '#8247E5' },
+      BASE:     { name: 'Base',     token: 'ETH',   color: '#0052FF' },
+      RONIN:    { name: 'Ronin',    token: 'RON',   color: '#1273EA' },
+    };
+
     const portfolio = [];
+    const seen = new Set();
 
     walletsData.forEach(wallet => {
-
-      if (!wallet.linkedWallets) return;
-
-      wallet.linkedWallets.forEach(linked => {
-
-        portfolio.push({
-          network: linked.network,
-          token: linked.nativeToken,
-          balance: linked.nativeBalance,
-          usdc: linked.usdcBalance
+      if (wallet.chainAddresses && wallet.chainAddresses.length > 0) {
+        wallet.chainAddresses.forEach(ca => {
+          const meta = CHAIN_META[ca.chain] || { name: ca.chain, token: ca.chain, color: '#94a3b8' };
+          const key = `internal:${ca.chain}:${ca.address}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          portfolio.push({
+            type: 'internal', network: meta.name, chain: ca.chain,
+            token: meta.token, color: meta.color,
+            balance: ca.usdtBalance || 0, usdc: ca.usdcBalance || 0,
+            address: ca.address,
+          });
         });
-
-      });
-
+      }
+      if (wallet.linkedWallets && wallet.linkedWallets.length > 0) {
+        wallet.linkedWallets.forEach(linked => {
+          const key = `external:${linked.address}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          portfolio.push({
+            type: 'external', network: linked.network, token: linked.nativeToken,
+            color: '#94a3b8', balance: linked.nativeBalance || 0,
+            usdc: linked.usdcBalance || 0, address: linked.address,
+            provider: linked.provider,
+          });
+        });
+      }
     });
 
     return {
