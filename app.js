@@ -73,7 +73,7 @@ app.use('/api/v1/payment', paymentRoutes);
 import { existsSync } from 'fs';
 const distIndex = path.join(__dirname, 'dist', 'index.html');
 
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   if (existsSync(distIndex)) {
     res.sendFile(distIndex);
   } else {
