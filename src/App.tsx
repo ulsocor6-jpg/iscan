@@ -10,7 +10,8 @@ import Remittance   from "./pages/Remittance";
 import Activity     from "./pages/Activity";
 import Compliance   from "./pages/Compliance";
 import Treasury     from "./pages/Treasury";
-import Settings     from "./pages/Settings";
+import Settings       from "./pages/Settings";
+import WalletManager from "./pages/WalletManager";
 import Dashboard      from "./pages/Dashboard";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -40,7 +41,8 @@ export default function App() {
         <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />
         <Route path="/activity"   element={<RequireAuth><Activity /></RequireAuth>} />
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
-        <Route path="/treasury"   element={<RequireAuth><Treasury /></RequireAuth>} />
+        <Route path="/treasury"      element={<RequireAuth><Treasury /></RequireAuth>} />
+        <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />
         <Route path="/settings"   element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

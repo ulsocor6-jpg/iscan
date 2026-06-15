@@ -1,5 +1,5 @@
 import express from 'express';
-import { linkWallet, getWallets, unlinkWallet } from '../controllers/walletController.js';
+import { linkWallet, getWallets, unlinkWallet, switchChain } from '../controllers/walletController.js';
 import { requireAuth } from '../middleware/authMiddleware.js'; // ← FIXED: was ../../middleware (wrong depth)
 import { getUserBalance } from '../services/balanceService.js'; // ← ADD: wire in balanceService
 
@@ -22,6 +22,7 @@ router.get('/balance', requireAuth, async (req, res) => {
 router.post('/link', requireAuth, linkWallet);
 router.post('/unlink', requireAuth, unlinkWallet);
 router.get('/list', requireAuth, getWallets);
+router.post('/switch-chain', requireAuth, switchChain);
 router.get('/status', (req, res) => res.json({ success: true }));
 
 export default router;

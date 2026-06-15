@@ -8,6 +8,7 @@ export default function Sidebar() {
     {label:"Deposits",path:"/deposits"},
     {label:"Transfers",path:"/transfers"},
     {label:"Swaps",path:"/swaps"},
+    {label:"Wallets",path:"/wallets"},
     {label:"Remittance",path:"/remittance"},
     {label:"Treasury",path:"/treasury"},
     {label:"Compliance",path:"/compliance"},

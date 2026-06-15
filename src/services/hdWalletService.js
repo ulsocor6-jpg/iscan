@@ -1,57 +1,41 @@
-import { ethers } from "ethers";
-import * as bip39 from "bip39";
-import crypto from "crypto";
+import { ethers } from 'ethers';
+import crypto from 'crypto';
 
 const MASTER_MNEMONIC = process.env.HD_WALLET_MNEMONIC;
-const MASTER_SEED = process.env.HD_WALLET_SEED;
 
-/**
- * Derive a unique TRC20-compatible address for a user
- * Uses BIP44 derivation: m/44'/195'/0'/0/{index}
- * TRON uses the same elliptic curve as Ethereum (secp256k1)
- * so we derive ETH-style and convert to TRON format
- */
-export async function deriveUserAddress(userIndex) {
-  if (!MASTER_MNEMONIC && !MASTER_SEED) {
-    // Fallback: deterministic pseudo-address for MVP (not real HD wallet)
-    const seed = process.env.HD_WALLET_SEED || "iscan-default-seed";
-    const hash = crypto.createHash("sha256")
-      .update(seed + "-" + userIndex)
-      .digest("hex");
-    return {
-      address: "T" + hash.slice(0, 33).toUpperCase(),
-      index: userIndex,
-      mock: true
-    };
+export const SUPPORTED_CHAINS = {
+  ETHEREUM: { name:'Ethereum', symbol:'ETH',  chainId:'0x1',    color:'#627EEA' },
+  POLYGON:  { name:'Polygon',  symbol:'MATIC', chainId:'0x89',   color:'#8247E5' },
+  BASE:     { name:'Base',     symbol:'ETH',   chainId:'0x2105', color:'#0052FF' },
+  RONIN:    { name:'Ronin',    symbol:'RON',   chainId:'0x7e4',  color:'#1273EA' },
+};
+
+export async function deriveUserWallets(userIndex) {
+  if (!MASTER_MNEMONIC) {
+    const seed = process.env.HD_WALLET_SEED || 'iscan-default-seed';
+    const hash = crypto.createHash('sha256').update(seed + '-' + userIndex).digest('hex');
+    const mockAddr = '0x' + hash.slice(0, 40);
+    return Object.fromEntries(
+      Object.entries(SUPPORTED_CHAINS).map(([chain, info]) => [
+        chain, { address: mockAddr, index: userIndex, mock: true, chain, chainId: info.chainId }
+      ])
+    );
   }
-
-  const mnemonic = MASTER_MNEMONIC;
-  const hdNode = ethers.HDNodeWallet.fromPhrase(
-    mnemonic,
-    undefined,
-    "m/44'/195'/0'/0"
-  );
-  const child = hdNode.deriveChild(userIndex);
-
-  // Convert ETH address to TRON format (T + base58)
-  // For MVP: use ETH address with T prefix as placeholder
-  const ethAddress = child.address;
-  const tronAddress = "T" + ethAddress.slice(2, 35).toUpperCase();
-
-  return {
-    address: tronAddress,
-    ethAddress,
-    privateKey: child.privateKey,
-    index: userIndex,
-    mock: false
-  };
+  const results = {};
+  const hdNode = ethers.HDNodeWallet.fromPhrase(MASTER_MNEMONIC, undefined, "m/44'/60'/0'/0");
+  for (const [chain, info] of Object.entries(SUPPORTED_CHAINS)) {
+    const child = hdNode.deriveChild(userIndex);
+    results[chain] = { address: child.address, privateKey: child.privateKey, index: userIndex, chain, chainId: info.chainId, mock: false };
+  }
+  return results;
 }
 
-/**
- * Get next available index for new user
- */
+export async function deriveUserAddress(userIndex) {
+  const wallets = await deriveUserWallets(userIndex);
+  return wallets.ETHEREUM;
+}
+
 export async function getNextWalletIndex() {
-  const { default: DepositAddress } = await import("../models/depositAddressModel.js");
-  const count = await DepositAddress.countDocuments();
-  return count;
+  const { default: DepositAddress } = await import('../models/depositAddressModel.js');
+  return await DepositAddress.countDocuments();
 }
