@@ -68,21 +68,12 @@ app.use('/api/v1/internal-wallets', internalWalletRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/payment', paymentRoutes);
 
-// Serve React app for all non-API routes
-app.get('*', (req, res) => {
-  const distIndex = path.join(__dirname, 'dist', 'index.html');
-  const fs = await import('fs');
-  if (fs.existsSync(distIndex)) {
-    res.sendFile(distIndex);
-  } else {
-    res.status(404).send('Frontend not built');
-  }
-});
 
-import { existsSync } from 'fs';
-// Serve React frontend for all non-API routes
+
+const { existsSync } = require('fs');
+const distIndex = path.join(__dirname, 'dist', 'index.html');
+
 app.get('*', (req, res) => {
-  const distIndex = path.join(__dirname, 'dist', 'index.html');
   if (existsSync(distIndex)) {
     res.sendFile(distIndex);
   } else {
