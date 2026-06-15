@@ -70,7 +70,7 @@ app.use('/api/v1/payment', paymentRoutes);
 
 
 
-const { existsSync } = require('fs');
+import { existsSync } from 'fs';
 const distIndex = path.join(__dirname, 'dist', 'index.html');
 
 app.get('*', (req, res) => {
