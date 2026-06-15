@@ -1,11 +1,11 @@
 import express from 'express';
 import { quoteSwap, executeSwap, poolStatus } from '../controllers/phpSwapController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import requireAuth from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.get('/quote',  protect, quoteSwap);
-router.post('/execute', protect, executeSwap);
-router.get('/pool',   protect, poolStatus);
+router.get('/quote',  quoteSwap);
+router.post('/execute', executeSwap);
+router.get('/pool',   poolStatus);
 
 export default router;
