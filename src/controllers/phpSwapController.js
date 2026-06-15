@@ -1,19 +1,32 @@
 import { v4 as uuid } from 'uuid';
 import { settleStablecoinToPHP, settlePHPToStablecoin, getPoolStatus } from '../services/swap/phpSettlementService.js';
-import { getUSDPHPRate, getPHPUSDRate } from '../services/fx/phpRateOracle.js';
+import { getRates } from '../services/fx/phpRateOracle.js';
 
 export async function quoteSwap(req, res) {
   try {
     const { fromCurrency, toCurrency, amount } = req.query;
-    let rate, out;
+    const amt = parseFloat(amount);
+    const { baseRate, rate } = await getRates();
+
+    let out, marketOut;
+
     if (fromCurrency === 'PHP') {
-      rate = await getPHPUSDRate();
-      out  = amount * rate;
+      out       = amt * (1 / rate);
+      marketOut = amt * (1 / baseRate);
     } else {
-      rate = await getUSDPHPRate();
-      out  = amount * rate;
+      out       = amt * rate;
+      marketOut = amt * baseRate;
     }
-    res.json({ from: fromCurrency, to: toCurrency, amount: +amount, rate, out: +out.toFixed(6) });
+
+    const slippage = Math.abs(marketOut - out);
+
+    res.json({
+      display:     `1 ${fromCurrency} = ${toCurrency === 'PHP' ? '₱' : ''}${rate.toFixed(2)}`,
+      youGet:      +out.toFixed(4),
+      youGetLabel: `${toCurrency === 'PHP' ? '₱' : ''}${out.toFixed(2)} ${toCurrency}`,
+      slippage:    +slippage.toFixed(4),
+      slippageLabel: `${toCurrency === 'PHP' ? '₱' : ''}${slippage.toFixed(2)} (1.5%)`,
+    });
   } catch (err) {
     res.status(503).json({ error: err.message });
   }
