@@ -1,0 +1,88 @@
+Total files: 192
+
+=== Files with ZERO references elsewhere (possible dead code) ===
+(entrypoints excluded automatically)
+
+UNUSED?  ./src/workers/transactionWorker.js
+UNUSED?  ./src/queues/transactionQueue.js
+UNUSED?  ./src/routes/webhookRoutes.js
+UNUSED?  ./src/routes/CryptoOnramproutes.js
+UNUSED?  ./src/hooks/useSession.ts
+UNUSED?  ./src/integrations/maya.js
+UNUSED?  ./src/banking/components/dashboard/OperationsPanel.tsx
+UNUSED?  ./src/middleware/idempotencyMiddleware.js
+UNUSED?  ./src/services/cryptoDepositPipeline.js
+UNUSED?  ./src/services/routing/institutional/riskCircuitBreaker.js
+UNUSED?  ./src/services/routing/institutional/smartOrderRouter.js
+UNUSED?  ./src/services/routing/institutional/exposureManager.js
+UNUSED?  ./src/services/routing/liquidityRouter.js
+UNUSED?  ./src/services/amlService.js
+UNUSED?  ./src/services/ledgerCashoutEngine.js
+UNUSED?  ./src/services/ledgerReplayService.js
+UNUSED?  ./src/services/cashoutService.js
+UNUSED?  ./src/services/emailService.js
+UNUSED?  ./src/services/marketService.ts
+UNUSED?  ./src/services/withdrawalQueueService.js
+UNUSED?  ./src/services/settlement/settlementProcessor.js
+UNUSED?  ./src/services/settlement/retry.js
+UNUSED?  ./src/services/settlement/retryPolicy.js
+UNUSED?  ./src/services/settlement/index.js
+UNUSED?  ./src/services/transactionStateMachine.js
+UNUSED?  ./src/services/ledgerSourceOfTruthGuard.js
+UNUSED?  ./src/services/ledgerRecoveryService.js
+UNUSED?  ./src/services/fraudBlockingService.js
+UNUSED?  ./src/services/pickupCodeService.js
+UNUSED?  ./src/services/reconciliationService.js
+UNUSED?  ./src/services/settlementService.js
+UNUSED?  ./src/services/routingEngine.js
+UNUSED?  ./src/services/fintechCashoutEngine.js
+UNUSED?  ./src/services/IdentityService.js
+UNUSED?  ./src/services/confirmationService.js
+UNUSED?  ./src/services/advancedFraudService.js
+UNUSED?  ./src/services/slippageModel.js
+UNUSED?  ./src/services/hdWalletService.js
+UNUSED?  ./src/services/monitoringService.js
+UNUSED?  ./src/services/kycService.js
+UNUSED?  ./src/services/payoutService.js
+UNUSED?  ./src/main.tsx
+UNUSED?  ./src/controllers/transferController.js
+UNUSED?  ./src/controllers/ledgerController.js
+UNUSED?  ./src/controllers/moonpayWebhookController.js
+UNUSED?  ./src/ledger/balanceSnapshotModel.js
+UNUSED?  ./src/models/KYCVerification.js
+UNUSED?  ./src/models/webhookService.js
+UNUSED?  ./src/models/transactionReservationModel.js
+UNUSED?  ./src/models/RemittancePickup.js
+UNUSED?  ./src/models/TransferRequest.js
+UNUSED?  ./src/models/identity/KYCVerification.js
+UNUSED?  ./server.backup.js
+UNUSED?  ./public/Cryptoonramproutes.js
+UNUSED?  ./public/js/state.js
+UNUSED?  ./public/js/dashboard-api.js
+UNUSED?  ./public/backend-additions.js
+UNUSED?  ./security/rateLimiter.js
+UNUSED?  ./security/hash.js
+UNUSED?  ./server.js
+UNUSED?  ./middleware/sessionMiddleware.js
+UNUSED?  ./middleware/authGuard.js
+UNUSED?  ./middleware/walletGuard.js
+UNUSED?  ./middleware/auditMiddleware.js
+UNUSED?  ./middleware/errorMiddleware.js
+UNUSED?  ./scripts/backfill-wallets.js
+UNUSED?  ./config/session.js
+UNUSED?  ./config/passport.js
+UNUSED?  ./core/transactionFinalizer.js
+UNUSED?  ./vite.config.js
+
+=== Duplicate basenames (case-insensitive) across the tree ===
+      2 swaproutes.js
+      2 kycverification.js
+      2 identityprofile.js
+      2 cryptoonrampservice.js
+      2 cryptoonramproutes.js
+      2 cryptoonrampcontroller.js
+      2 creditservice.js
+
+=== Sanity check: who requires server.js / app.js? (should be 0 - entrypoints) ===
+./package.json:5:  "main": "server.js",
+./package.json:9:    "start": "node server.js"

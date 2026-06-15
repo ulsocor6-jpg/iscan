@@ -1,122 +1,274 @@
 /**
- * dashboard-api.js
- * ISCAN Dashboard — API wiring layer
- * Drop into public/js/ and import in dashboard.html
- *
- * All calls use httpOnly cookies (set at login) — no token handling needed here.
- */
+
+* dashboard-api.js
+* ISCAN Dashboard API
+* Ledger-based Wallet System
+  */
 
 const API = '/api/v1';
 
-// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+/* ==================================================
+CORE FETCH
+================================================== */
 
 async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
-    credentials: 'include', // sends httpOnly cookie
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options
-  });
+const res = await fetch(`${API}${path}`, {
+credentials: 'include',
+headers: {
+'Content-Type': 'application/json',
+...(options.headers || {})
+},
+...options
+});
 
-  const data = await res.json();
+let data;
 
-  if (!res.ok) {
-    // If 401, redirect to login
-    if (res.status === 401) {
-      window.location.href = '/login';
-      return;
-    }
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-
-  return data;
+try {
+data = await res.json();
+} catch {
+throw new Error('Invalid server response');
 }
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
+if (!res.ok) {
+if (res.status === 401) {
+window.location.href = '/login';
+return;
+}
+
+```
+throw new Error(
+  data.message ||
+  data.error ||
+  `HTTP ${res.status}`
+);
+```
+
+}
+
+return data;
+}
+
+/* ==================================================
+AUTH
+================================================== */
 
 export const auth = {
-  /** Returns current user or redirects to /login */
-  me: () => apiFetch('/auth/me'),
+me() {
+return apiFetch('/auth/me');
+},
 
-  logout: async () => {
-    await apiFetch('/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
-  }
+async logout() {
+await apiFetch('/auth/logout', {
+method: 'POST'
+});
+
+```
+window.location.href = '/login';
+```
+
+}
 };
 
-// ─── WALLET / BALANCE ─────────────────────────────────────────────────────────
-
-export const wallet = {
-  /** Returns { balance: Number } */
-  balance: () => apiFetch('/internal/balance'),
-
-  /** Admin: add funds to own wallet */
-  credit: (amount) => apiFetch('/internal/credit', {
-    method: 'POST',
-    body: JSON.stringify({ amount })
-  }),
-
-  /** Admin: spend funds from own wallet */
-  debit: (amount) => apiFetch('/internal/debit', {
-    method: 'POST',
-    body: JSON.stringify({ amount })
-  })
-};
-
-// ─── LEDGER / TRANSACTION HISTORY ────────────────────────────────────────────
-
-export const ledger = {
-  /**
-   * Returns { success, entries: [...] }
-   * Each entry has: credit, debit, transactionType, description, createdAt, runningBalance
-   */
-  history: (limit = 30) => apiFetch(`/ledger/history?limit=${limit}`),
-
-  /** Flat list without running balance — lighter query */
-  feed: (limit = 30) => apiFetch(`/ledger?limit=${limit}`)
-};
-
-// ─── P2P TRANSFER ─────────────────────────────────────────────────────────────
-
-export const p2p = {
-  /**
-   * Search for a user by name, email, or phone
-   * Returns { success, users: [{ _id, name, email, phone }] }
-   */
-  searchUser: (q) => apiFetch(`/users/search?q=${encodeURIComponent(q)}`),
-
-  /**
-   * Send money to a user
-   * @param {string} receiverId  — MongoDB ObjectId of recipient
-   * @param {number} amount
-   */
-  send: (receiverId, amount) => apiFetch('/p2p/send', {
-    method: 'POST',
-    body: JSON.stringify({ receiverId, amount })
-  })
-};
-
-// ─── DASHBOARD STATS ──────────────────────────────────────────────────────────
+/* ==================================================
+DASHBOARD
+================================================== */
 
 export const dashboard = {
-  overview: () => apiFetch('/dashboard/overview'),
-  risk:     () => apiFetch('/dashboard/risk'),
-  health:   () => apiFetch('/dashboard/health')
+
+async overview() {
+return apiFetch('/dashboard');
+},
+
+async refresh() {
+return apiFetch('/dashboard');
+},
+
+async health() {
+return apiFetch('/dashboard/health');
+},
+
+async risk() {
+return apiFetch('/dashboard/risk');
+}
 };
 
-// ─── Bootstrap helper — call on dashboard page load ──────────────────────────
+/* ==================================================
+WALLET
+================================================== */
 
-/**
- * Loads user identity + balance in parallel on page init.
- * Usage: const { user, balance } = await dashboardInit();
- */
-export async function dashboardInit() {
-  const [meRes, balRes] = await Promise.all([
-    auth.me(),
-    wallet.balance()
-  ]);
+export const wallet = {
 
-  return {
-    user:    meRes.user  || meRes,
-    balance: balRes.balance
-  };
+async get() {
+const data = await apiFetch('/dashboard');
+
+```
+return {
+  wallet: data.wallet || {},
+  balance: data.balance || 0,
+  balances: data.balances || {}
+};
+```
+
+},
+
+async balance() {
+const data = await apiFetch('/dashboard');
+
+```
+return {
+  balance: data.balance || 0,
+  balances: data.balances || {}
+};
+```
+
 }
+};
+
+/* ==================================================
+USERS
+================================================== */
+
+export const users = {
+
+search(query) {
+return apiFetch(
+`/users/search?q=${encodeURIComponent(query)}`
+);
+}
+};
+
+/* ==================================================
+TRANSFER
+================================================== */
+
+export const transfer = {
+
+async send({
+toWalletId,
+amount,
+asset = 'PHP',
+memo = ''
+}) {
+
+```
+const result = await apiFetch(
+  '/transfer/send',
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      toWalletId,
+      amount,
+      asset,
+      memo
+    })
+  }
+);
+
+return result;
+```
+
+}
+};
+
+/* ==================================================
+LEDGER
+================================================== */
+
+export const ledger = {
+
+history(limit = 30) {
+return apiFetch(
+`/ledger/history?limit=${limit}`
+);
+},
+
+feed(limit = 30) {
+return apiFetch(
+`/ledger?limit=${limit}`
+);
+}
+};
+
+/* ==================================================
+LIVE DASHBOARD REFRESH
+================================================== */
+
+let refreshTimer = null;
+
+export function startBalanceRefresh(
+callback,
+interval = 5000
+) {
+
+if (refreshTimer) {
+clearInterval(refreshTimer);
+}
+
+refreshTimer = setInterval(
+async () => {
+try {
+
+```
+    const data =
+      await dashboard.overview();
+
+    if (callback) {
+      callback(data);
+    }
+
+  } catch (err) {
+    console.error(
+      '[DASHBOARD REFRESH]',
+      err.message
+    );
+  }
+},
+interval
+```
+
+);
+}
+
+export function stopBalanceRefresh() {
+
+if (refreshTimer) {
+clearInterval(refreshTimer);
+refreshTimer = null;
+}
+}
+
+/* ==================================================
+DASHBOARD INIT
+================================================== */
+
+export async function dashboardInit() {
+
+const [userData, dashData] =
+await Promise.all([
+auth.me(),
+dashboard.overview()
+]);
+
+return {
+
+```
+user:
+  userData.user ||
+  userData,
+
+wallet:
+  dashData.wallet || {},
+
+balance:
+  dashData.balance || 0,
+
+balances:
+  dashData.balances || {},
+
+recentTransactions:
+  dashData.recentTransactions || []
+```
+
+};
+}
+

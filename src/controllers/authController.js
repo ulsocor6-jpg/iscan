@@ -23,15 +23,20 @@ export const register = async (req, res) => {
 
     const normalizedEmail = email.toLowerCase();
 
+    console.log('[REGISTER] step: checking existing user...');
     const existing = await User.findOne({ email: normalizedEmail });
+    console.log('[REGISTER] step: existing check done');
     if (existing) {
       return res.status(400).json({ message: 'Email already registered.' });
     }
 
+    console.log('[REGISTER] step: hashing password...');
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('[REGISTER] step: password hashed');
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     // 1. Create user
+    console.log('[REGISTER] step: creating user...');
     const user = await User.create({
       firstName,
       lastName,
@@ -41,45 +46,59 @@ export const register = async (req, res) => {
       isVerified: false
     });
 
+    console.log('[REGISTER] step: user created, id=', user._id);
+
     // 2. CREATE OR GET WALLET (SOURCE OF TRUTH)
+    console.log('[REGISTER] step: creating wallet...');
     const wallet = await WalletService.getOrCreateWallet(user._id);
+    console.log('[REGISTER] step: wallet created, id=', wallet._id);
 
     // 3. Link wallet to user
+    console.log('[REGISTER] step: linking wallet to user...');
     await User.findByIdAndUpdate(user._id, {
       walletId: wallet._id
     });
+    console.log('[REGISTER] step: wallet linked');
 
-    // 4. Send verification email
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
-
+    console.log('[REGISTER] step: about to send email...');
+    // 4. Send verification email (non-blocking - registration must not fail/hang if email fails)
     const verifyLink = `${process.env.APP_URL}/api/v1/auth/verify-email?token=${verificationToken}`;
 
-    await transporter.sendMail({
-      from: `"ISCAN System" <${process.env.EMAIL_USER}>`,
-      to: normalizedEmail,
-      subject: 'Verify your ISCAN account',
-      html: `
-        <div style="font-family: Arial, sans-serif;">
-          <h2>Welcome to ISCAN</h2>
-          <p>Verify your account to activate your wallet.</p>
-          <a href="${verifyLink}">Verify Account</a>
-        </div>
-      `
-    });
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 5000
+      });
+
+      await transporter.sendMail({
+        from: `"ISCAN System" <${process.env.EMAIL_USER}>`,
+        to: normalizedEmail,
+        subject: 'Verify your ISCAN account',
+        html: `
+          <div style="font-family: Arial, sans-serif;">
+            <h2>Welcome to ISCAN</h2>
+            <p>Verify your account to activate your wallet.</p>
+            <a href="${verifyLink}">Verify Account</a>
+          </div>
+        `
+      });
+    } catch (emailErr) {
+      console.error('[REGISTER] Verification email failed to send (continuing):', emailErr.message);
+    }
+    console.log('[REGISTER] step: email step done, sending response...');
 
     return res.status(201).json({
       success: true,
       message: 'User registered successfully. Please verify your email.',
       wallet: {
         id: wallet._id,
-        address: wallet.address,
-        chain: wallet.chain
+        address: wallet.iscanAddress
       }
     });
 

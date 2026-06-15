@@ -4,44 +4,51 @@ const depositAddressSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
       index: true
     },
 
     chain: {
       type: String,
-      enum: ['ethereum', 'polygon', 'bnb', 'tron'],
-      required: true
+      required: true,
+      default: 'tron'
     },
 
     token: {
       type: String,
+      required: true,
       default: 'USDT'
     },
 
     address: {
       type: String,
       required: true,
-      unique: true,
-      index: true
+      unique: true
     },
 
     status: {
       type: String,
-      enum: ['active', 'inactive'],
+      enum: ['active', 'used', 'expired'],
       default: 'active'
     },
 
-    lastUsedAt: {
-      type: Date,
+    lastTxHash: {
+      type: String,
       default: null
+    },
+
+    lastAmount: {
+      type: Number,
+      default: 0
     }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
 
-const DepositAddress =
-  mongoose.models.DepositAddress ||
-  mongoose.model('DepositAddress', depositAddressSchema);
-
-export default DepositAddress;
+export default mongoose.model(
+  'DepositAddress',
+  depositAddressSchema
+);

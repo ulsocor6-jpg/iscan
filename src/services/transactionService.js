@@ -72,6 +72,36 @@ class TransactionService {
       transaction: tx
     };
   }
-}
 
+  // ── STUBS (added by fix_webhook_and_stubs.sh) ────────────────────────────
+  // TODO: implement real lookups/state transitions against Transaction model.
+
+  async findByReference(referenceId) {
+    console.warn(
+      `[TransactionService.findByReference] STUB CALLED - not implemented. referenceId=${referenceId}`
+    );
+    return null;
+  }
+
+  async transitionTo(txId, newStatus, meta = {}) {
+    console.warn(
+      `[TransactionService.transitionTo] STUB CALLED - not implemented. txId=${txId} newStatus=${newStatus} meta=${JSON.stringify(meta)}`
+    );
+    return null;
+  }
+
+  async markSettled(txId) {
+    console.warn(
+      `[TransactionService.markSettled] STUB CALLED - not implemented. txId=${txId}`
+    );
+    return null;
+  }
+
+  async markFailed(txId) {
+    console.warn(
+      `[TransactionService.markFailed] STUB CALLED - not implemented. txId=${txId}`
+    );
+    return null;
+  }
+}
 export default new TransactionService();

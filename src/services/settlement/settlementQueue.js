@@ -30,3 +30,17 @@ export function updateJob(jobId, update) {
 export function getQueue() {
   return queue;
 }
+
+// ── Compatibility shim added by fix_and_wire.sh ──────────────────────────
+// Provides a minimal .process() based queue interface expected by
+// src/services/settlement/index.js
+const handlers = {};
+export const settlementQueue = {
+  process(name, fn) {
+    handlers[name] = fn;
+  },
+  async run(name, job) {
+    if (handlers[name]) return handlers[name](job);
+    throw new Error(`No handler registered for "${name}"`);
+  },
+};

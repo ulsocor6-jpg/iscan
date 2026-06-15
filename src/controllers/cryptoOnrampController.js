@@ -115,7 +115,7 @@ export const getDepositStatus = async (req, res) => {
  */
 export const createDepositAddress = async (req, res) => {
   try {
-    const { userId } = req.user;
+    const userId = req.user.id;
     const { chain = 'ethereum', token = 'USDT' } = req.body;
 
     if (!userId) {
@@ -141,13 +141,11 @@ export const createDepositAddress = async (req, res) => {
       });
     }
 
-    // Generate deterministic pseudo-wallet (MVP version)
-    const seed = crypto
-      .createHash('sha256')
-      .update(`${userId}-${chain}-${Date.now()}`)
-      .digest('hex');
-
-    const address = `0x${seed.slice(0, 40)}`;
+    // Generate HD wallet address for user
+    const { deriveUserAddress, getNextWalletIndex } = await import('../services/hdWalletService.js');
+    const index = await getNextWalletIndex();
+    const derived = await deriveUserAddress(index);
+    const address = derived.address;
 
     const newAddress = await DepositAddress.create({
       userId,

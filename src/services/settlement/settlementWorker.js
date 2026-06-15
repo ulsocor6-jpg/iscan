@@ -1,47 +1,37 @@
-import {
-  getNextJob,
-  updateJob
-} from "./settlementQueue.js";
+import ledgerService from "../ledgerService.js";
+import walletService from "../walletService.js";
+import transactionService from "../transactionService.js";
 
-import { processSettlement } from "./settlementProcessor.js";
-import { getRetryDelay, canRetry } from "./retryPolicy.js";
+export default async function settlementWorker(job) {
+  const {
+    txId,
+    senderId,
+    receiverId,
+    fxRate,
+    finalCreditAmount,
+  } = job.data;
 
-/**
- * Continuous worker loop
- */
-export async function startSettlementWorker() {
-  console.log("[SETTLEMENT WORKER] started");
+  try {
+    await ledgerService.commit({ reference: txId });
 
-  setInterval(async () => {
-    const job = getNextJob();
+    await walletService.syncFromLedger(senderId);
+    await walletService.syncFromLedger(receiverId);
 
-    if (!job) return;
+    await transactionService.update(txId, {
+      status: "COMPLETED",
+      fxRate,
+      finalCreditAmount,
+    });
 
-    try {
-      job.status = "processing";
-      job.attempts++;
+    return { success: true };
+  } catch (err) {
+    console.error("SETTLEMENT ERROR", err);
 
-      await processSettlement(job);
+    await transactionService.update(txId, {
+      status: "FAILED",
+      failureReason: err.message,
+    });
 
-      job.status = "completed";
-
-    } catch (err) {
-      console.log("[SETTLEMENT FAILED]", err.message);
-
-      if (!canRetry(job.attempts)) {
-        job.status = "failed";
-        job.error = err.message;
-        return;
-      }
-
-      job.status = "retrying";
-
-      const delay = getRetryDelay(job.attempts);
-
-      setTimeout(() => {
-        job.status = "pending";
-      }, delay);
-    }
-
-  }, 2000);
+    throw err;
+  }
 }

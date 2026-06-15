@@ -15,12 +15,12 @@ class WalletService {
     wallet = await Wallet.create({
       userId,
       iscanAddress: 'ISCAN-' + crypto.randomBytes(8).toString('hex').toUpperCase(),
-      balances: new Map({
-        USDT: 0,
-        USDC: 0,
-        ETH: 0,
-        PHP: 0
-      }),
+      balances: new Map([
+        ['USDT', 0],
+        ['USDC', 0],
+        ['ETH', 0],
+        ['PHP', 0]
+      ]),
       linkedWallets: [],
       status: 'active'
     });

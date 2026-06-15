@@ -1,20 +1,44 @@
 import express from 'express';
 import { requireAuth } from '../middleware/authMiddleware.js';
+
 import {
   getQuote,
   initiateConversion,
   getOnrampHistory,
   getDepositStatus,
+  createDepositAddress
 } from '../controllers/cryptoOnrampController.js';
 
 const router = express.Router();
 
-router.get('/rate', requireAuth, getQuote);
+router.get(
+  '/rate',
+  requireAuth,
+  getQuote
+);
 
-router.get('/deposit-status/:depositId', requireAuth, getDepositStatus);
+router.post(
+  '/deposit-address',
+  requireAuth,
+  createDepositAddress
+);
 
-router.post('/convert', requireAuth, initiateConversion);
+router.get(
+  '/deposit-status/:depositId',
+  requireAuth,
+  getDepositStatus
+);
 
-router.get('/history', requireAuth, getOnrampHistory);
+router.post(
+  '/convert',
+  requireAuth,
+  initiateConversion
+);
+
+router.get(
+  '/history',
+  requireAuth,
+  getOnrampHistory
+);
 
 export default router;

@@ -1,0 +1,184 @@
+=== ledgerService.js export ===
+import Ledger from "../models/ledgerModel.js";
+
+export const LedgerService = {
+  async record(entry, session) {
+    return await Ledger.create([entry], { session });
+  }
+};
+
+=== walletService.js export (tail) ===
+  }
+
+}
+
+export default new WalletService();
+
+=== transactionService.js export (tail) ===
+    };
+  }
+}
+
+export default new TransactionService();
+
+=== How each route/service imports ledgerService / walletService / transactionService ===
+src/workers/transactionWorker.js:2:import transactionService from '../services/transactionService.js';
+src/routes/webhookRoutes.js:4:import transactionService from '../services/transactionService.js';
+src/routes/webhookRoutes.js:5:import ledgerService from '../services/ledgerService.js';
+src/routes/transferRoutes.js:10:import TransactionService from "../services/transactionService.js";
+src/services/swapService.js:6:import walletService from './walletService.js';
+src/services/routing/institutional/executionQualityEngine.js:2:import ledgerService from '../../ledgerService.js';
+src/services/routing/executionEngine.js:1:import ledgerService from '../ledgerService.js';
+src/services/settlement/settlementWorker.js:1:import ledgerService from "../ledgerService.js";
+src/services/settlement/settlementWorker.js:2:import walletService from "../walletService.js";
+src/services/settlement/settlementWorker.js:3:import transactionService from "../transactionService.js";
+src/services/cryptoOnrampService.js:3:import WalletService from './walletService.js';
+src/services/transferOrchestrator.js:3:const ledgerService = require("./ledgerService");
+src/services/transferOrchestrator.js:4:const walletService = require("./walletService");
+src/services/transferOrchestrator.js:6:const transactionService = require("./transactionService");
+src/services/confirmationService.js:2:import ledgerService from './ledgerService.js';
+src/services/transactionService.js:3:import WalletService from './walletService.js';
+src/controllers/authController.js:7:import WalletService from '../services/walletService.js';
+src/controllers/moonpayWebhookController.js:7:import ledgerService from '../services/ledgerService.js';
+src/controllers/moonpayWebhookController.js:8:import walletService from '../services/walletService.js';
+src/models/webhookService.js:3:import transactionService from './transactionService.js';
+
+=== webhookRoutes.js full ===
+import express from 'express';
+import crypto from 'crypto';
+
+import transactionService from '../services/transactionService.js';
+import ledgerService from '../services/ledgerService.js';
+import transakProvider from '../integrations/paymentProviders/transakProvider.js';
+
+// ADD THIS NEW ROUTE
+router.post('/transak', express.raw({type: 'application/json'}), async (req, res) => {
+  try {
+    const signature = req.headers['x-transak-signature'];
+    const payload = JSON.parse(req.body);
+    
+    // 1. SECURITY CHECK
+    if (!transakProvider.verifyWebhookSignature(payload, signature)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const { eventID, eventType, data } = payload;
+    const { partnerOrderId, status, cryptoAmount, transactionHash } = data;
+
+    // 2. FIND TRANSACTION by referenceId
+    const tx = await transactionService.findByReference(partnerOrderId);
+    if (!tx) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    // 3. UPDATE BASED ON STATUS
+    if (eventType === 'ORDER_COMPLETED' && status === 'COMPLETED') {
+      await transactionService.transitionTo(tx._id, 'ONRAMP_COMPLETED', {
+        cryptoAmount,
+        txHash: transactionHash
+      });
+      
+      // Credit crypto amount to internal ledger if needed
+      await ledgerService.creditCrypto(tx.userId, cryptoAmount, transactionHash);
+    }
+    
+    if (eventType === 'ORDER_FAILED') {
+      await transactionService.transitionTo(tx._id, 'FAILED');
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[TRANSAK WEBHOOK ERROR]', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+const router = express.Router();
+
+/**
+ * VERIFY SIGNATURE (PROVIDER SECURITY LAYER)
+ */
+const verifySignature = (payload, signature, secret) => {
+  const hmac = crypto
+    .createHmac('sha256', secret)
+    .update(JSON.stringify(payload))
+    .digest('hex');
+
+  return hmac === signature;
+};
+
+/**
+ * MAIN WEBHOOK ENTRY POINT
+ * (used by Maya / Coins.ph / banks)
+ */
+router.post('/payment', async (req, res) => {
+  try {
+    const signature = req.headers['x-signature'];
+    const secret = process.env.WEBHOOK_SECRET;
+
+    const payload = req.body;
+
+    // 1. SECURITY CHECK
+    if (!verifySignature(payload, signature, secret)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const { referenceId, status, amount } = payload;
+
+    // 2. FIND TRANSACTION
+    const tx = await transactionService.findByReference(referenceId);
+
+    if (!tx) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    // 3. UPDATE BASED ON STATUS
+    if (status === 'success') {
+      await transactionService.markSettled(tx._id);
+    }
+
+    if (status === 'failed') {
+      await transactionService.markFailed(tx._id);
+    }
+
+    return res.json({ success: true });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;
+
+=== beneficiaryRoutes.js, p2pRoutes.js, remittanceRoutes.js, internalWalletRoutes.js - import lines only ===
+--- src/routes/beneficiaryRoutes.js ---
+1:import express from "express";
+3:import {
+9:import { requireAuth } from '../middleware/authMiddleware.js';
+--- src/routes/p2pRoutes.js ---
+1:import express from 'express';
+2:import { requireAuth } from '../middleware/authMiddleware.js';
+3:import { transfer } from '../services/p2pTransferService.js';
+--- src/routes/remittanceRoutes.js ---
+1:import express from 'express';
+2:import crypto from 'crypto';
+3:import { requireAuth } from '../middleware/authMiddleware.js';
+4:import Transaction from '../models/transactionModel.js';
+5:import { getLiveRate, sendToCoinsph } from '../integrations/coinsph.js';
+6:import Audit from '../models/auditModel.js';
+--- src/routes/internalWalletRoutes.js ---
+1:import express from 'express';
+2:import ledgerEngine from '../../core/ledgerEngine.js';
+3:import { requireAuth } from '../middleware/authMiddleware.js';
+
+=== settlementWorker.js imports (uses ledgerService/walletService/transactionService default) ===
+import ledgerService from "../ledgerService.js";
+import walletService from "../walletService.js";
+import transactionService from "../transactionService.js";
+
+export default async function settlementWorker(job) {
+  const {
+    txId,
+    senderId,
+    receiverId,
+    fxRate,

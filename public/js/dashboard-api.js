@@ -1,14 +1,13 @@
 /**
- * ISCAN Dashboard API Layer (Ledger-based system)
- * Uses httpOnly cookies (no tokens stored in JS)
+ * ISCAN Dashboard API Layer (FINAL WIRED VERSION)
+ * Backend: /api/v1/dashboard (Ledger-based system)
  */
 
 const API = '/api/v1';
 
-// ─────────────────────────────────────────────
-// CORE FETCH WRAPPER
-// ─────────────────────────────────────────────
-
+/* ==================================================
+   CORE FETCH
+================================================== */
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     credentials: 'include',
@@ -20,10 +19,11 @@ async function apiFetch(path, options = {}) {
   });
 
   let data;
+
   try {
     data = await res.json();
   } catch {
-    throw new Error('Invalid server response');
+    throw new Error('Invalid JSON response from server');
   }
 
   if (!res.ok) {
@@ -37,10 +37,9 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
-// ─────────────────────────────────────────────
-// AUTH
-// ─────────────────────────────────────────────
-
+/* ==================================================
+   AUTH
+================================================== */
 export const auth = {
   me: () => apiFetch('/auth/me'),
 
@@ -50,87 +49,113 @@ export const auth = {
   }
 };
 
-// ─────────────────────────────────────────────
-// WALLET (LEDGER-BASED)
-// ─────────────────────────────────────────────
+/* ==================================================
+   DASHBOARD (SINGLE SOURCE OF TRUTH)
+================================================== */
+export const dashboard = {
+  /**
+   * Returns:
+   * {
+   *   wallet,
+   *   balances,
+   *   recentTransactions
+   * }
+   */
+  get: () => apiFetch('/dashboard')
+};
 
+/* ==================================================
+   WALLET HELPERS
+================================================== */
 export const wallet = {
-  balance: () => apiFetch('/dashboard').then(r => ({
-    balance: r.balance,
-    wallet:  r.wallet
-  }))
+  get: async () => {
+    const res = await apiFetch('/dashboard');
+
+    return {
+      wallet: res.wallet,
+      balances: res.balances || {},
+      balance: Object.values(res.balances || {}).reduce((a, b) => a + b, 0)
+    };
+  }
 };
 
-// ─────────────────────────────────────────────
-// LEDGER
-// ─────────────────────────────────────────────
-
-export const ledger = {
-  history: (limit = 30) => apiFetch(`/ledger/history?limit=${limit}`),
-  feed:    (limit = 30) => apiFetch(`/ledger?limit=${limit}`)
-};
-
-// ─────────────────────────────────────────────
-// TRANSFER (P2P / INTERNAL)
-// ─────────────────────────────────────────────
-
+/* ==================================================
+   TRANSFER (WIRED TO BACKEND)
+================================================== */
 export const transfer = {
-  send: ({ toWalletId, amount, asset = 'PHP', memo = '' }) =>
+  send: ({ toWalletId, amount, asset = 'USDT', memo = '' }) =>
     apiFetch('/transfer/send', {
       method: 'POST',
-      body: JSON.stringify({ toWalletId, amount, asset, memo })
+      body: JSON.stringify({
+        toWalletId,
+        amount,
+        asset,
+        memo
+      })
     })
 };
 
-// ─────────────────────────────────────────────
-// SWAP
-// ─────────────────────────────────────────────
+/* ==================================================
+   LEDGER
+================================================== */
+export const ledger = {
+  history: (limit = 30) =>
+    apiFetch(`/ledger/history?limit=${limit}`),
 
-export const swap = {
-  /**
-   * Convert foreign currency to PHP
-   * @param {number} amount
-   * @param {string} currency  e.g. 'USD', 'USDT', 'BTC'
-   * Returns { success, data: { phpAmount, rate, source, tx } }
-   */
-  toPHP: (amount, currency) =>
-    apiFetch('/swap/php', {
-      method: 'POST',
-      body: JSON.stringify({ amount, currency })
-    })
+  feed: (limit = 30) =>
+    apiFetch(`/ledger?limit=${limit}`)
 };
 
-// ─────────────────────────────────────────────
-// USER SEARCH
-// ─────────────────────────────────────────────
+/* ==================================================
+   LIVE BALANCE SYNC (REAL-TIME UI)
+================================================== */
+let interval = null;
 
-export const users = {
-  search: (q) => apiFetch(`/users/search?q=${encodeURIComponent(q)}`)
-};
+export function startLiveDashboardSync(onUpdate, ms = 5000) {
+  if (interval) clearInterval(interval);
 
-// ─────────────────────────────────────────────
-// DASHBOARD
-// ─────────────────────────────────────────────
+  interval = setInterval(async () => {
+    try {
+      const data = await dashboard.get();
 
-export const dashboard = {
-  overview: () => apiFetch('/dashboard'),
-  health:   () => apiFetch('/health')
-};
+      const balance =
+        Object.values(data.balances || {})
+          .reduce((a, b) => a + b, 0);
 
-// ─────────────────────────────────────────────
-// INIT (BOOTSTRAP DASHBOARD PAGE)
-// ─────────────────────────────────────────────
+      onUpdate?.({
+        wallet: data.wallet,
+        balance,
+        recentTransactions: data.recentTransactions
+      });
 
+    } catch (err) {
+      console.error('[SYNC ERROR]', err.message);
+    }
+  }, ms);
+}
+
+export function stopLiveDashboardSync() {
+  if (interval) clearInterval(interval);
+  interval = null;
+}
+
+/* ==================================================
+   BOOTSTRAP
+================================================== */
 export async function dashboardInit() {
-  const [dash, me] = await Promise.all([
-    dashboard.overview(),
-    auth.me()
+  const [me, dash] = await Promise.all([
+    auth.me(),
+    dashboard.get()
   ]);
 
+  const balance =
+    Object.values(dash.balances || {})
+      .reduce((a, b) => a + b, 0);
+
   return {
-    user:               me.user || me,
-    balance:            dash.balance,
-    wallet:             dash.wallet,
+    user: me.user || me,
+    wallet: dash.wallet,
+    balance,
     recentTransactions: dash.recentTransactions
   };
 }
