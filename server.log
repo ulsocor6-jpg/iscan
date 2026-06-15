@@ -1,0 +1,9 @@
+
+> iscansystem@1.0.0 start
+> node server.js
+
+◇ injected env (13) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Connecting to MongoDB...
+MongoDB connected
+Settlement worker running
+ISCAN running on port 3000

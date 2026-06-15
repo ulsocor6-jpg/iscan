@@ -1,0 +1,54 @@
+=== tsconfig path aliases ===
+--- vite.config.js ---
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+  plugins: [react()],
+  root: ".",
+  publicDir: false,
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
+  },
+});
+
+
+=== index.html script entry (how main.tsx is loaded) ===
+index.html:13:    <script type="module" src="/src/main.tsx"></script>
+
+=== Barrel files (index.js / index.ts that re-export others) ===
+--- ./src/services/settlement/index.js ---
+const settlementWorker = require("./settlementWorker");
+const settlementQueue = require("./settlementQueue");
+
+function startSettlementWorker() {
+  settlementQueue.process("finalize-transfer", async (job) => {
+    return settlementWorker(job);
+  });
+
+  console.log("Settlement worker running");
+}
+
+module.exports = { startSettlementWorker };
+
+
+=== Files imported via '@/' or other non-relative aliases ===

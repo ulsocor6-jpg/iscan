@@ -1,0 +1,311 @@
+:root {
+  --bg: #060b14;
+  --sidebar: #0d1526;
+  --card: #121b2f;
+  --border: #1d2942;
+
+  --text: #ffffff;
+  --muted: #94a3b8;
+
+  --green: #22c55e;
+  --blue: #3b82f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+
+  font-family:
+    Inter,
+    system-ui,
+    sans-serif;
+}
+
+/* ---------- LAYOUT ---------- */
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ---------- SIDEBAR ---------- */
+
+.sidebar {
+  width: 290px;
+
+  background: var(--sidebar);
+
+  border-right: 1px solid var(--border);
+
+  padding: 24px;
+}
+
+.logo {
+  font-size: 32px;
+  font-weight: 800;
+
+  letter-spacing: 1px;
+
+  margin-bottom: 40px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar button {
+  background: transparent;
+
+  border: none;
+
+  color: white;
+
+  text-align: left;
+
+  padding: 10px 14px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  border-radius: 12px;
+
+  cursor: pointer;
+
+  transition: 0.2s;
+}
+
+.sidebar button:hover {
+  background: rgba(255,255,255,.05);
+}
+
+.sidebar .active {
+  background: rgba(34,197,94,.15);
+
+  color: #22c55e;
+}
+
+/* ---------- MAIN ---------- */
+
+.main-content {
+  flex: 1;
+
+  padding: 24px;
+}
+
+/* ---------- HEADER ---------- */
+
+.header {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  margin-bottom: 24px;
+}
+
+.search input {
+  width: 450px;
+
+  padding: 14px;
+
+  border-radius: 12px;
+
+  border: 1px solid var(--border);
+
+  background: var(--card);
+
+  color: white;
+
+  font-size: 15px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.header-actions button {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  color: white;
+
+  padding: 12px 14px;
+
+  border-radius: 12px;
+
+  cursor: pointer;
+}
+
+/* ---------- DASHBOARD ---------- */
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+
+  gap: 16px;
+}
+
+/* ---------- HERO ---------- */
+
+.hero-card {
+  background: linear-gradient(
+    135deg,
+    #121b2f,
+    #182846
+  );
+
+  border: 1px solid var(--border);
+
+  border-radius: 18px;
+
+  padding: 34px;
+
+  min-height: 200px;
+}
+
+.hero-card h1 {
+  font-size: 56px;
+
+  margin: 10px 0;
+}
+
+.hero-card button {
+  background: var(--blue);
+
+  color: white;
+
+  border: none;
+
+  padding: 12px 16px;
+
+  border-radius: 10px;
+
+  cursor: pointer;
+
+  font-weight: 600;
+}
+
+/* ---------- KPI ---------- */
+
+.kpi-row {
+  display: grid;
+
+  grid-template-columns:
+    repeat(5,1fr);
+
+  gap: 20px;
+}
+
+.card {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: 16px;
+
+  padding: 14px;
+}
+
+.card h2 {
+  font-size: 18px;
+}
+
+.card h3 {
+  color: var(--muted);
+
+  font-size: 12px;
+
+  margin-bottom: 10px;
+}
+
+/* ---------- GRID ---------- */
+
+.dashboard-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(auto-fit,minmax(320px,1fr));
+
+  gap: 16px;
+}
+
+/* ---------- MARKETS ---------- */
+
+table {
+  width: 100%;
+
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+
+  padding-bottom: 12px;
+
+  color: var(--muted);
+}
+
+td {
+  padding: 12px 0;
+
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+/* ---------- ACTIVITY ---------- */
+
+.activity-item {
+  padding: 12px 0;
+
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+/* ---------- WALLETS ---------- */
+
+.wallet-row {
+  display: flex;
+
+  justify-content: space-between;
+
+  padding: 12px 0;
+
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+/* ---------- METRICS ---------- */
+
+.metric {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  padding: 12px 0;
+
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.metric strong {
+  color: var(--green);
+}
+
+/* ---------- SCROLLBAR ---------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #23314d;
+  border-radius: 20px;
+}

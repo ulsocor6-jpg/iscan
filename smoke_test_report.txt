@@ -1,0 +1,126 @@
+=== 0. Server reachable? ===
+GET / -> [HTTP 200]
+
+=== 1. AUTH: register ===
+
+----- POST /auth/register -----
+{"message":"Registration failed."}
+[HTTP 500]
+
+=== 2. AUTH: login ===
+
+----- POST /auth/login -----
+{"success":true,"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhMmY4M2VmMWZiM2VjZGI4ZWM2YTAyOSIsImVtYWlsIjoic21va2V0ZXN0XzE3ODE0OTg4NjJAZXhhbXBsZS5jb20iLCJmaXJzdE5hbWUiOiJTbW9rZSIsImlhdCI6MTc4MTQ5ODg3MSwiZXhwIjoxNzgxNTg1MjcxfQ.N6K7VBeZ76Q8VhWS8aBQFs_zor2K99gNIOGMUxYGdsw","user":{"id":"6a2f83ef1fb3ecdb8ec6a029","email":"smoketest_1781498862@example.com","firstName":"Smoke"}}
+[HTTP 200]
+
+=== 3. AUTH: verify / me ===
+
+----- GET /auth/verify -----
+{"success":true,"user":{"id":"6a2f83ef1fb3ecdb8ec6a029","email":"smoketest_1781498862@example.com","firstName":"Smoke"}}
+[HTTP 200]
+
+----- GET /auth/me -----
+{"success":true,"user":{"id":"6a2f83ef1fb3ecdb8ec6a029","email":"smoketest_1781498862@example.com","firstName":"Smoke"}}
+[HTTP 200]
+
+=== 4. DASHBOARD ===
+
+----- GET /dashboard -----
+{"success":true,"wallet":{"linkedWallets":[]},"balances":{},"recentTransactions":[]}
+[HTTP 200]
+
+=== 5. WALLET ===
+
+----- GET /wallet/balance -----
+{"success":true,"balance":0}
+[HTTP 200]
+
+----- GET /wallet -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 6. LEDGER ===
+
+----- GET /ledger/history -----
+{"success":true,"entries":[]}
+[HTTP 200]
+
+=== 7. TRANSACTIONS ===
+
+----- GET /transactions -----
+{"success":true,"transactions":[],"total":0}
+[HTTP 200]
+
+----- GET /transactions?limit=5 -----
+{"success":true,"transactions":[],"total":0}
+[HTTP 200]
+
+=== 8. TRANSFER (GET, just checking route resolves - likely needs POST + body) ===
+
+----- GET /transfer -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 9. BANK ===
+
+----- GET /bank/list -----
+{"success":true,"banks":[]}
+[HTTP 200]
+
+=== 10. BENEFICIARIES ===
+
+----- GET /beneficiaries -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 11. KYC ===
+
+----- GET /kyc/status -----
+null
+[HTTP 200]
+
+=== 12. SWAP (GET, just checking route resolves) ===
+
+----- GET /swap -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 13. ONRAMP ===
+
+----- GET /onramp/rate -----
+{"success":true,"data":{"rate":56,"symbol":"USDT/PHP"}}
+[HTTP 200]
+
+=== 14. REMITTANCE (GET, checking route resolves) ===
+
+----- GET /remittance -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 15. P2P (GET, checking route resolves) ===
+
+----- GET /p2p -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 16. USERS search ===
+
+----- GET /users/search?q=sm -----
+{"success":true,"users":[]}
+[HTTP 200]
+
+=== 17. INTERNAL WALLETS ===
+
+----- GET /internal-wallets -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== 18. WEBHOOKS (payment, expect 401 - no valid signature) ===
+
+----- POST /webhooks/payment -----
+{"success":false,"message":"Route not found"}
+[HTTP 404]
+
+=== DONE ===
+Look for: connection errors (ECONNREFUSED), 500s with stack traces in the server console,
+404s on routes that should exist, and any [STUB CALLED] warnings in the server log.

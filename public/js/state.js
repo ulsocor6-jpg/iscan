@@ -1,15 +1,22 @@
-export async function dashboardInit() {
-  const [dash, me] = await Promise.all([
-    dashboard.overview(),
-    auth.me()
-  ]);
+export const state = {
+  balance: 0,
+  listeners: new Set()
+};
 
-  setBalance(dash.balance); // 🔥 live state sync
+export function setBalance(value) {
+  state.balance = Number(value || 0);
 
-  return {
-    user: me.user || me,
-    balance: dash.balance,
-    wallet: dash.wallet,
-    recentTransactions: dash.recentTransactions
+  state.listeners.forEach(fn =>
+    fn(state.balance)
+  );
+}
+
+export function subscribeBalance(fn) {
+  state.listeners.add(fn);
+
+  fn(state.balance);
+
+  return () => {
+    state.listeners.delete(fn);
   };
 }
