@@ -1,4 +1,5 @@
 const fxService = require("./fx/fxService");
+const fraudBlockingService = require("./fraudBlockingService");
 const fraudService = require("./fraudService");
 const ledgerService = require("./ledgerService");
 const walletService = require("./walletService");
@@ -52,15 +53,27 @@ class TransferOrchestrator {
         referenceId,
       });
 
-      const risk = await fraudService.evaluateTransaction({
+      // Layer 1: 1h velocity + basic rules
+      const layer1 = await fraudService.evaluateTransaction({
         senderId: senderWallet.userId,
         receiverId: receiverWallet.userId,
         amount,
       });
 
-      if (risk.block) {
-        await this.fail(tx.id, "FRAUD_BLOCK");
-        return { success: false, reason: "FRAUD_BLOCK" };
+      if (layer1.block) {
+        await this.fail(tx.id, 'FRAUD_BLOCK');
+        return { success: false, reason: 'FRAUD_BLOCK', layer: 1 };
+      }
+
+      // Layer 2 + 3: 24h AI scoring + all-time behavioral
+      const deepRisk = await fraudBlockingService.evaluate({
+        userId: senderWallet.userId,
+        amount,
+      });
+
+      if (!deepRisk.allowed) {
+        await this.fail(tx.id, deepRisk.reason);
+        return { success: false, reason: deepRisk.reason };
       }
 
       let converted = amount;
