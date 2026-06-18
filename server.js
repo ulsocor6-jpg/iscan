@@ -3,6 +3,7 @@ import app from './app.js';
 import { startSettlementWorker } from './src/services/settlement/index.js';
 import { startRoninListener } from './src/services/blockchain/roninListener.js';
 import { startBaseListener } from './src/services/blockchain/baseListener.js';
+import { startStatusWorker } from './src/workers/statusWorker.js';
 import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.js';
 
 async function startServer() {
@@ -32,6 +33,7 @@ async function startServer() {
     }
     try {
       startTreasuryBalancer();
+      try { startStatusWorker(); } catch (err) { console.error('Status worker failed to start:', err.message); }
     } catch (err) {
       console.error("Treasury balancer failed to start (continuing anyway):", err.message);
     }

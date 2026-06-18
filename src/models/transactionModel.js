@@ -75,9 +75,12 @@ const transactionSchema = new mongoose.Schema(
         'processing',
         'settled',
         'failed',
-        'reversed'
+        'reversed',
+        'pending',
+        'completed'
       ],
       default: 'created',
+      index: true
       index: true
     },
 
@@ -91,6 +94,8 @@ const transactionSchema = new mongoose.Schema(
       default: 'LOW'
     },
 
+    processAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
     ledgerGroupId: {
       type: String,
       required: true,
