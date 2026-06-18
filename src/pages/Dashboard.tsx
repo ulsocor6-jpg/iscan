@@ -3,7 +3,7 @@ import HeroBalance from "../banking/components/HeroBalance";
 import KPIRow from "../banking/components/KPIRow";
 import MarketsPanel from "../banking/components/dashboard/MarketsPanel";
 import ActivityFeed from "../banking/components/dashboard/ActivityFeed";
-import FlowerChart from './banking/components/dashboard/FlowerChart';
+import FlowerChart from '../banking/components/dashboard/FlowerChart';
 import WalletPortfolio from "../banking/components/dashboard/WalletPortfolio";
 import TreasuryHealth from "../banking/components/dashboard/TreasuryHealth";
 import ComplianceSnapshot from "../banking/components/dashboard/ComplianceSnapshot";
