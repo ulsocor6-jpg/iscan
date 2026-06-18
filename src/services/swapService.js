@@ -13,7 +13,6 @@ export const swapToPHP = async ({ userId, amount, fromCurrency }) => {
   const rate = await getRate(fromCurrency, 'PHP');
   const phpAmount = amount * rate;
   const referenceId = 'SWAP-' + crypto.randomBytes(8).toString('hex');
-  const processAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12hrs from now
 
   await Ledger.create({
     referenceId, userId,
@@ -40,11 +39,18 @@ export const swapToPHP = async ({ userId, amount, fromCurrency }) => {
     amount,
     currency: fromCurrency,
     type: 'swap',
-    status: 'processing',
-    processAt,
+    status: 'processing', // stays processing until admin manually settles
     metadata: { rate, convertedAmount: phpAmount, destinationCurrency: 'PHP' },
     ledgerGroupId: referenceId
   });
 
-  return { referenceId, rate, sourceAmount: amount, phpAmount, processAt, transaction: tx };
+  return {
+    referenceId,
+    rate,
+    sourceAmount: amount,
+    phpAmount,
+    status: 'processing',
+    message: 'Your swap is being processed. You will be notified once it is completed.',
+    transaction: tx
+  };
 };

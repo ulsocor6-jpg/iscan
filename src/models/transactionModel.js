@@ -81,7 +81,6 @@ const transactionSchema = new mongoose.Schema(
       ],
       default: 'created',
       index: true
-      index: true
     },
 
     fraudScore: {
