@@ -27,6 +27,12 @@ const depositAddressSchema = new mongoose.Schema(
       unique: true
     },
 
+    hdIndex: {
+      type: Number,
+      default: null,
+      index: true
+    },
+
     status: {
       type: String,
       enum: ['active', 'used', 'expired'],
