@@ -1,7 +1,10 @@
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../hooks/useAuth";
+
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const active = (path) => location.pathname === path;
   const links = [
     {label:"Dashboard",path:"/dashboard"},
@@ -10,7 +13,7 @@ export default function Sidebar() {
     {label:"Swaps",path:"/swaps"},
     {label:"Wallets",path:"/wallets"},
     {label:"Remittance",path:"/remittance"},
-    {label:"Treasury",path:"/treasury"},
+    ...(user?.role === "admin" ? [{label:"Treasury",path:"/treasury"}] : []),
     {label:"Compliance",path:"/compliance"},
     {label:"Activity",path:"/activity"},
     {label:"Settings",path:"/settings"},

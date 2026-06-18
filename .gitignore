@@ -1,7 +1,8 @@
-
-!dist/
-!dist/
-.env
 node_modules/
-node_modules/.vite/
-node_modules/.vite/
+dist/
+.env
+*.bak
+*.log
+wallets-backup-*.json
+missing-env-template.txt
+required-env.txt

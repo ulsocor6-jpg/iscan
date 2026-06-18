@@ -144,7 +144,8 @@ export const createDepositAddress = async (req, res) => {
     // Generate HD wallet address for user
     const { deriveUserAddress, getNextWalletIndex } = await import('../services/hdWalletService.js');
     const index = await getNextWalletIndex();
-    const derived = await deriveUserAddress(index);
+    const chainKey = chain.toUpperCase();
+    const derived = await deriveUserAddress(index, chainKey);
     const address = derived.address;
 
     const newAddress = await DepositAddress.create({

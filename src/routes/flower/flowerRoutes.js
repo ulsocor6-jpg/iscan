@@ -1,6 +1,6 @@
 import express from "express";
 import authGuard from "../../middleware/authMiddleware.js";
-
+import { quoteFlowerUsdtSwap, executeFlowerUsdtSwap } from "../../controllers/flower/flowerUsdtController.js";
 import {
   getFlowerWallet,
   createOrder,
@@ -14,5 +14,7 @@ router.get("/wallet", authGuard, getFlowerWallet);
 router.post("/create", authGuard, createOrder);
 router.get("/status/:orderId", authGuard, getOrderStatus);
 router.post("/confirm", authGuard, manualConfirm);
+router.get("/usdt/quote", authGuard, quoteFlowerUsdtSwap);
+router.post("/usdt/swap", authGuard, executeFlowerUsdtSwap);
 
 export default router;

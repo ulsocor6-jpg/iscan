@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 // ─── Routes ────────────────────────────────────────────────────────────────
 import authRoutes from './src/routes/authRoutes.js';
 import walletRoutes from './src/routes/walletRoutes.js';
+import flowerRoutes from './src/routes/flower/flowerRoutes.js';
 import dashboardRoutes from './src/routes/dashboardRoutes.js';
 import ledgerRoutes from './src/routes/ledgerRoutes.js';
 import transactionRoutes from './src/routes/transactionRoutes.js';
@@ -58,6 +59,7 @@ app.use('/api/v1/ledger', ledgerRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/transfer', transferRoutes);
 app.use('/api/v1/bank', bankRoutes);
+app.use('/api/v1/flower', flowerRoutes);
 app.use('/api/v1/beneficiaries', beneficiaryRoutes);
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/swap', swapRoutes);

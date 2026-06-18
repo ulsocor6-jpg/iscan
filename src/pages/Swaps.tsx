@@ -10,31 +10,36 @@ const WALLETS = [
 ];
 
 export default function Swaps() {
-  const [tab, setTab]                   = useState("crypto-php");
-  const [amount, setAmount]             = useState("");
-  const [currency, setCurrency]         = useState("USDT");
-  const [toCurrency, setToCurrency]     = useState("USDT");
-  const [channel, setChannel]           = useState("GCASH");
+  const [tab, setTab]                     = useState("crypto-php");
+  const [amount, setAmount]               = useState("");
+  const [currency, setCurrency]           = useState("USDT");
+  const [toCurrency, setToCurrency]       = useState("USDT");
+  const [channel, setChannel]             = useState("GCASH");
   const [accountNumber, setAccountNumber] = useState("");
-  const [receiverName, setReceiverName] = useState("");
-  const [cashInAmount, setCashInAmount] = useState("");
-  const [loading, setLoading]           = useState(false);
-  const [result, setResult]             = useState<any>(null);
-  const [error, setError]               = useState("");
-  const [quote, setQuote]               = useState<any>(null);
-  const [quoting, setQuoting]           = useState(false);
-  const [balances, setBalances]         = useState<any>({});
+  const [receiverName, setReceiverName]   = useState("");
+  const [cashInAmount, setCashInAmount]   = useState("");
+  const [loading, setLoading]             = useState(false);
+  const [result, setResult]               = useState<any>(null);
+  const [error, setError]                 = useState("");
+  const [quote, setQuote]                 = useState<any>(null);
+  const [quoting, setQuoting]             = useState(false);
+  const [balances, setBalances]           = useState<any>({});
   const [connectedWallet, setConnectedWallet] = useState<string|null>(null);
   const [walletAddress, setWalletAddress]     = useState<string|null>(null);
 
-  // FLOWER ↔ BASE swap state
-  const [flowerBaseDirection, setFlowerBaseDirection] = useState<"flower-to-base"|"base-to-flower">("flower-to-base");
-  const [flowerBaseAmount, setFlowerBaseAmount]       = useState("");
-  const [flowerBaseQuote, setFlowerBaseQuote]         = useState<any>(null);
-  const [flowerBaseQuoting, setFlowerBaseQuoting]     = useState(false);
-  const [flowerBaseLoading, setFlowerBaseLoading]     = useState(false);
-  const [flowerBaseResult, setFlowerBaseResult]       = useState<any>(null);
-  const [flowerBaseError, setFlowerBaseError]         = useState("");
+  // FLOWER ↔ USDT swap state
+  const [fuDirection, setFuDirection] = useState<"flower-to-usdt"|"usdt-to-flower">("flower-to-usdt");
+  const [fuAmount, setFuAmount]       = useState("");
+  const [fuQuote, setFuQuote]         = useState<any>(null);
+  const [fuQuoting, setFuQuoting]     = useState(false);
+  const [fuLoading, setFuLoading]     = useState(false);
+  const [flowerChain, setFlowerChain] = useState("RONIN");
+  const [fuResult, setFuResult]       = useState<any>(null);
+  const [fuError, setFuError]         = useState("");
+
+  const phpBal    = balances?.PHP    || balances?.php    || 0;
+  const usdtBal   = balances?.USDT   || balances?.usdt   || 0;
+  const usdcBal   = balances?.USDC   || balances?.usdc   || 0;
   const flowerBal = balances?.FLOWER || balances?.flower || 0;
 
   // Fetch balances
@@ -42,9 +47,9 @@ export default function Swaps() {
     fetch("/api/v1/wallet/balances", { credentials:"include" })
       .then(r => r.json()).then(d => setBalances(d.balances || d || {}))
       .catch(() => {});
-  }, [result]);
+  }, [result, fuResult]);
 
-  // Live quote
+  // Live quote — PHP swaps
   useEffect(() => {
     if (!amount || isNaN(parseFloat(amount))) { setQuote(null); return; }
     const timer = setTimeout(async () => {
@@ -64,52 +69,48 @@ export default function Swaps() {
     return () => clearTimeout(timer);
   }, [amount, currency, toCurrency, tab]);
 
-  // FLOWER ↔ BASE live quote
+  // Live quote — FLOWER ↔ USDT
   useEffect(() => {
-    if (!flowerBaseAmount || isNaN(parseFloat(flowerBaseAmount))) { setFlowerBaseQuote(null); return; }
-    const from = flowerBaseDirection === "flower-to-base" ? "FLOWER" : "BASE";
-    const to   = flowerBaseDirection === "flower-to-base" ? "BASE"   : "FLOWER";
+    if (!fuAmount || isNaN(parseFloat(fuAmount))) { setFuQuote(null); return; }
+    const from = fuDirection === "flower-to-usdt" ? "FLOWER" : "USDT";
+    const to   = fuDirection === "flower-to-usdt" ? "USDT"   : "FLOWER";
     const timer = setTimeout(async () => {
-      setFlowerBaseQuoting(true);
+      setFuQuoting(true);
       try {
         const res  = await fetch(
-          `/api/v1/php-swap/quote?fromCurrency=${from}&toCurrency=${to}&amount=${flowerBaseAmount}`,
+          `/api/v1/flower/usdt/quote?fromCurrency=${from}&toCurrency=${to}&amount=${fuAmount}`,
           { credentials:"include" }
         );
         const data = await res.json();
-        setFlowerBaseQuote(data);
-      } catch { setFlowerBaseQuote(null); }
-      finally { setFlowerBaseQuoting(false); }
+        setFuQuote(data);
+      } catch { setFuQuote(null); }
+      finally { setFuQuoting(false); }
     }, 500);
     return () => clearTimeout(timer);
-  }, [flowerBaseAmount, flowerBaseDirection]);
+  }, [fuAmount, fuDirection]);
 
-  async function handleFlowerBaseSwap() {
-    if (!connectedWallet) { setFlowerBaseError("Please connect a wallet first."); return; }
-    setFlowerBaseLoading(true); setFlowerBaseError(""); setFlowerBaseResult(null);
+  async function handleFlowerUsdtSwap() {
+    setFuLoading(true); setFuError(""); setFuResult(null);
     try {
-      const from = flowerBaseDirection === "flower-to-base" ? "FLOWER" : "BASE";
-      const to   = flowerBaseDirection === "flower-to-base" ? "BASE"   : "FLOWER";
-      const res  = await fetch("/api/v1/php-swap/execute", {
+      const from = fuDirection === "flower-to-usdt" ? "FLOWER" : "USDT";
+      const to   = fuDirection === "flower-to-usdt" ? "USDT"   : "FLOWER";
+      const res  = await fetch("/api/v1/flower/usdt/swap", {
         method:"POST", credentials:"include",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ fromCurrency:from, toCurrency:to, amount:parseFloat(flowerBaseAmount), walletAddress })
+        body: JSON.stringify({ fromCurrency:from, toCurrency:to, amount:parseFloat(fuAmount) })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
-      setFlowerBaseResult(data);
-      setFlowerBaseAmount("");
-      setFlowerBaseQuote(null);
-    } catch(err:any) { setFlowerBaseError(err.message); }
-    finally { setFlowerBaseLoading(false); }
+      setFuResult(data);
+      setFuAmount("");
+      setFuQuote(null);
+    } catch(err:any) { setFuError(err.message); }
+    finally { setFuLoading(false); }
   }
 
-  function flipFlowerBase() {
-    setFlowerBaseDirection(d => d === "flower-to-base" ? "base-to-flower" : "flower-to-base");
-    setFlowerBaseAmount("");
-    setFlowerBaseQuote(null);
-    setFlowerBaseError("");
-    setFlowerBaseResult(null);
+  function flipFu() {
+    setFuDirection(d => d === "flower-to-usdt" ? "usdt-to-flower" : "flower-to-usdt");
+    setFuAmount(""); setFuQuote(null); setFuError(""); setFuResult(null);
   }
 
   async function handleSwap() {
@@ -161,12 +162,37 @@ export default function Swaps() {
     finally { setLoading(false); }
   }
 
+  function detectInjectedProviders(): Promise<any[]> {
+    return new Promise((resolve) => {
+      const found: any[] = [];
+      const handler = (event: any) => { found.push(event.detail); };
+      window.addEventListener("eip6963:announceProvider", handler as any);
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+      setTimeout(() => {
+        window.removeEventListener("eip6963:announceProvider", handler as any);
+        resolve(found);
+      }, 250);
+    });
+  }
+
+  async function getMetaMaskProvider(): Promise<any> {
+    const announced = await detectInjectedProviders();
+    const mm = announced.find((p: any) => p.info?.rdns === "io.metamask");
+    if (mm) return mm.provider;
+    const eth = (window as any).ethereum;
+    if (eth?.providers?.length) {
+      return eth.providers.find((p: any) => p.isMetaMask) || null;
+    }
+    return eth?.isMetaMask ? eth : null;
+  }
+
   async function connectWallet(id: string) {
     try {
       let address = "";
       if (id === "metamask") {
-        if (!(window as any).ethereum) { alert("MetaMask not installed"); return; }
-        const accounts = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
+        const provider = await getMetaMaskProvider();
+        if (!provider) { alert("MetaMask not found. If you have multiple wallet extensions, make sure MetaMask is enabled."); return; }
+        const accounts = await provider.request({ method:"eth_requestAccounts" });
         address = accounts[0];
       } else if (id === "ronin") {
         if (!(window as any).ronin) { alert("Ronin wallet not installed"); return; }
@@ -183,10 +209,6 @@ export default function Swaps() {
     background: tab===t ? "#3b82f6" : "#1d2942", color:"white", marginRight:8, marginBottom:8
   });
 
-  const phpBal  = balances?.PHP  || balances?.php  || 0;
-  const usdtBal = balances?.USDT || balances?.usdt || 0;
-  const usdcBal = balances?.USDC || balances?.usdc || 0;
-
   return (
     <DashboardLayout>
       <div className="dashboard">
@@ -194,10 +216,17 @@ export default function Swaps() {
 
         {/* Balance Bar */}
         <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap" as const}}>
-          {[["PHP","₱",phpBal],["USDT","$",usdtBal],["USDC","$",usdcBal],["FLOWER","🌸",flowerBal]].map(([cur,sym,bal])=>(
+          {[
+            ["PHP",    "₱",  phpBal],
+            ["USDT",   "$",  usdtBal],
+            ["USDC",   "$",  usdcBal],
+            ["FLOWER", "🌸", flowerBal],
+          ].map(([cur,sym,bal])=>(
             <div key={cur as string} style={{background:"#0d1526",borderRadius:10,padding:"12px 20px",minWidth:140}}>
               <div style={{color:"#94a3b8",fontSize:11,marginBottom:2}}>{cur as string} Balance</div>
-              <div style={{color:"white",fontSize:20,fontWeight:700}}>{sym as string}{(+bal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              <div style={{color:"white",fontSize:20,fontWeight:700}}>
+                {sym as string}{(+bal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+              </div>
             </div>
           ))}
         </div>
@@ -213,31 +242,48 @@ export default function Swaps() {
                 color: connectedWallet===w.id ? "#22c55e" : "white",
                 cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", gap:6
               }}>
-                {w.icon} {w.name}
-                {connectedWallet===w.id && " ✓"}
+                {w.icon} {w.name}{connectedWallet===w.id && " ✓"}
               </button>
             ))}
           </div>
           {walletAddress && (
             <div style={{marginTop:10,color:"#94a3b8",fontSize:11}}>
-              Connected: <span style={{color:"#22c55e",fontFamily:"monospace"}}>{walletAddress.slice(0,8)}...{walletAddress.slice(-6)}</span>
+              Connected: <span style={{color:"#22c55e",fontFamily:"monospace"}}>
+                {walletAddress.slice(0,8)}...{walletAddress.slice(-6)}
+              </span>
             </div>
           )}
         </div>
 
         {/* Tabs */}
         <div style={{marginBottom:24}}>
-          <button style={tabStyle("crypto-php")} onClick={()=>{setTab("crypto-php");setError("");setResult(null);setQuote(null);}}>Crypto → PHP</button>
-          <button style={tabStyle("php-usdt")}   onClick={()=>{setTab("php-usdt");setError("");setResult(null);setQuote(null);}}>PHP → USDT/USDC</button>
-          <button style={tabStyle("cashout")}    onClick={()=>{setTab("cashout");setError("");setResult(null);}}>Cash Out</button>
-          <button style={tabStyle("cashin")}     onClick={()=>{setTab("cashin");setError("");setResult(null);}}>Cash In</button>
-          <button style={{...tabStyle("flower-base"), background: tab==="flower-base" ? "linear-gradient(135deg,#9333ea,#ec4899)" : "#1d2942"}}
-            onClick={()=>{setTab("flower-base");setFlowerBaseError("");setFlowerBaseResult(null);}}>
-            🌸 FLOWER ↔ BASE
+          <button style={tabStyle("crypto-php")} onClick={()=>{setTab("crypto-php");setError("");setResult(null);setQuote(null);}}>
+            Crypto → PHP
+          </button>
+          <button style={tabStyle("php-usdt")} onClick={()=>{setTab("php-usdt");setError("");setResult(null);setQuote(null);}}>
+            PHP → USDT/USDC
+          </button>
+          <button style={tabStyle("cashout")} onClick={()=>{setTab("cashout");setError("");setResult(null);}}>
+            Cash Out
+          </button>
+          <button style={tabStyle("cashin")} onClick={()=>{setTab("cashin");setError("");setResult(null);}}>
+            Cash In
+          </button>
+          {/* FLOWER ↔ USDT tab */}
+          <button
+            style={{
+              ...tabStyle("flower-usdt"),
+              background: tab==="flower-usdt"
+                ? "linear-gradient(135deg,#9333ea,#f59e0b)"
+                : "#1d2942"
+            }}
+            onClick={()=>{setTab("flower-usdt");setFuError("");setFuResult(null);}}
+          >
+            🌸 FLOWER ↔ USDT
           </button>
         </div>
 
-        {/* Crypto → PHP */}
+        {/* ── Crypto → PHP ──────────────────────────────────────────────── */}
         {tab==="crypto-php" && (
           <div style={card}>
             <h3 style={{margin:"0 0 4px"}}>Swap Crypto → PHP</h3>
@@ -252,7 +298,6 @@ export default function Swaps() {
               <label style={{color:"#94a3b8",fontSize:12}}>Amount</label>
               <input style={inp} type="number" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)}/>
             </div>
-            {/* MetaMask-style quote */}
             {quoting && <p style={{color:"#94a3b8",fontSize:12}}>Getting rate...</p>}
             {quote && !quoting && (
               <div style={{background:"#121b2f",borderRadius:8,padding:12,marginBottom:16}}>
@@ -274,7 +319,7 @@ export default function Swaps() {
           </div>
         )}
 
-        {/* PHP → USDT/USDC */}
+        {/* ── PHP → USDT/USDC ───────────────────────────────────────────── */}
         {tab==="php-usdt" && (
           <div style={card}>
             <h3 style={{margin:"0 0 4px"}}>Swap PHP → Crypto</h3>
@@ -310,7 +355,7 @@ export default function Swaps() {
           </div>
         )}
 
-        {/* Cash Out */}
+        {/* ── Cash Out ──────────────────────────────────────────────────── */}
         {tab==="cashout" && (
           <div style={card}>
             <h3 style={{margin:"0 0 4px"}}>Cash Out</h3>
@@ -352,7 +397,7 @@ export default function Swaps() {
           </div>
         )}
 
-        {/* Cash In */}
+        {/* ── Cash In ───────────────────────────────────────────────────── */}
         {tab==="cashin" && (
           <div style={card}>
             <h3 style={{margin:"0 0 4px"}}>Cash In</h3>
@@ -373,84 +418,137 @@ export default function Swaps() {
             )}
           </div>
         )}
-        {/* FLOWER ↔ BASE */}
-        {tab==="flower-base" && (() => {
-          const isF2B = flowerBaseDirection === "flower-to-base";
-          const fromLabel = isF2B ? "FLOWER 🌸" : "BASE";
-          const toLabel   = isF2B ? "BASE"       : "FLOWER 🌸";
+
+        {/* ── FLOWER ↔ USDT ─────────────────────────────────────────────── */}
+        {tab==="flower-usdt" && (() => {
+          const isF2U      = fuDirection === "flower-to-usdt";
+          const fromLabel  = isF2U ? "FLOWER 🌸" : "USDT";
+          const toLabel    = isF2U ? "USDT"       : "FLOWER 🌸";
+          const fromSymbol = isF2U ? "🌸" : "$";
+          const fromBal    = isF2U ? flowerBal : usdtBal;
+
           return (
             <div style={card}>
               <h3 style={{margin:"0 0 4px"}}>Swap {fromLabel} → {toLabel}</h3>
               <p style={{color:"#94a3b8",fontSize:13,marginTop:0,marginBottom:16}}>
-                Interchangeable swap between FLOWER and BASE via Ronin.
+                Internal swap between FLOWER and USDT. Rate fetched live from Katana DEX.
               </p>
+
+              <div style={{marginBottom:16}}>
+                <label style={{display:"block",marginBottom:6,color:"#94a3b8"}}>
+                  FLOWER Network
+                </label>
+                <select
+                  value={flowerChain}
+                  onChange={e=>setFlowerChain(e.target.value)}
+                  style={inp}
+                >
+                  <option value="RONIN">Ronin</option>
+                  <option value="BASE">Base</option>
+                  <option value="ETHEREUM" disabled>Ethereum (Soon)</option>
+                  <option value="POLYGON" disabled>Polygon (Soon)</option>
+                </select>
+              </div>
+
+              <div style={{
+                background:"#121b2f",
+                borderRadius:8,
+                padding:"8px 12px",
+                marginBottom:12,
+                color:"#22c55e",
+                fontSize:12
+              }}>
+                Active Network: {flowerChain}
+              </div>
+
+              <p style={{color:"#94a3b8",fontSize:13,marginTop:0,marginBottom:16}}>
+                {flowerChain === "RONIN" ? "Swap FLOWER on Ronin." : "Swap FLOWER on Base."}
+              </p>
+
+              {/* Balance hint */}
+              <div style={{
+                background:"#121b2f", borderRadius:8, padding:"8px 12px",
+                marginBottom:12, fontSize:12, color:"#94a3b8",
+                display:"flex", justifyContent:"space-between"
+              }}>
+                <span>Available {isF2U ? "FLOWER" : "USDT"}</span>
+                <span style={{color:"white", fontWeight:600}}>
+                  {fromSymbol}{(+fromBal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4})}
+                </span>
+              </div>
 
               {/* FROM */}
               <div style={{marginBottom:8}}>
                 <label style={{color:"#94a3b8",fontSize:12}}>From ({fromLabel})</label>
                 <input
                   style={inp} type="number" placeholder="0.00"
-                  value={flowerBaseAmount}
-                  onChange={e=>{ setFlowerBaseAmount(e.target.value); setFlowerBaseResult(null); }}
+                  value={fuAmount}
+                  onChange={e=>{ setFuAmount(e.target.value); setFuResult(null); }}
                 />
               </div>
 
-              {/* FLIP BUTTON */}
-              <div style={{display:"flex",justifyContent:"center",margin:"8px 0"}}>
-                <button onClick={flipFlowerBase} title="Flip direction" style={{
+              {/* FLIP */}
+              <div style={{display:"flex",justifyContent:"center",margin:"10px 0"}}>
+                <button onClick={flipFu} title="Flip direction" style={{
                   background:"#1d2942", border:"1px solid #2d3f5e", borderRadius:"50%",
                   width:36, height:36, cursor:"pointer", fontSize:18, color:"#94a3b8",
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  transition:"all 0.2s"
                 }}>⇅</button>
               </div>
 
-              {/* TO (read-only preview) */}
+              {/* TO (preview) */}
               <div style={{marginBottom:16}}>
                 <label style={{color:"#94a3b8",fontSize:12}}>To ({toLabel})</label>
-                <div style={{...inp, marginTop:4, padding:10, minHeight:42, color: flowerBaseQuote ? "white" : "#4a5568", display:"flex", alignItems:"center"}}>
-                  {flowerBaseQuoting
+                <div style={{...inp, marginTop:4, padding:10, minHeight:42, display:"flex", alignItems:"center"}}>
+                  {fuQuoting
                     ? <span style={{color:"#94a3b8",fontSize:12}}>Getting rate...</span>
-                    : flowerBaseQuote
-                      ? <span style={{fontWeight:700,fontSize:16}}>{flowerBaseQuote.youGetLabel ?? flowerBaseQuote.display}</span>
+                    : fuQuote
+                      ? <span style={{fontWeight:700,fontSize:16,color:"white"}}>{fuQuote.youGetLabel}</span>
                       : <span style={{color:"#4a5568"}}>0.00</span>
                   }
                 </div>
               </div>
 
               {/* Quote detail */}
-              {flowerBaseQuote && !flowerBaseQuoting && (
+              {fuQuote && !fuQuoting && (
                 <div style={{background:"#121b2f",borderRadius:8,padding:12,marginBottom:16}}>
-                  <div style={{color:"white",fontSize:14,marginBottom:2}}>{flowerBaseQuote.display}</div>
-                  <div style={{color:"#22c55e",fontSize:20,fontWeight:700}}>You get {flowerBaseQuote.youGetLabel}</div>
-                  {flowerBaseQuote.slippageLabel && (
-                    <div style={{color:"#94a3b8",fontSize:12,marginTop:4}}>Slippage {flowerBaseQuote.slippageLabel}</div>
+                  <div style={{color:"#94a3b8",fontSize:12,marginBottom:4}}>{fuQuote.display}</div>
+                  <div style={{color:"#22c55e",fontSize:20,fontWeight:700}}>You get {fuQuote.youGetLabel}</div>
+                  {fuQuote.slippageLabel && (
+                    <div style={{color:"#94a3b8",fontSize:12,marginTop:4}}>
+                      Fee &amp; slippage: {fuQuote.slippageLabel}
+                    </div>
                   )}
-                </div>
-              )}
-
-              {/* Wallet warning */}
-              {!connectedWallet && (
-                <div style={{background:"#1c1508",border:"1px solid #78350f",borderRadius:8,padding:10,marginBottom:12,color:"#fbbf24",fontSize:12}}>
-                  ⚠️ Connect MetaMask or Ronin wallet above to execute this swap.
                 </div>
               )}
 
               <button
                 className="auth-btn"
-                onClick={handleFlowerBaseSwap}
-                disabled={flowerBaseLoading || !flowerBaseAmount || !flowerBaseQuote}
-                style={{background: "linear-gradient(135deg,#9333ea,#ec4899)", border:"none"}}
+                onClick={handleFlowerUsdtSwap}
+                disabled={fuLoading || !fuAmount || !fuQuote}
+                style={{background:"linear-gradient(135deg,#9333ea,#f59e0b)",border:"none"}}
               >
-                {flowerBaseLoading ? "Swapping..." : `Swap ${fromLabel} → ${toLabel}`}
+                {fuLoading ? "Swapping..." : `Swap ${fromLabel} → ${toLabel}`}
               </button>
 
-              {flowerBaseError && <p style={{color:"#ef4444",marginTop:8,fontSize:13}}>{flowerBaseError}</p>}
-              {flowerBaseResult && (
+              {fuError && <p style={{color:"#ef4444",marginTop:8,fontSize:13}}>{fuError}</p>}
+
+              {fuResult && (
                 <div style={{marginTop:12,padding:12,background:"#0a1f0a",borderRadius:8}}>
                   <p style={{color:"#22c55e",margin:0}}>✓ Swap successful!</p>
-                  {flowerBaseResult.txRef && <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>Ref: {flowerBaseResult.txRef}</p>}
-                  {flowerBaseResult.txHash && <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0",fontFamily:"monospace"}}>Tx: {flowerBaseResult.txHash}</p>}
+                  {fuResult.txRef && (
+                    <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>Ref: {fuResult.txRef}</p>
+                  )}
+                  {fuResult.usdtOut && (
+                    <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
+                      Received: ${fuResult.usdtOut.toFixed(4)} USDT
+                    </p>
+                  )}
+                  {fuResult.flowerOut && (
+                    <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
+                      Received: 🌸 {fuResult.flowerOut.toFixed(4)} FLOWER
+                    </p>
+                  )}
                 </div>
               )}
             </div>
