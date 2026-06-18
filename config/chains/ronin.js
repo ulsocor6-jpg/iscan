@@ -36,7 +36,7 @@ export default {
   platformFeePercent: PLATFORM_FEE,
   minConfirmations: MIN_CONFIRMATIONS,
   slippageBps: 200,        // 2%
-  deadlineSeconds: 300,    // 5 min
+  deadlineSeconds: 600,    // 5 min
 
   deriveAddress: deriveRoninAddress
 };
