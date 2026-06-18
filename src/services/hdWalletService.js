@@ -39,3 +39,23 @@ export async function getNextWalletIndex() {
   const { default: DepositAddress } = await import('../models/depositAddressModel.js');
   return await DepositAddress.countDocuments();
 }
+
+export async function deriveRoninAddress(index) {
+  if (!MASTER_MNEMONIC) {
+    throw new Error("HD_WALLET_MNEMONIC missing");
+  }
+
+  const hdNode = ethers.HDNodeWallet.fromPhrase(
+    MASTER_MNEMONIC,
+    undefined,
+    "m/44'/60'/0'/0"
+  );
+
+  const child = hdNode.deriveChild(index);
+
+  return {
+    address: child.address.toLowerCase(),
+    privateKey: child.privateKey,
+    index
+  };
+}
