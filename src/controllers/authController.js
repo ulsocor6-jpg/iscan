@@ -334,3 +334,31 @@ export const resetPassword = async (req, res) => {
     return res.status(500).json({ message: 'Server error.' });
   }
 };
+
+/* =========================
+   RESEND VERIFICATION
+========================= */
+export const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required.' });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.json({ message: 'If that email exists, a verification link has been sent.' });
+    if (user.isVerified) return res.status(400).json({ message: 'Account is already verified.' });
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.verificationToken = verificationToken;
+    await user.save();
+    const verifyLink = `${process.env.APP_URL}/api/v1/auth/verify-email?token=${verificationToken}`;
+    const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }, connectionTimeout: 5000, greetingTimeout: 5000, socketTimeout: 5000 });
+    await transporter.sendMail({
+      from: `"ISCAN System" <${process.env.EMAIL_USER}>`,
+      to: email.toLowerCase(),
+      subject: 'Verify your ISCAN account',
+      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto"><h2 style="color:#4F46E5">Verify your ISCAN account</h2><p>Click the button below to verify your email address.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px"><a href="${verifyLink}" style="background-color:#4F46E5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;font-family:Arial,sans-serif;font-size:16px;display:inline-block">Verify Account</a></td></tr></table><p style="color:#666;font-size:13px">Or copy this link into your browser:</p><p style="word-break:break-all;color:#4F46E5;font-size:13px">${verifyLink}</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0"><p style="color:#999;font-size:12px">If you didn't create an ISCAN account, ignore this email.</p></div>`
+    });
+    return res.json({ message: 'If that email exists, a verification link has been sent.' });
+  } catch (error) {
+    console.error('[RESEND VERIFICATION ERROR]', error);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};

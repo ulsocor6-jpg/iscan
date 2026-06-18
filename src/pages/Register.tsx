@@ -2,6 +2,7 @@ import { useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { register } from "../services/authService";
 import "../styles/auth.css";
+
 export default function Register() {
   const [firstName, setFirstName] = useState("");
   const [lastName,  setLastName]  = useState("");
@@ -10,6 +11,9 @@ export default function Register() {
   const [error,     setError]     = useState("");
   const [loading,   setLoading]   = useState(false);
   const [success,   setSuccess]   = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
+  const [resending, setResending] = useState(false);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -25,6 +29,25 @@ export default function Register() {
       setLoading(false);
     }
   }
+
+  async function handleResend() {
+    setResending(true);
+    setResendMsg("");
+    try {
+      const res = await fetch("/api/v1/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      setResendMsg(data.message || "Verification email sent.");
+    } catch {
+      setResendMsg("Failed to resend. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
   if (success) {
     return (
       <div className="auth-shell">
@@ -43,6 +66,12 @@ export default function Register() {
               💡 <strong>Didn't receive it?</strong> Check your <strong>spam or junk folder</strong> — verification emails sometimes end up there. Mark it as "Not Spam" to ensure future emails arrive in your inbox.
             </p>
           </div>
+          {resendMsg && (
+            <div className="auth-alert auth-alert--success" style={{marginBottom:"16px"}}>{resendMsg}</div>
+          )}
+          <button onClick={handleResend} disabled={resending} className="auth-btn" style={{marginBottom:"12px",background:"transparent",border:"1px solid #4F46E5",color:"#4F46E5"}}>
+            {resending ? "Sending…" : "Resend verification email"}
+          </button>
           <Link to="/login" className="auth-btn" style={{display:"block",textDecoration:"none"}}>
             Go to Sign In
           </Link>
@@ -50,6 +79,7 @@ export default function Register() {
       </div>
     );
   }
+
   return (
     <div className="auth-shell">
       <div className="auth-card">

@@ -6,7 +6,8 @@ import {
   verify,
   verifyEmail,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  resendVerification
 } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
@@ -20,5 +21,6 @@ router.get('/me', requireAuth, verify);  // alias — dashboard calls both
 router.get('/verify-email', verifyEmail);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.post('/resend-verification', resendVerification);
 
 export default router;
