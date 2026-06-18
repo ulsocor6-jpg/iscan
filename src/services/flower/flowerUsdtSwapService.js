@@ -16,21 +16,41 @@ const PLATFORM_FEE = 0.02; // 2%
 
 // ── Get live FLOWER/USDT rate from Katana ────────────────────────────────────
 export async function getFlowerUsdtRate() {
+  // 1. Try CoinGecko first (live market price)
+  try {
+    const res   = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=sunflower-land&vs_currencies=usd",
+      { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(5000) }
+    );
+    const data  = await res.json();
+    const price = data?.flower?.usd;
+    if (price && price > 0) {
+      console.log(`[FlowerUsdt] CoinGecko rate: 1 FLOWER = ${price} USDT`);
+      return price;
+    }
+  } catch (err) {
+    console.warn("[FlowerUsdt] CoinGecko failed:", err.message);
+  }
+
+  // 2. Fallback: Katana DEX on-chain
   try {
     const provider = new ethers.JsonRpcProvider(RONIN_RPC);
     const router   = new ethers.Contract(KATANA_ROUTER, KATANA_ROUTER_ABI, provider);
-
-    const amountIn = ethers.parseUnits("1", 18); // 1 FLOWER
+    const amountIn = ethers.parseUnits("1", 18);
     const path     = [RONIN_TOKENS.FLOWER, RONIN_TOKENS.USDT ?? RONIN_TOKENS.USDC];
-
     const amounts  = await router.getAmountsOut(amountIn, path);
-    const usdtOut  = parseFloat(ethers.formatUnits(amounts[1], 6)); // USDT = 6 decimals
-    return usdtOut;
-  } catch {
-    // Fallback: use a safe static rate if RPC fails
-    console.warn("[FlowerUsdt] Could not fetch live rate — using fallback 0.002");
-    return 0.002;
+    const usdtOut  = parseFloat(ethers.formatUnits(amounts[1], 6));
+    if (usdtOut > 0) {
+      console.log(`[FlowerUsdt] Katana rate: 1 FLOWER = ${usdtOut} USDT`);
+      return usdtOut;
+    }
+  } catch (err) {
+    console.warn("[FlowerUsdt] Katana RPC failed:", err.message);
   }
+
+  // 3. Last resort
+  console.warn("[FlowerUsdt] All sources failed — using fallback 0.0712");
+  return 0.0712;
 }
 
 // ── Quote (no side effects) ───────────────────────────────────────────────────
