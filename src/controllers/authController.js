@@ -62,7 +62,8 @@ export const register = async (req, res) => {
 
     console.log('[REGISTER] step: about to send email...');
     // 4. Send verification email (non-blocking - registration must not fail/hang if email fails)
-    const verifyLink = `${process.env.APP_URL}/api/v1/auth/verify-email?token=${verificationToken}`;
+    const appUrl = process.env.APP_URL || 'https://iscanscaling.com';
+    const verifyLink = `${appUrl}/api/v1/auth/verify-email?token=${verificationToken}`;
 
     try {
       const transporter = nodemailer.createTransport({
@@ -166,7 +167,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    if (false && !user.isVerified) {
+    if (!user.isVerified) {
       return res.status(403).json({ message: 'Please verify your email first.' });
     }
 
@@ -263,7 +264,8 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
     await user.save();
 
-    const resetLink = `${process.env.APP_URL}/reset-password?token=${resetToken}`;
+    const appUrl = process.env.APP_URL || 'https://iscanscaling.com';
+    const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -334,3 +336,4 @@ export const resetPassword = async (req, res) => {
     return res.status(500).json({ message: 'Server error.' });
   }
 };
+
