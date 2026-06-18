@@ -6,9 +6,11 @@ import { deriveRoninAddress } from "../hdWalletService.js";
 
 // Count existing Ronin assignments → next unique HD index
 async function getNextRoninIndex() {
-  return await Wallet.countDocuments({
-    "chainAddresses.chain": "RONIN"
-  });
+  const last = await DepositAddress
+    .findOne({ chain: "RONIN" })
+    .sort({ hdIndex: -1 });
+
+  return last ? last.hdIndex + 1 : 0;
 }
 
 // Get or create Ronin deposit address for a user

@@ -123,7 +123,7 @@ export default function WalletManager() {
 
         {/* Balance Summary */}
         <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap" as const}}>
-          {[["PHP","₱",balances.PHP||0],["USDT","$",balances.USDT||0],["USDC","$",balances.USDC||0]].map(([cur,sym,bal])=>(
+          {[["PHP","₱",balances.PHP||0],["USDT","$",balances.USDT||0],["USDC","$",balances.USDC||0],["FLOWER","🌸",balances.FLOWER||0],["RON","⚔️",balances.RON||0]].map(([cur,sym,bal])=>(
             <div key={cur as string} style={{background:"#0d1526",borderRadius:10,padding:"12px 20px",minWidth:130}}>
               <div style={{color:"#94a3b8",fontSize:11}}>{cur as string}</div>
               <div style={{color:"white",fontSize:18,fontWeight:700}}>{sym as string}{(+bal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
@@ -170,7 +170,7 @@ export default function WalletManager() {
             </h3>
             <div style={{width:12,height:12,borderRadius:"50%",background:chain?.color,display:"inline-block",marginBottom:16}}/>
 
-            {address ? (
+            {address && !["ETHEREUM","POLYGON"].includes(activeChain) ? (
               <>
                 {/* QR Toggle */}
                 <button onClick={() => setShowQR(!showQR)} style={{
@@ -207,7 +207,7 @@ export default function WalletManager() {
                 {/* Warning */}
                 <div style={{padding:10,background:"#1a1200",borderRadius:8,border:"1px solid #854d0e"}}>
                   <p style={{color:"#fbbf24",fontSize:11,margin:0}}>
-                    ⚠ Only send <strong>USDT/USDC</strong> on <strong>{chain?.name}</strong> to this address.
+                    ⚠ Only send <strong>FLOWER</strong> on <strong>{chain?.name}</strong> to this address.
                   </p>
                 </div>
               </>

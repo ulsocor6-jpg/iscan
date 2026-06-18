@@ -4,7 +4,7 @@ export default function Treasury() {
   const [wallets, setWallets] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch("/api/v1/wallet/list",{credentials:"include"}).then(r=>r.json()).then(d=>{setWallets(d.wallets||[]);setLoading(false);});
+    fetch("/api/v1/wallet/admin/list",{credentials:"include"}).then(r=>r.json()).then(d=>{setWallets(d.wallets||[]);setLoading(false);});
   }, []);
   return (
     <DashboardLayout>

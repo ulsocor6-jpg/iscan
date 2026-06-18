@@ -20,6 +20,13 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return authenticated ? children : <Navigate to="/login" replace />;
 }
 
+function RequireAdmin({ children }: { children: JSX.Element }) {
+  const { loading, authenticated, user } = useAuth();
+  if (loading) return null;
+  if (!authenticated) return <Navigate to="/login" replace />;
+  return user?.role === "admin" ? children : <Navigate to="/dashboard" replace />;
+}
+
 function GuestOnly({ children }: { children: JSX.Element }) {
   const { loading, authenticated } = useAuth();
   if (loading) return null;
@@ -35,13 +42,13 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ForgotPassword resetMode />} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-                <Route path="/deposits"   element={<RequireAuth><Deposits /></RequireAuth>} />
+        <Route path="/deposits"   element={<RequireAuth><Deposits /></RequireAuth>} />
         <Route path="/transfers"  element={<RequireAuth><Transfers /></RequireAuth>} />
         <Route path="/swaps"      element={<RequireAuth><Swaps /></RequireAuth>} />
         <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />
         <Route path="/activity"   element={<RequireAuth><Activity /></RequireAuth>} />
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
-        <Route path="/treasury"      element={<RequireAuth><Treasury /></RequireAuth>} />
+        <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />
         <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />
         <Route path="/settings"   element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

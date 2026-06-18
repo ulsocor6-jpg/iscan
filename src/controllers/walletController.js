@@ -21,8 +21,8 @@ function formatBalances(wallet) {
 async function getOrCreateWallet(userId) {
   let wallet = await Wallet.findOne({ userId });
   if (!wallet) {
-    const count = await DepositAddress.countDocuments({ userId });
-    const ws    = await deriveUserWallets(count);
+    const walletIndex = await Wallet.countDocuments();
+    const ws    = await deriveUserWallets(walletIndex);
     const chainAddresses = Object.entries(ws).map(([chain, data]) => ({
       chain, address: data.address, chainId: SUPPORTED_CHAINS[chain]?.chainId || '0x1',
       usdtBalance:0, usdcBalance:0,
@@ -100,4 +100,23 @@ export const unlinkWallet = async (req, res) => {
     await wallet.save();
     return res.json({ success:true, wallets:wallet.linkedWallets });
   } catch(err) { res.status(500).json({ error:'Unlink failed' }); }
+};
+
+export const getAllWalletsAdmin = async (req, res) => {
+  try {
+    const wallets = await Wallet.find({}).select('iscanAddress status balances chainAddresses createdAt');
+    return res.json({
+      success: true,
+      wallets: wallets.map(w => ({
+        iscanAddress: w.iscanAddress,
+        status: w.status,
+        balances: formatBalances(w),
+        chainAddresses: w.chainAddresses,
+        createdAt: w.createdAt,
+      }))
+    });
+  } catch (err) {
+    console.error('[ADMIN WALLET LIST ERROR]', err);
+    res.status(500).json({ error: 'Failed to fetch wallets' });
+  }
 };

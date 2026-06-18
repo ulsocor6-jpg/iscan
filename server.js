@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import app from './app.js';
 import { startSettlementWorker } from './src/services/settlement/index.js';
 import { startRoninListener } from './src/services/blockchain/roninListener.js';
+import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.js';
 
 async function startServer() {
   try {
@@ -23,6 +24,11 @@ async function startServer() {
 
     try {
       startRoninListener();
+    try {
+      startTreasuryBalancer();
+    } catch (err) {
+      console.error("Treasury balancer failed to start (continuing anyway):", err.message);
+    }
     } catch (err) {
       console.error("Ronin listener failed to start (continuing anyway):", err.message);
     }
