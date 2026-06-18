@@ -7,7 +7,7 @@ async function api(path: string, options: RequestInit = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Request failed");
+  if (!res.ok) { console.error("API error:", res.status, data); throw new Error(data.message || "Request failed"); }
   return data;
 }
 
