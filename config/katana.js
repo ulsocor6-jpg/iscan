@@ -86,7 +86,7 @@ export const RONIN_TOKENS = {
 };
 
 export const DEFAULT_SLIPPAGE_BPS  = 200;
-export const SWAP_DEADLINE_SECONDS = 300;
+export const SWAP_DEADLINE_SECONDS = 600;
 
 export default {
   KATANA_ROUTER_ABI,

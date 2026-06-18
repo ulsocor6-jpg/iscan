@@ -11,7 +11,7 @@ type Props = {
 const CHAINS = [
   { id: "tron",  token: "USDT",   label: "TRON",  symbol: "USDT-TRC20", color: "#ef4444", icon: "🔴", warning: "Send only USDT (TRC20) to this address. Other assets will be lost." },
   { id: "ronin", token: "FLOWER", label: "Ronin", symbol: "FLOWER",      color: "#2563eb", icon: "🗡️", warning: "Send only FLOWER on Ronin to this address." },
-  { id: "base",  token: "USDC",   label: "Base",  symbol: "USDC",        color: "#3b82f6", icon: "🔵", warning: "Send only USDC on Base to this address." },
+  { id: "base",  token: "FLOWER", label: "Base",  symbol: "FLOWER",        color: "#3b82f6", icon: "🔵", warning: "Send only USDC on Base to this address." },
 ];
 
 export default function HeroBalance({ data }: Props) {
