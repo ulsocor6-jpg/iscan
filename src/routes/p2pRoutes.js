@@ -1,10 +1,11 @@
 import express from 'express';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireFullKYC } from '../middleware/kycTierMiddleware.js';
 import { transfer } from '../services/p2pTransferService.js';
 
 const router = express.Router();
 
-router.post('/send', requireAuth, async (req, res) => {
+router.post('/send', requireAuth, requireFullKYC, async (req, res) => {
   try {
     const { receiverId, amount } = req.body;
 

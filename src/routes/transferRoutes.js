@@ -3,6 +3,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requireFullKYC } from "../middleware/kycTierMiddleware.js";
 import User from "../models/userModel.js";
 import Wallet from "../models/walletModel.js";
 import Transaction from "../models/transactionModel.js";
@@ -56,7 +57,7 @@ const resolveReceiver = async (receiverEmail, receiverAddress) => {
 /**
  * POST /send
  */
-router.post("/send", requireAuth, async (req, res) => {
+router.post("/send", requireAuth, requireFullKYC, async (req, res) => {
   try {
     const {
       receiverEmail,
