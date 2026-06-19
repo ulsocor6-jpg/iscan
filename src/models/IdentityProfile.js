@@ -51,6 +51,7 @@ const identityProfileSchema = new mongoose.Schema({
   },
 
   rejectionReason: { type: String, default: null },
+  diditSessionId: { type: String, default: null },
   reviewedAt:      { type: Date,   default: null },
   reviewedBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
