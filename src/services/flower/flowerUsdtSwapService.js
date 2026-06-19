@@ -8,6 +8,7 @@ import Wallet           from "../../models/walletModel.js";
 import Transaction      from "../../models/transactionModel.js";
 import Ledger           from "../../models/ledgerModel.js";
 import flowerConfig     from "../../../config/flower.js";
+import walletService   from "../walletService.js";
 import { ERC20_ABI, KATANA_ROUTER_ABI, RONIN_TOKENS } from "../../../config/katana.js";
 
 const { RONIN_RPC, FLOWER_TOKEN, KATANA_ROUTER } = flowerConfig;
@@ -96,22 +97,17 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   const fee      = gross * PLATFORM_FEE;
   const usdtOut  = +(gross * (1 - 0.015) - fee).toFixed(6);
 
-  // Check FLOWER balance (stored in wallet.balances Map)
-  const flowerWallet = await Wallet.findOne({ userId });
-  const flowerBal = flowerWallet?.balances?.get?.("FLOWER") ?? flowerWallet?.balances?.FLOWER ?? 0;
-  if (!flowerWallet || flowerBal < amount)
+  // Check FLOWER balance
+  const flowerBal = await walletService.getBalance(userId, "FLOWER");
+  if (flowerBal < amount)
     throw new Error(`Insufficient FLOWER balance. Available: ${flowerBal}`);
 
   // Deduct FLOWER
-  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.FLOWER": -amount } });
+  await walletService.debit(userId, "FLOWER", amount);
 
   try {
     // Credit USDT
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $inc: { "balances.USDT": usdtOut } },
-      { upsert: true, new: true }
-    );
+    await walletService.credit(userId, "USDT", usdtOut);
 
     // Ledger entries
     await Ledger.create({ referenceId: txRef, userId, transactionType: "debit",  debit: amount,  credit: 0,       currency: "FLOWER", description: "FLOWER→USDT swap debit" });
@@ -132,7 +128,7 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
 
   } catch (err) {
     // Rollback FLOWER
-    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.FLOWER": amount } });
+    await walletService.credit(userId, "FLOWER", amount);
     throw err;
   }
 }
@@ -144,22 +140,17 @@ export async function settleUsdtToFlower({ userId, amount, txRef = uuid() }) {
   const fee       = gross * PLATFORM_FEE;
   const flowerOut = +(gross * (1 - 0.015) - fee).toFixed(4);
 
-  // Check USDT balance (stored in wallet.balances Map)
-  const usdtWallet = await Wallet.findOne({ userId });
-  const usdtBal = usdtWallet?.balances?.get?.("USDT") ?? usdtWallet?.balances?.USDT ?? 0;
-  if (!usdtWallet || usdtBal < amount)
+  // Check USDT balance
+  const usdtBal = await walletService.getBalance(userId, "USDT");
+  if (usdtBal < amount)
     throw new Error(`Insufficient USDT balance. Available: ${usdtBal}`);
 
   // Deduct USDT
-  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.USDT": -amount } });
+  await walletService.debit(userId, "USDT", amount);
 
   try {
     // Credit FLOWER
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $inc: { "balances.FLOWER": flowerOut } },
-      { upsert: true, new: true }
-    );
+    await walletService.credit(userId, "FLOWER", flowerOut);
 
     // Ledger entries
     await Ledger.create({ referenceId: txRef, userId, transactionType: "debit",  debit: amount,    credit: 0,         currency: "USDT",   description: "USDT→FLOWER swap debit" });
@@ -180,7 +171,7 @@ export async function settleUsdtToFlower({ userId, amount, txRef = uuid() }) {
 
   } catch (err) {
     // Rollback USDT
-    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.USDT": amount } });
+    await walletService.credit(userId, "USDT", amount);
     throw err;
   }
 }
