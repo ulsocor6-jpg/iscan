@@ -1,62 +1,78 @@
-import maya from '../integrations/paymentProviders/mayaProvider.js';
+/**
+ * settlementEngine.js  (UPDATED)
+ * ─────────────────────────────────────────────────────────────
+ * Routes cash-out to the right rail: Maya → GCash → Bank
+ * Uses preferredRail hint from CashoutRequest.destinationType
+ * Falls back through all rails on failure.
+ */
+
+import maya    from '../integrations/paymentProviders/mayaProvider.js';
 import coinsph from '../integrations/paymentProviders/coinsphProvider.js';
 import Transaction from '../models/transactionModel.js';
 
-/**
- * SETTLEMENT ENGINE (RETRY + PROVIDER ROUTING)
- */
+// Rail definitions — ordered by preference
+const RAILS = {
+  MAYA:    { key: 'maya',    label: 'Maya' },
+  GCASH:   { key: 'coinsph', label: 'GCash via Coins.ph' },
+  COINSPH: { key: 'coinsph', label: 'Coins.ph' },
+  BANK:    { key: 'maya',    label: 'Bank via Maya' },   // Maya supports instapay
+};
+
+const DEFAULT_ORDER = ['maya', 'coinsph'];
+
 class SettlementEngine {
 
   async settle(transaction) {
+    // Build rail order: preferred first, then fallbacks
+    const preferred = transaction.preferredRail
+      ? RAILS[transaction.preferredRail]?.key
+      : null;
 
-    const providers = [
-      'maya',
-      'coinsph'
-    ];
+    const order = preferred
+      ? [preferred, ...DEFAULT_ORDER.filter(r => r !== preferred)]
+      : DEFAULT_ORDER;
 
-    for (const provider of providers) {
+    const errors = [];
 
+    for (const rail of order) {
       try {
-
         let result;
 
-        if (provider === 'maya') {
+        if (rail === 'maya') {
           result = await maya.sendMoney({
-            amount: transaction.amount,
-            account: transaction.receiverAddress
+            amount:  transaction.amount,
+            account: transaction.receiverAddress,
           });
         }
 
-        if (provider === 'coinsph') {
+        if (rail === 'coinsph') {
           result = await coinsph.sendMoney({
-            amount: transaction.amount,
-            address: transaction.receiverAddress
+            amount:  transaction.amount,
+            address: transaction.receiverAddress,
           });
         }
 
-        // success → update transaction
         if (result?.success) {
           await Transaction.findByIdAndUpdate(transaction._id, {
-            settlementMethod: provider,
-            settlementRef: result.referenceId,
-            status: 'settled'
+            settlementMethod: rail,
+            settlementRef:    result.referenceId,
+            status:           'settled',
           });
 
-          return result;
+          console.log(`[settlementEngine] ✅ Settled via ${rail}, ref: ${result.referenceId}`);
+          return { success: true, provider: rail, referenceId: result.referenceId };
         }
 
       } catch (err) {
-        // try next provider
+        console.warn(`[settlementEngine] ⚠️ ${rail} failed:`, err.message);
+        errors.push(`${rail}: ${err.message}`);
         continue;
       }
     }
 
-    // all failed
-    await Transaction.findByIdAndUpdate(transaction._id, {
-      status: 'failed'
-    });
-
-    throw new Error('All settlement providers failed');
+    // All rails failed
+    await Transaction.findByIdAndUpdate(transaction._id, { status: 'failed' });
+    throw new Error(`All settlement rails failed: ${errors.join(' | ')}`);
   }
 }
 
