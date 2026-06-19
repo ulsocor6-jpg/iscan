@@ -29,6 +29,7 @@ import internalWalletRoutes from './src/routes/internalWalletRoutes.js';
 import webhookRoutes from './src/routes/webhookRoutes.js';
 import paymentRoutes from './src/routes/paymentRoutes.js';
 import payoutRoutes from './src/routes/payoutRoutes.js';
+import directDepositRoutes from './src/routes/directDepositRoutes.js';
 
 dotenv.config();
 
@@ -76,6 +77,7 @@ app.use('/api/v1/internal-wallets', internalWalletRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/payout', payoutRoutes);
+app.use('/api/v1/deposit', directDepositRoutes);
 
 
 
