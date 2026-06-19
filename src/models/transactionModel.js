@@ -41,7 +41,7 @@ const transactionSchema = new mongoose.Schema(
 
     currency: {
       type: String,
-      enum: ['PHP', 'USDC', 'ETH', 'MATIC'],
+      enum: ['PHP', 'USDC', 'USDT', 'FLOWER', 'ETH', 'MATIC', 'RON'],
       default: 'PHP',
       required: true,
       index: true
