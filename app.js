@@ -18,6 +18,7 @@ import transferRoutes from './src/routes/transferRoutes.js';
 import bankRoutes from './src/routes/bankRoutes.js';
 import beneficiaryRoutes from './src/routes/beneficiaryRoutes.js';
 import kycRoutes from './src/routes/kycRoutes.js';
+import diditRoutes from './src/routes/diditRoutes.js';
 import swapRoutes from './src/routes/swapRoutes.js';
 import phpSwapRoutes from './src/routes/phpSwapRoutes.js';
 import onrampRoutes from './src/routes/CryptoOnramproutes.js';
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/v1/didit/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -63,6 +65,7 @@ app.use('/api/v1/bank', bankRoutes);
 app.use('/api/v1/flower', flowerRoutes);
 app.use('/api/v1/beneficiaries', beneficiaryRoutes);
 app.use('/api/v1/kyc', kycRoutes);
+app.use('/api/v1/didit', diditRoutes);
 app.use('/api/v1/swap', swapRoutes);
 app.use('/api/v1/php-swap', phpSwapRoutes);
 app.use('/api/v1/onramp', onrampRoutes);
