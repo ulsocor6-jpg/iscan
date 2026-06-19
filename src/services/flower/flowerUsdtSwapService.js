@@ -19,7 +19,7 @@ export async function getFlowerUsdtRate() {
   // 1. Try CoinGecko first (live market price)
   try {
     const res   = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=sunflower-land&vs_currencies=usd",
+      "https://api.coingecko.com/api/v3/simple/price?ids=flower-2&vs_currencies=usd",
       { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(5000) }
     );
     const data  = await res.json();
