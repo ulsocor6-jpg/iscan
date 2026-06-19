@@ -132,7 +132,7 @@ export const verifyEmail = async (req, res) => {
 
     return res.send(`
       <h2>Email Verified Successfully</h2>
-      <a href="/login.html">Go to Login</a>
+      <a href="/login">Go to Login</a>
     `);
 
   } catch (error) {
