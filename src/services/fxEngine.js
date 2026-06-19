@@ -10,7 +10,7 @@
  */
 
 import { getUSDPHPRate } from './fx/phpRateOracle.js';
-import { getRate }       from './rateProvider.js';
+import { getRate }       from './fx/rateProvider.js';
 
 // Map asset → how to get PHP rate
 const RATE_STRATEGY = {
