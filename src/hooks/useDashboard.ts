@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API = "/api/v1/dashboard/";
+const API = "/api/v1/dashboard";
 
 export function useDashboard() {
   const [dashboard, setDashboard] = useState<any>(null);
@@ -11,8 +11,8 @@ export function useDashboard() {
     try {
       const res = await fetch(API, { credentials: "include" });
       const json = await res.json();
-      if (res.ok && json) {
-        setDashboard(json.data);
+      if (res.ok && json.success) {
+        setDashboard(json);  // your API returns json directly, not json.data
       } else {
         setError(json.message || "Failed to load dashboard");
       }
