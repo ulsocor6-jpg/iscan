@@ -1,6 +1,7 @@
 import PhpLiquidityPool from '../../models/phpLiquidityPool.js';
 import { getUSDPHPRate, getPHPUSDRate } from '../fx/phpRateOracle.js';
 import Wallet from '../../models/walletModel.js';
+import walletService from '../walletService.js';
 import Transaction from '../../models/transactionModel.js';
 
 async function getPool(currency) {
@@ -29,11 +30,7 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
 
   try {
     // Credit user PHP wallet
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $inc: { "balances.PHP": phpOut } },
-      { upsert: true, new: true }
-    );
+    await walletService.credit(userId, "PHP", phpOut);
 
     // Settle pools
     phpPool.balance        -= phpOut;
@@ -75,20 +72,15 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
     throw new Error(`Insufficient ${currency} liquidity. Available: ${stablePool.balance.toFixed(2)}`);
 
   // Deduct PHP from user
-  const wallet = await Wallet.findOne({ userId });
-  const phpBal = wallet?.balances?.get?.("PHP") ?? wallet?.balances?.PHP ?? 0;
-  if (!wallet || phpBal < phpAmount)
+  const phpBal = await walletService.getBalance(userId, "PHP");
+  if (phpBal < phpAmount)
     throw new Error('Insufficient PHP balance');
 
-  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.PHP": -phpAmount } });
+  await walletService.debit(userId, "PHP", phpAmount);
 
   try {
     // Credit stablecoin to user
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $inc: { [`balances.${currency}`]: usdtOut } },
-      { upsert: true, new: true }
-    );
+    await walletService.credit(userId, currency, usdtOut);
 
     // Settle pools
     phpPool.balance          += phpAmount;
@@ -111,7 +103,7 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
     return { usdtOut, rate, txRef };
 
   } catch (err) {
-    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.PHP": phpAmount } });
+    await walletService.credit(userId, "PHP", phpAmount);
     throw err;
   }
 }
