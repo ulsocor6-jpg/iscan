@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API = "/api/v1/dashboard/overview";
+const API = "/api/v1/dashboard/";
 
 export function useDashboard() {
   const [dashboard, setDashboard] = useState<any>(null);

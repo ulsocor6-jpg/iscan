@@ -5,6 +5,8 @@ type Props = {
   data?: {
     totalVolume?: number;
     totalTransactions?: number;
+    totalBalancePHP?: number;
+    breakdown?: { currency: string; amount: number; php: number }[];
   };
 };
 
@@ -72,8 +74,18 @@ export default function HeroBalance({ data }: Props) {
   return (
     <div className="hero-card">
       <div style={{color:"#94a3b8",fontSize:14}}>ISCAN Operations Dashboard</div>
-      <h1 style={{margin:"8px 0"}}>₱{(data?.totalVolume ?? 0).toLocaleString()}</h1>
+      <h1 style={{margin:"8px 0"}}>₱{(data?.totalBalancePHP ?? 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</h1>
       <div style={{color:"#94a3b8"}}>{data?.totalTransactions ?? 0} Transactions Processed</div>
+      {data?.breakdown && data.breakdown.length > 0 && (
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>
+          {data.breakdown.map(b => (
+            <div key={b.currency} style={{background:"#0d1526",borderRadius:8,padding:"6px 12px",fontSize:12,color:"#94a3b8"}}>
+              <span style={{color:"white",fontWeight:600}}>{b.amount.toLocaleString(undefined,{maximumFractionDigits:4})}</span> {b.currency}
+              {b.currency !== "PHP" && <span style={{color:"#64748b"}}> (₱{b.php.toLocaleString(undefined,{maximumFractionDigits:2})})</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action buttons */}
       {step === "idle" && (

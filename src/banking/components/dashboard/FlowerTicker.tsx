@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 const MAX_POINTS = 20;
-const COINGECKO_ID = "flower-price"; // CoinGecko coin id for FLOWER
+const COINGECKO_ID = "flower-2"; // CoinGecko coin id for FLOWER
 
 export default function FlowerTicker() {
   const [points, setPoints] = useState<number[]>([]);

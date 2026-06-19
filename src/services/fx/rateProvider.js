@@ -4,7 +4,9 @@ const COINS = {
   USDC: "usd-coin",
   USDT: "tether",
   ETH: "ethereum",
-  MATIC: "matic-network"
+  MATIC: "matic-network",
+  FLOWER: "flower-2",
+  RON: "ronin"
 };
 
 // fallback-safe multi source
