@@ -96,20 +96,20 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   const fee      = gross * PLATFORM_FEE;
   const usdtOut  = +(gross * (1 - 0.015) - fee).toFixed(6);
 
-  // Check FLOWER balance
-  const flowerWallet = await Wallet.findOne({ userId, currency: "FLOWER" });
-  if (!flowerWallet || flowerWallet.balance < amount)
-    throw new Error(`Insufficient FLOWER balance. Available: ${flowerWallet?.balance ?? 0}`);
+  // Check FLOWER balance (stored in wallet.balances Map)
+  const flowerWallet = await Wallet.findOne({ userId });
+  const flowerBal = flowerWallet?.balances?.get?.("FLOWER") ?? flowerWallet?.balances?.FLOWER ?? 0;
+  if (!flowerWallet || flowerBal < amount)
+    throw new Error(`Insufficient FLOWER balance. Available: ${flowerBal}`);
 
   // Deduct FLOWER
-  flowerWallet.balance -= amount;
-  await flowerWallet.save();
+  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.FLOWER": -amount } });
 
   try {
     // Credit USDT
     await Wallet.findOneAndUpdate(
-      { userId, currency: "USDT" },
-      { $inc: { balance: usdtOut } },
+      { userId },
+      { $inc: { "balances.USDT": usdtOut } },
       { upsert: true, new: true }
     );
 
@@ -132,8 +132,7 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
 
   } catch (err) {
     // Rollback FLOWER
-    flowerWallet.balance += amount;
-    await flowerWallet.save();
+    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.FLOWER": amount } });
     throw err;
   }
 }
@@ -145,20 +144,20 @@ export async function settleUsdtToFlower({ userId, amount, txRef = uuid() }) {
   const fee       = gross * PLATFORM_FEE;
   const flowerOut = +(gross * (1 - 0.015) - fee).toFixed(4);
 
-  // Check USDT balance
-  const usdtWallet = await Wallet.findOne({ userId, currency: "USDT" });
-  if (!usdtWallet || usdtWallet.balance < amount)
-    throw new Error(`Insufficient USDT balance. Available: ${usdtWallet?.balance ?? 0}`);
+  // Check USDT balance (stored in wallet.balances Map)
+  const usdtWallet = await Wallet.findOne({ userId });
+  const usdtBal = usdtWallet?.balances?.get?.("USDT") ?? usdtWallet?.balances?.USDT ?? 0;
+  if (!usdtWallet || usdtBal < amount)
+    throw new Error(`Insufficient USDT balance. Available: ${usdtBal}`);
 
   // Deduct USDT
-  usdtWallet.balance -= amount;
-  await usdtWallet.save();
+  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.USDT": -amount } });
 
   try {
     // Credit FLOWER
     await Wallet.findOneAndUpdate(
-      { userId, currency: "FLOWER" },
-      { $inc: { balance: flowerOut } },
+      { userId },
+      { $inc: { "balances.FLOWER": flowerOut } },
       { upsert: true, new: true }
     );
 
@@ -181,8 +180,7 @@ export async function settleUsdtToFlower({ userId, amount, txRef = uuid() }) {
 
   } catch (err) {
     // Rollback USDT
-    usdtWallet.balance += amount;
-    await usdtWallet.save();
+    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.USDT": amount } });
     throw err;
   }
 }
