@@ -45,9 +45,13 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     await stablePool.save();
 
     await Transaction.create({
-      userId, type: 'SWAP', subType: `${currency}_TO_PHP`,
-      amount: stablecoinAmount, currency, phpAmount: phpOut,
-      rate, txRef, status: 'COMPLETED',
+      referenceId: txRef,
+      senderId: userId, receiverId: userId,
+      senderAddress: 'ISCAN', receiverAddress: 'ISCAN',
+      amount: stablecoinAmount, currency,
+      type: 'swap', status: 'settled',
+      metadata: { phpOut, rate, sourceCurrency: currency },
+      ledgerGroupId: txRef
     });
 
     console.log(`[swap] ${stablecoinAmount} ${currency} → ₱${phpOut.toFixed(2)} for ${userId}`);
@@ -94,9 +98,13 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
     await stablePool.save();
 
     await Transaction.create({
-      userId, type: 'SWAP', subType: `PHP_TO_${currency}`,
-      amount: phpAmount, currency: 'PHP', usdtAmount: usdtOut,
-      rate, txRef, status: 'COMPLETED',
+      referenceId: txRef,
+      senderId: userId, receiverId: userId,
+      senderAddress: 'ISCAN', receiverAddress: 'ISCAN',
+      amount: phpAmount, currency: 'PHP',
+      type: 'swap', status: 'settled',
+      metadata: { usdtOut, rate, destinationCurrency: currency },
+      ledgerGroupId: txRef
     });
 
     console.log(`[swap] ₱${phpAmount} → ${usdtOut.toFixed(6)} ${currency} for ${userId}`);
