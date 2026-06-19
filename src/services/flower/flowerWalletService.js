@@ -7,7 +7,7 @@ import { deriveRoninAddress } from "../hdWalletService.js";
 // Count existing Ronin assignments → next unique HD index
 async function getNextRoninIndex() {
   const last = await DepositAddress
-    .findOne({ chain: "RONIN" })
+    .findOne({ chain: "ronin" })
     .sort({ hdIndex: -1 });
 
   return last ? last.hdIndex + 1 : 0;
@@ -21,7 +21,7 @@ export async function getOrCreateRoninDepositAddress(userId) {
   // Already assigned — return existing
   const existing = walletDoc.chainAddresses.find(ca => ca.chain === "RONIN");
   if (existing?.address) {
-    return { address: existing.address, chain: "RONIN", chainId: "0x7e4", isNew: false };
+    return { address: existing.address, chain: "ronin", chainId: "0x7e4", isNew: false };
   }
 
   // Derive next unique index
@@ -51,7 +51,7 @@ export async function getOrCreateRoninDepositAddress(userId) {
   // 2. Store in DepositAddress collection with hdIndex for sweep
   await DepositAddress.create({
     userId,
-    chain:   "RONIN",
+    chain:   "ronin",
     token:   "FLOWER",
     address: roninWallet.address,
     status:  "active",
@@ -59,13 +59,13 @@ export async function getOrCreateRoninDepositAddress(userId) {
   });
 
   console.log(`[FlowerWallet] Assigned ${roninWallet.address} to user ${userId} (index: ${index})`);
-  return { address: roninWallet.address, chain: "RONIN", chainId: "0x7e4", index, isNew: true };
+  return { address: roninWallet.address, chain: "ronin", chainId: "0x7e4", index, isNew: true };
 }
 
 // Find deposit address record by Ronin address (includes hdIndex)
 export async function getDepositRecord(roninAddress) {
   return await DepositAddress.findOne({
-    chain:   "RONIN",
+    chain:   "ronin",
     address: roninAddress.toLowerCase()
   });
 }
@@ -73,7 +73,7 @@ export async function getDepositRecord(roninAddress) {
 // Find user by their Ronin deposit address
 export async function findUserByRoninAddress(roninAddress) {
   const record = await DepositAddress.findOne({
-    chain:   "RONIN",
+    chain:   "ronin",
     address: roninAddress.toLowerCase()
   });
   return record?.userId ?? null;
@@ -84,7 +84,7 @@ export async function provisionAllRoninAddresses() {
   const walletsWithoutRonin = await Wallet.find({
     $or: [
       { chainAddresses: { $size: 0 } },
-      { chainAddresses: { $not: { $elemMatch: { chain: "RONIN" } } } }
+      { chainAddresses: { $not: { $elemMatch: { chain: "ronin" } } } }
     ]
   });
 
