@@ -30,8 +30,8 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
   try {
     // Credit user PHP wallet
     await Wallet.findOneAndUpdate(
-      { userId, currency: 'PHP' },
-      { $inc: { balance: phpOut } },
+      { userId },
+      { $inc: { "balances.PHP": phpOut } },
       { upsert: true, new: true }
     );
 
@@ -75,18 +75,18 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
     throw new Error(`Insufficient ${currency} liquidity. Available: ${stablePool.balance.toFixed(2)}`);
 
   // Deduct PHP from user
-  const wallet = await Wallet.findOne({ userId, currency: 'PHP' });
-  if (!wallet || wallet.balance < phpAmount)
+  const wallet = await Wallet.findOne({ userId });
+  const phpBal = wallet?.balances?.get?.("PHP") ?? wallet?.balances?.PHP ?? 0;
+  if (!wallet || phpBal < phpAmount)
     throw new Error('Insufficient PHP balance');
 
-  wallet.balance -= phpAmount;
-  await wallet.save();
+  await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.PHP": -phpAmount } });
 
   try {
     // Credit stablecoin to user
     await Wallet.findOneAndUpdate(
-      { userId, currency },
-      { $inc: { balance: usdtOut } },
+      { userId },
+      { $inc: { [`balances.${currency}`]: usdtOut } },
       { upsert: true, new: true }
     );
 
@@ -111,8 +111,7 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
     return { usdtOut, rate, txRef };
 
   } catch (err) {
-    wallet.balance += phpAmount;
-    await wallet.save();
+    await Wallet.findOneAndUpdate({ userId }, { $inc: { "balances.PHP": phpAmount } });
     throw err;
   }
 }
