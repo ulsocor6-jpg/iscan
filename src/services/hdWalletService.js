@@ -81,3 +81,23 @@ export async function deriveRoninAddress(index) {
     index
   };
 }
+
+export async function deriveBaseAddress(index) {
+  if (!MASTER_MNEMONIC) {
+    throw new Error("HD_WALLET_MNEMONIC missing");
+  }
+
+  const hdNode = ethers.HDNodeWallet.fromPhrase(
+    MASTER_MNEMONIC,
+    undefined,
+    CHAIN_PATHS.BASE
+  );
+
+  const child = hdNode.deriveChild(index);
+
+  return {
+    address: child.address.toLowerCase(),
+    privateKey: child.privateKey,
+    index
+  };
+}

@@ -4,35 +4,54 @@ import crypto                              from "crypto";
 import FlowerOrder                         from "../../models/flower/flowerOrderModel.js";
 import { confirmByTxHash }                 from "../../services/flower/flowerWatcherService.js";
 import { getOrCreateRoninDepositAddress }  from "../../services/flower/flowerWalletService.js";
+import { getOrCreateBaseDepositAddress }   from "../../services/flower/baseWalletService.js";
 
-// GET /api/flower/wallet
-// Returns the user's Ronin deposit address for FLOWER (creates it if needed)
+const CHAIN_CONFIG = {
+  ronin: { chainId: "0x7e4",  label: "Ronin Mainnet", getAddress: getOrCreateRoninDepositAddress },
+  base:  { chainId: "0x2105", label: "Base Mainnet",  getAddress: getOrCreateBaseDepositAddress },
+};
+
+function resolveChain(input) {
+  const key = (input || "ronin").toLowerCase();
+  if (!CHAIN_CONFIG[key]) {
+    throw new Error(`Unsupported chain "${input}". Use "ronin" or "base".`);
+  }
+  return key;
+}
+
+// GET /api/flower/wallet?chain=base|ronin
+// Returns the user's deposit address for FLOWER on the requested chain (creates it if needed)
 export const getFlowerWallet = async (req, res) => {
   try {
-    const result = await getOrCreateRoninDepositAddress(req.user.id);
+    const chain = resolveChain(req.query.chain);
+    const { getAddress, chainId, label } = CHAIN_CONFIG[chain];
+
+    const result = await getAddress(req.user.id);
 
     res.json({
       success: true,
       wallet: {
         address: result.address,
-        chain:   "RONIN",
-        chainId: "0x7e4",
+        chain:   chain.toUpperCase(),
+        chainId,
         token:   "FLOWER",
-        network: "Ronin Mainnet",
-        note:    "Send FLOWER tokens to this address to initiate a swap"
+        network: label,
+        note:    `Send FLOWER tokens to this address (${label}) to initiate a swap`
       }
     });
 
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: err.message });
   }
 };
 
 // POST /api/flower/create
-// Body: { expectedAmount: Number }
+// Body: { expectedAmount: Number, chain: "base" | "ronin" }
 export const createOrder = async (req, res) => {
   try {
-    const { expectedAmount } = req.body;
+    const { expectedAmount, chain: chainInput } = req.body;
+    const chain = resolveChain(chainInput);
+    const { getAddress } = CHAIN_CONFIG[chain];
 
     if (!expectedAmount || expectedAmount <= 0) {
       return res.status(400).json({
@@ -41,8 +60,7 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    const { address: depositAddress } =
-      await getOrCreateRoninDepositAddress(req.user.id);
+    const { address: depositAddress } = await getAddress(req.user.id);
 
     const orderId = "FLW-" + crypto.randomBytes(6).toString("hex");
 
@@ -51,6 +69,7 @@ export const createOrder = async (req, res) => {
       userId:         req.user.id,
       expectedAmount,
       depositAddress,
+      chain,
       status:         "WAITING_DEPOSIT"
     });
 
@@ -61,15 +80,15 @@ export const createOrder = async (req, res) => {
         depositAddress: order.depositAddress,
         expectedAmount: order.expectedAmount,
         status:         order.status,
-        chain:          "RONIN",
+        chain:          chain.toUpperCase(),
         token:          "FLOWER",
-        note:           `Send exactly ${expectedAmount} FLOWER to this address`,
+        note:           `Send exactly ${expectedAmount} FLOWER to this address (${chain.toUpperCase()})`,
         createdAt:      order.createdAt
       }
     });
 
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: err.message });
   }
 };
 
@@ -91,6 +110,7 @@ export const getOrderStatus = async (req, res) => {
         orderId:        order.orderId,
         status:         order.status,
         depositAddress: order.depositAddress,
+        chain:          order.chain,
         expectedAmount: order.expectedAmount,
         receivedAmount: order.receivedAmount,
         usdcReceived:   order.usdcReceived,
