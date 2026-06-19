@@ -1,25 +1,61 @@
-import { getRate } from "./rateProvider.js";
+/**
+ * fxEngine.js  (UPDATED)
+ * ─────────────────────────────────────────────────────────────
+ * Converts any supported token to PHP.
+ * Supports: USDT, USDC, FLOWER (+ future tokens)
+ *
+ * Rate sources:
+ *  - USDT/USDC → phpRateOracle (USD/PHP with spread)
+ *  - FLOWER    → CoinGecko (via rateProvider)
+ */
 
-export async function convertToPHP(amount, currency) {
-  if (currency === "PHP") {
-    return {
-      phpAmount: amount,
-      rate: 1,
-      source: "local"
-    };
+import { getUSDPHPRate } from './fx/phpRateOracle.js';
+import { getRate }       from './rateProvider.js';
+
+// Map asset → how to get PHP rate
+const RATE_STRATEGY = {
+  USDT: 'usd_oracle',
+  USDC: 'usd_oracle',
+  FLOWER: 'coingecko',
+  PHP:  'passthrough',
+};
+
+export async function convertToPHP(amount, asset) {
+  const strategy = RATE_STRATEGY[asset];
+
+  if (!strategy) {
+    throw new Error(`Unsupported asset: ${asset}. Add it to fxEngine.js RATE_STRATEGY`);
   }
 
-  const rate = await getRate(currency);
-
-  if (!rate) {
-    throw new Error(`FX rate not available for ${currency}`);
+  if (strategy === 'passthrough') {
+    return { phpAmount: amount, rate: 1, source: 'passthrough' };
   }
 
-  const phpAmount = parseFloat((amount * rate).toFixed(2));
+  if (strategy === 'usd_oracle') {
+    const rate      = await getUSDPHPRate();   // already has 1.5% spread baked in
+    const phpAmount = parseFloat((amount * rate).toFixed(2));
+    return { phpAmount, rate, source: 'oracle' };
+  }
 
+  if (strategy === 'coingecko') {
+    const usdRate   = await getRate(asset);    // USD price of token
+    if (!usdRate) throw new Error(`CoinGecko rate unavailable for ${asset}`);
+    const phpOracle = await getUSDPHPRate();
+    const rate      = usdRate * phpOracle;
+    const phpAmount = parseFloat((amount * rate).toFixed(2));
+    return { phpAmount, rate, source: 'coingecko' };
+  }
+}
+
+/**
+ * Get display rate for UI quotes
+ * Returns: { rate, display, source }
+ */
+export async function getDisplayRate(asset, targetCurrency = 'PHP') {
+  const { rate, source } = await convertToPHP(1, asset);
   return {
-    phpAmount,
     rate,
-    source: "coingecko"
+    display: `1 ${asset} = ₱${rate.toFixed(2)} PHP`,
+    source,
   };
 }
