@@ -40,7 +40,7 @@ export async function quoteSwap(req, res) {
 export async function executeSwap(req, res) {
   try {
     const { fromCurrency, toCurrency, amount } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
     const txRef  = uuid();
 
     let result;

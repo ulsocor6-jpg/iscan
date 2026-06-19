@@ -29,7 +29,7 @@ export async function quoteFlowerUsdtSwap(req, res) {
 export async function executeFlowerUsdtSwap(req, res) {
   try {
     const { fromCurrency, toCurrency, amount } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     if (!fromCurrency || !toCurrency || !amount)
       return res.status(400).json({ error: "fromCurrency, toCurrency, amount required" });
