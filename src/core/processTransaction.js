@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import User from "../models/userModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import walletService from "../services/walletService.js";
 import eventStreamService from "../services/eventStreamService.js";
@@ -82,6 +83,7 @@ export default async function processTransaction(raw) {
 
   // Emit event for live dashboard / audit trail — safe to fail silently, not core to the credit itself
   try {
+    const user = await User.findById(claimed.userId).select("email firstName lastName").lean();
     await eventStreamService.emit("deposit.credited", {
       entityId: referenceId,
       userId: claimed.userId.toString(),
@@ -89,6 +91,8 @@ export default async function processTransaction(raw) {
       channel: claimed.channel,
       source,
       sender: sender || "unknown",
+      userEmail: user?.email || "unknown",
+      userName: user?.firstName ? user.firstName + " " + (user.lastName || "") : "unknown",
     });
   } catch (eventErr) {
     console.error("[processTransaction] Failed to emit deposit event (non-fatal):", eventErr.message);
