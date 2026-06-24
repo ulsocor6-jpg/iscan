@@ -4,6 +4,7 @@ import Login          from "./pages/Login";
 import Register       from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import Deposits     from "./pages/Deposits";
+import Withdrawals  from "./pages/Withdrawals";
 import Transfers    from "./pages/Transfers";
 import Swaps        from "./pages/Swaps";
 import Remittance   from "./pages/Remittance";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/reset-password" element={<ForgotPassword resetMode />} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/deposits"   element={<RequireAuth><Deposits /></RequireAuth>} />
+        <Route path="/withdrawals" element={<RequireAuth><Withdrawals /></RequireAuth>} />
         <Route path="/transfers"  element={<RequireAuth><Transfers /></RequireAuth>} />
         <Route path="/swaps"      element={<RequireAuth><Swaps /></RequireAuth>} />
         <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />

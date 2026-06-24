@@ -9,6 +9,7 @@ export default function Sidebar() {
   const links = [
     {label:"Dashboard",path:"/dashboard"},
     {label:"Deposits",path:"/deposits"},
+    {label:"Withdrawals",path:"/withdrawals"},
     {label:"Transfers",path:"/transfers"},
     {label:"Swaps",path:"/swaps"},
     {label:"Wallets",path:"/wallets"},
