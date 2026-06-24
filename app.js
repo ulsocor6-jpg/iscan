@@ -10,8 +10,11 @@ import { fileURLToPath } from 'url';
 // ─── Routes ────────────────────────────────────────────────────────────────
 import authRoutes from './src/routes/authRoutes.js';
 import walletRoutes from './src/routes/walletRoutes.js';
+import treasuryRoutes from './src/routes/treasuryRoutes.js';
+import feeRoutes from './src/routes/feeRoutes.js';
 import flowerRoutes from './src/routes/flower/flowerRoutes.js';
 import dashboardRoutes from './src/routes/dashboardRoutes.js';
+import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 import ledgerRoutes from './src/routes/ledgerRoutes.js';
 import transactionRoutes from './src/routes/transactionRoutes.js';
 import transferRoutes from './src/routes/transferRoutes.js';
@@ -30,6 +33,9 @@ import webhookRoutes from './src/routes/webhookRoutes.js';
 import paymentRoutes from './src/routes/paymentRoutes.js';
 import payoutRoutes from './src/routes/payoutRoutes.js';
 import directDepositRoutes from './src/routes/directDepositRoutes.js';
+import adminDepositRoutes from './src/routes/adminDepositRoutes.js';
+import withdrawalRoutes from './src/routes/withdrawalRoutes.js';
+import adminWithdrawalRoutes from './src/routes/adminWithdrawalRoutes.js';
 
 dotenv.config();
 
@@ -58,6 +64,10 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // ─── API routes ───────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/wallet', walletRoutes);
+app.use('/api/v1/treasury', treasuryRoutes);
+app.use('/api/v1/fees', feeRoutes);
+app.use('/api/v1/treasury', treasuryRoutes);
+app.use('/api/v1/admin/deposits', adminDepositRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/ledger', ledgerRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
@@ -75,9 +85,12 @@ app.use('/api/v1/p2p', p2pRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/internal-wallets', internalWalletRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/maya', mayaNotifyRoute);
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/payout', payoutRoutes);
 app.use('/api/v1/deposit', directDepositRoutes);
+app.use('/api/v1/withdrawals', withdrawalRoutes);
+app.use('/api/v1/admin/withdrawals',adminWithdrawalRoutes);
 
 
 

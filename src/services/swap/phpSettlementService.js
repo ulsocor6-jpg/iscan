@@ -29,6 +29,12 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
   await phpPool.save();
 
   try {
+  const stableBal = await walletService.getBalance(userId, currency);
+  if (stableBal < stablecoinAmount)
+    throw new Error(`Insufficient ${currency} balance`);
+
+  await walletService.debit(userId, currency, stablecoinAmount);
+
     // Credit user PHP wallet
     await walletService.credit(userId, "PHP", phpOut);
 

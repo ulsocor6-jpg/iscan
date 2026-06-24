@@ -27,9 +27,7 @@ router.get('/balances', requireAuth, async (req, res) => {
     ]);
     const balances = {};
     result.forEach(a => { balances[a._id] = a.credit - a.debit; });
-    const wallet = await Wallet.findOne({ userId });
-    const walletBalances = wallet?.balances ? Object.fromEntries(wallet.balances) : {};
-    return res.json({ success: true, balances: { ...walletBalances, ...balances } });
+    return res.json({ success: true, balances });
   } catch (err) {
     console.error('[BALANCES ERROR]', err);
     return res.status(500).json({ message: 'Could not fetch balances.' });
@@ -46,3 +44,17 @@ router.get('/status', (req, res) => res.json({ success: true }));
 router.get('/admin/list', requireAuth, requireAdmin, getAllWalletsAdmin);
 
 export default router;
+
+// POST /api/v1/wallet/notify-transfer
+// Called after user sends tx from external wallet — logs it for the listener to pick up
+router.post('/notify-transfer', requireAuth, async (req, res) => {
+  try {
+    const { txHash, token, amount, chain, fromAddress } = req.body;
+    console.log(`[WALLET] Transfer notified: ${amount} ${token} on ${chain} from ${fromAddress} tx=${txHash}`);
+    // The baseListener/roninListener will detect the balance change automatically
+    // This just logs it for audit purposes
+    res.json({ success: true, message: 'Transfer noted — balance will update once confirmed on-chain' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

@@ -16,9 +16,9 @@ const ledgerSchema = new mongoose.Schema({
     enum: [
       'transfer', 'deposit', 'withdrawal', 'fee',
       'crypto_onramp', 'crypto_offramp', 'crypto_deposit',
-      'settlement', 'freeze', 'cash_in', 'cash_out',
+      'settlement', 'freeze', 'cash_in', 'cash_out', 'cashout', 'cashin',
       'remittance', 'adjustment', 'rewards', 'swap',
-      'credit', 'debit', 'p2p'
+      'credit', 'debit', 'p2p', 'cashout_request', 'cashout_debit', 'cashout_settlement', 'cashout_fee', 'cashout_refund', 'flower_swap'
     ],
     required: true
   },

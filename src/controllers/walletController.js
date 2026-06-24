@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import Wallet from '../models/walletModel.js';
 import { deriveUserWallets, SUPPORTED_CHAINS } from '../services/hdWalletService.js';
 import DepositAddress from '../models/depositAddressModel.js';
+import walletService from '../services/walletService.js';
 
 const CHAIN_MAP = {
   '0x1':    { name:'Ethereum', token:'ETH'   },
@@ -42,24 +43,71 @@ async function getOrCreateWallet(userId) {
 export const getWallets = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
-    return res.json({ success:true, iscanAddress:wallet.iscanAddress, balances:formatBalances(wallet), chainAddresses:wallet.chainAddresses, activeChain:wallet.activeChain, chains:SUPPORTED_CHAINS, wallets:wallet.linkedWallets });
-  } catch(err) { console.error(err); res.status(500).json({ error:'Failed to fetch wallets' }); }
+
+    const balances = {
+      PHP: await walletService.getBalance(req.user.id,'PHP'),
+      USDT: await walletService.getBalance(req.user.id,'USDT'),
+      USDC: await walletService.getBalance(req.user.id,'USDC'),
+      FLOWER: await walletService.getBalance(req.user.id,'FLOWER'),
+      RON: await walletService.getBalance(req.user.id,'RON'),
+      ETH: await walletService.getBalance(req.user.id,'ETH')
+    };
+
+    return res.json({
+      success:true,
+      iscanAddress:wallet.iscanAddress,
+      balances,
+      chainAddresses:wallet.chainAddresses,
+      activeChain:wallet.activeChain,
+      chains:SUPPORTED_CHAINS,
+      wallets:wallet.linkedWallets
+    });
+  } catch(err) {
+    console.error(err);
+    res.status(500).json({ error:'Failed to fetch wallets' });
+  }
 };
 
 export const getWalletMe = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
-    return res.json({ success:true, iscanAddress:wallet.iscanAddress, id:wallet.iscanAddress, _id:wallet.iscanAddress, balances:formatBalances(wallet), activeChain:wallet.activeChain, chainAddresses:wallet.chainAddresses });
-  } catch(err) { res.status(500).json({ error:'Failed to load wallet' }); }
+
+    const balances = {
+      PHP: await walletService.getBalance(req.user.id,'PHP'),
+      USDT: await walletService.getBalance(req.user.id,'USDT'),
+      USDC: await walletService.getBalance(req.user.id,'USDC'),
+      FLOWER: await walletService.getBalance(req.user.id,'FLOWER'),
+      RON: await walletService.getBalance(req.user.id,'RON'),
+      ETH: await walletService.getBalance(req.user.id,'ETH')
+    };
+
+    return res.json({
+      success:true,
+      iscanAddress:wallet.iscanAddress,
+      id:wallet.iscanAddress,
+      _id:wallet.iscanAddress,
+      balances,
+      activeChain:wallet.activeChain,
+      chainAddresses:wallet.chainAddresses
+    });
+  } catch(err) {
+    res.status(500).json({ error:'Failed to load wallet' });
+  }
 };
 
 export const getWalletBalance = async (req, res) => {
   try {
-    const wallet = await getOrCreateWallet(req.user.id);
-    const asset  = req.query.asset || 'USDT';
-    const balance = wallet.balances?.get?.(asset) || wallet.balances?.[asset] || 0;
-    return res.json({ success:true, asset, balance });
-  } catch(err) { res.status(500).json({ error:'Failed to load balance' }); }
+    const asset = req.query.asset || 'USDT';
+    const balance = await walletService.getBalance(req.user.id, asset);
+
+    return res.json({
+      success:true,
+      asset,
+      balance
+    });
+  } catch(err) {
+    res.status(500).json({ error:'Failed to load balance' });
+  }
 };
 
 export const switchChain = async (req, res) => {

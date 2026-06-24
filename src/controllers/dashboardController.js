@@ -3,6 +3,22 @@ import Wallet from "../models/walletModel.js";
 import Ledger from "../models/ledgerModel.js";
 import { getRate } from "../services/fx/rateProvider.js";
 
+const _rateCache = {};
+const _rateCacheMs = 60_000; // re-fetch FX rates at most once per minute
+
+const getCachedRate = async (currency) => {
+  const now = Date.now();
+  if (_rateCache[currency] && now - _rateCache[currency].ts < _rateCacheMs) {
+    return _rateCache[currency].rate;
+  }
+  try {
+    const rate = await getRate(currency);
+    if (rate) _rateCache[currency] = { rate, ts: now };
+    return rate || 0;
+  } catch { return 0; }
+};
+
+
 const getAssetBalances = async (userId) => {
   const result = await Ledger.aggregate([
     {
@@ -37,13 +53,8 @@ const getAssetBalances = async (userId) => {
 const toPHP = async (currency, amount) => {
   if (!amount) return 0;
   if (currency === "PHP") return amount;
-  try {
-    const rate = await getRate(currency);
-    if (!rate) return 0;
-    return amount * rate;
-  } catch {
-    return 0; // unsupported/unavailable currency — exclude from total rather than crash the dashboard
-  }
+  const rate = await getCachedRate(currency);
+  return rate ? amount * rate : 0;
 };
 
 export const getDashboard = async (req, res) => {
@@ -57,12 +68,7 @@ export const getDashboard = async (req, res) => {
     const balances =
       await getAssetBalances(userId);
 
-    // Merge in wallet.balances (FLOWER, RON, etc. live here, not in Ledger)
-    const walletBalances = wallet?.balances
-      ? Object.fromEntries(wallet.balances)
-      : {};
-
-    const mergedBalances = { ...walletBalances, ...balances };
+    const mergedBalances = { ...balances };
 
     // Convert every held currency to PHP and sum for the hero total
     const phpConversions = await Promise.all(

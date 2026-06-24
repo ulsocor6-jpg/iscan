@@ -22,6 +22,7 @@ router.post('/request', requireAuth, async (req, res) => {
       success: true, referenceId, amount: php, channel, expiresAt: deposit.expiresAt,
       instructions: {
         gcash:   process.env.GCASH_NUMBER  || 'Not configured',
+        maya:    process.env.MAYA_NUMBER   || 'Not configured',
         bank:    process.env.BANK_ACCOUNT  || 'Not configured',
         name:    process.env.ACCOUNT_NAME  || 'ISCAN',
         message: `Send exactly P${php} with reference: ${referenceId}`
@@ -49,24 +50,29 @@ router.get('/admin/pending', requireAuth, requireAdmin, async (req, res) => {
 router.post('/admin/confirm', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { referenceId, senderName, adminNote } = req.body;
-    const deposit = await DirectDeposit.findOne({ referenceId });
-    if (!deposit) return res.status(404).json({ error: 'Deposit not found' });
-    if (deposit.status === 'CREDITED') return res.status(400).json({ error: 'Already credited' });
 
-    await walletService.credit(deposit.userId.toString(), 'PHP', deposit.amount);
+    const deposit = await DirectDeposit.findOneAndUpdate(
+      { referenceId, status: 'PENDING' },
+      { status: 'CREDITED', creditedAt: new Date(), senderName, adminNote },
+      { new: false }
+    );
 
-    await Ledger.create({
-      referenceId, userId: deposit.userId,
-      transactionType: 'cashin', debit: 0, credit: deposit.amount, currency: 'PHP',
-      description: `Direct deposit via ${deposit.channel} from ${senderName || 'unknown'}`,
-      status: 'completed'
-    });
+    if (!deposit) {
+      const existing = await DirectDeposit.findOne({ referenceId });
+      if (!existing) return res.status(404).json({ error: 'Deposit not found' });
+      return res.status(400).json({ error: `Deposit already ${existing.status.toLowerCase()}` });
+    }
 
-    deposit.status = 'CREDITED';
-    deposit.creditedAt = new Date();
-    deposit.senderName = senderName;
-    deposit.adminNote = adminNote;
-    await deposit.save();
+    try {
+      await walletService.credit(deposit.userId.toString(), 'PHP', deposit.amount, {
+        referenceId,
+        description: `Direct deposit via ${deposit.channel} from ${senderName || 'unknown'}`,
+        transactionType: 'cashin'
+      });
+    } catch (ledgerErr) {
+      await DirectDeposit.findOneAndUpdate({ referenceId }, { status: 'PENDING' });
+      throw ledgerErr;
+    }
 
     console.log(`[DEPOSIT] P${deposit.amount} credited to ${deposit.userId} ref:${referenceId}`);
     res.json({ success: true, credited: deposit.amount, referenceId });

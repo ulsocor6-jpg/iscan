@@ -11,9 +11,9 @@ import CashoutRequest from '../models/CashoutRequest.js';
 
 const router = express.Router();
 
-const getLedgerBalance = async (userId) => {
+const getLedgerBalance = async (userId, currency = 'PHP') => {
   const result = await Ledger.aggregate([
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+    { $match: { userId: new mongoose.Types.ObjectId(userId), currency } },
     { $group: { _id: null, c: { $sum: { $ifNull: ['$credit',0] } }, d: { $sum: { $ifNull: ['$debit',0] } } } }
   ]);
   return result.length > 0 ? result[0].c - result[0].d : 0;
@@ -59,6 +59,9 @@ router.post('/cashout', requireAuth, async (req, res) => {
     const co = await CashoutRequest.create({
       userId: req.user.id,
       amount: php,
+      fee: fee,
+      netAmount: php - fee,
+      referenceId: ref,
       destinationType: channel.toUpperCase(),
       destinationAccount: accountNumber,
       status: 'PENDING'

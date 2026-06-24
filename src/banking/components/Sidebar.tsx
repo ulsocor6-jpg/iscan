@@ -13,10 +13,9 @@ export default function Sidebar() {
     {label:"Swaps",path:"/swaps"},
     {label:"Wallets",path:"/wallets"},
     {label:"Remittance",path:"/remittance"},
-    ...(user?.role === "admin" ? [{label:"Treasury",path:"/treasury"}] : []),
+    ...(user?.role === "admin" ? [{label:"⚙ Cashouts",path:"/admin/cashouts"},{label:"Treasury",path:"/treasury"}] : []),
     {label:"Compliance",path:"/compliance"},
     {label:"Activity",path:"/activity"},
-    {label:"Settings",path:"/settings"},
   ];
   return (
     <aside className="sidebar">

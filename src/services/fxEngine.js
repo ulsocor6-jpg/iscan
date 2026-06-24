@@ -59,3 +59,18 @@ export async function getDisplayRate(asset, targetCurrency = 'PHP') {
     source,
   };
 }
+
+
+export async function applyFX(tx) {
+  const { amount, currency } = tx;
+
+  const result = await convertToPHP(amount, currency);
+
+  return {
+    phpAmount: result.phpAmount,
+    rate: result.rate,
+    source: result.source,
+    asset: currency,
+    amount
+  };
+}
