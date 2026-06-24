@@ -460,7 +460,7 @@ export default function Swaps() {
               <button onClick={()=>{setCashInMode("online");setBankDeposit(null);setBankDepositError("");}} style={{
                 flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,
                 background: cashInMode==="online" ? "#3b82f6" : "#1d2942", color:"white"
-              }}>Online (GCash/Maya/Card)</button>
+              }}>Online (GCash/Maya/Card) — Coming Soon</button>
               <button onClick={()=>{setCashInMode("bank");setError("");setResult(null);}} style={{
                 flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,
                 background: cashInMode==="bank" ? "#3b82f6" : "#1d2942", color:"white"
@@ -473,8 +473,8 @@ export default function Swaps() {
                   <label style={{color:"#94a3b8",fontSize:12}}>Amount (PHP)</label>
                   <input style={inp} type="number" placeholder="Min ₱20" value={cashInAmount} onChange={e=>setCashInAmount(e.target.value)}/>
                 </div>
-                <button className="auth-btn" onClick={handleCashIn} disabled={loading}>
-                  {loading ? "Creating link..." : "Generate Payment Link"}
+                <button className="auth-btn" disabled={true} style={{opacity:0.5,cursor:"not-allowed"}}>
+                  "🚧 Coming Soon"
                 </button>
                 {error && <p style={{color:"#ef4444",marginTop:8}}>{error}</p>}
                 {result?.type==="cashin" && (
