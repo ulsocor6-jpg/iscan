@@ -105,8 +105,8 @@ export default function Swaps() {
   async function handleFlowerUsdtSwap() {
     setFuLoading(true); setFuError(""); setFuResult(null);
     try {
-      const from = fuDirection === "flower-to-usdt" ? "FLOWER" : "USDT";
-      const to   = fuDirection === "flower-to-usdt" ? "USDT"   : "FLOWER";
+      const from = fuDirection === "flower-to-usdt" ? "FLOWER" : "USDC";
+      const to   = fuDirection === "flower-to-usdt" ? "USDC"   : "FLOWER";
       const res  = await fetch("/api/v1/flower/usdt/swap", {
         method:"POST", credentials:"include",
         headers:{"Content-Type":"application/json"},

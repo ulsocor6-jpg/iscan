@@ -16,6 +16,8 @@ type Toast = {
   sender: string;
   channel: string;
   flagReason?: string;
+  userEmail?: string;
+  userName?: string;
 };
 
 type Props = {
@@ -42,6 +44,8 @@ export default function ActivityFeed({ data = [] }: Props) {
             referenceId: data.entityId,
             sender: data.sender || "unknown",
             channel: data.channel || "MAYA",
+            userEmail: data.userEmail || "unknown",
+            userName: data.userName || "unknown",
           };
           showToast(toast);
 
@@ -108,6 +112,9 @@ export default function ActivityFeed({ data = [] }: Props) {
             </div>
             <div style={{ fontSize: 12, marginTop: 4 }}>
               <strong>PHP {toast.amount?.toLocaleString()}</strong> — Ref: {toast.referenceId}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              👤 {toast.userName} ({toast.userEmail})
             </div>
             <div style={{ fontSize: 11, opacity: 0.85 }}>
               From: {toast.sender} via {toast.channel}
