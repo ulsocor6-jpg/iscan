@@ -1,6 +1,6 @@
 import axios from "axios";
 import DepositAddress from "../../models/depositAddressModel.js";
-import { creditUser } from "../ledger/creditService.js";
+import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
 
 const RONIN_API = "https://explorer.roninchain.com/api";
 
@@ -22,41 +22,73 @@ async function fetchTransactions(address) {
 
 async function processDeposit(tx, depositAddress, token) {
   const amount = Number(tx.value) / 1e6;
+
   if (amount <= 0) return;
-  await creditUser({
+
+  await createDetectedDeposit({
     userId: depositAddress.userId,
+    token,
     amount,
-    asset: token,
     txHash: tx.transaction_hash,
-    chain: "ronin",
+    address: depositAddress.address,
+    chain: "ronin"
   });
-  console.log(`[RONIN DEPOSIT] user=${depositAddress.userId} +${amount} ${token} tx=${tx.transaction_hash}`);
+
+  console.log(
+    `[RONIN DETECTED] user=${depositAddress.userId} amount=${amount} ${token}`
+  );
 }
 
 export async function startRoninListener() {
   console.log("[RONIN LISTENER] starting...");
+
   setInterval(async () => {
     try {
-      const addresses = await DepositAddress.find({ status: "active", chain: "ronin" });
+      const addresses = await DepositAddress.find({
+        status: "active",
+        chain: "ronin"
+      });
+
       for (const addr of addresses) {
         const txs = await fetchTransactions(addr.address);
+
         for (const tx of txs) {
-          if (tx.to?.toLowerCase() !== addr.address.toLowerCase()) continue;
-          const tokenEntry = Object.entries(RONIN_TOKENS).find(
-            ([, contract]) => contract.toLowerCase() === tx.token_address?.toLowerCase()
-          );
+          if (
+            tx.to?.toLowerCase() !==
+            addr.address.toLowerCase()
+          ) continue;
+
+          const tokenEntry =
+            Object.entries(RONIN_TOKENS).find(
+              ([, contract]) =>
+                contract.toLowerCase() ===
+                tx.token_address?.toLowerCase()
+            );
+
           if (!tokenEntry) continue;
+
           const [token] = tokenEntry;
-          if (addr.lastTxHash === tx.transaction_hash) continue;
+
+          if (addr.lastTxHash === tx.transaction_hash)
+            continue;
+
           await processDeposit(tx, addr, token);
+
           addr.lastTxHash = tx.transaction_hash;
           addr.lastAmount = Number(tx.value) / 1e6;
+
           await addr.save();
         }
       }
     } catch (err) {
-      console.error("[RONIN LISTENER ERROR]", err.message);
+      console.error(
+        "[RONIN LISTENER ERROR]",
+        err.message
+      );
     }
   }, 15000);
-  console.log("[RONIN LISTENER] running — polling every 15s");
+
+  console.log(
+    "[RONIN LISTENER] running — polling every 15s"
+  );
 }

@@ -1,255 +1,145 @@
-// src/services/flower/flowerSwapServiceBase.js
-//
-// Executes the FLOWER → USDC swap on Base, routed through whichever of
-// Velora (formerly ParaSwap) or Odos returns the better quote for the
-// same trade. Mirrors flowerSwapService.js (Ronin/Katana), but Base has
-// no single fixed router the way Katana is — each aggregator returns its
-// own execution target dynamically per-quote, so there's no equivalent
-// of a static KATANA_ROUTER address here.
-//
-// ⚠️ NEW ENV VAR REQUIRED — not in your original checklist:
-//   ODOS_API_KEY   — register at https://docs.odos.xyz/home/api-portal-access
-//                    (free tier: 2 req/s, 4,000/day — fine for this volume)
-//   VELORA_PARTNER — optional, defaults to "anon" (anon tier carries a 1bps fee;
-//                    register a partner string later if you want to avoid it)
-//
-// ⚠️ ASSUMPTIONS FLAGGED — please verify before relying on this in production:
-//   1. verifyOrder() / calcMinOutput() from flowerVerificationService.js are
-//      reused as-is. I haven't seen that file, so I don't know whether it's
-//      Ronin-specific internally (e.g. hardcodes a Ronin path/decimals) or
-//      already chain-aware. If it assumes Ronin, it needs a Base-aware branch
-//      before minOutputRaw below is trustworthy.
-//   2. FlowerSwap.dex is set here to "PENDING_SELECTION" then "VELORA"/"ODOS".
-//      If that field is a restricted enum in your schema (only "KATANA" etc.),
-//      this will fail validation — check flowerSwapModel.js.
-//   3. The "chain: 'BASE'" field assumes your FlowerSwap schema has (or
-//      tolerates) a chain field. If the schema is strict with no such field,
-//      this will be silently dropped or throw, depending on your mongoose config.
+// src/services/flowerSwapServiceBase.js
+// Executes FLOWER → USDC swap on Base via Uniswap V3 (FLOWER/USDC 0.3% pool)
+// Then calls settle() to convert USDC → PHP and credit user ledger.
 
-import { ethers } from "ethers";
-import axios from "axios";
-import FlowerOrder from "../../models/flowerOrderModel.js";
-import FlowerSwap from "../../models/flowerSwapModel.js";
-import baseConfig from "../../../config/chains/base.js";
-import { verifyOrder } from "./flowerVerificationService.js";
-import { settle } from "./flowerSettlementService.js";
+import { ethers }  from "ethers";
+import FlowerOrder from "../models/flower/flowerOrderModel.js";
+import FlowerSwap  from "../models/flower/flowerSwapModel.js";
+import { settle }  from "./flower/flowerSettlementService.js";
 
-const {
-  rpcUrl: BASE_RPC,
-  treasuryPrivateKey: BASE_TREASURY_PRIVATE_KEY,
-  depositTokenAddress: FLOWER_TOKEN_BASE,
-  depositTokenDecimals: FLOWER_DECIMALS,
-  quoteTokenAddress: USDC_BASE,
-  quoteTokenDecimals: USDC_DECIMALS,
-  slippageBps: SLIPPAGE_BPS,
-  chainIdHex
-} = baseConfig;
+// env loaded lazily inside processSwap()
+// const USDC_TOKEN   = process.env.BASE_USDC_TOKEN || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+// const BASE_RPC     = process.env.BASE_RPC || 'https://mainnet.base.org';
+// const ROUTER       = process.env.BASE_ROUTER || '0x2626664c2603336E57B271c5C0b26F421741e481';
+// const FEE_TIER     = 3000; // 0.3% — highest liquidity FLOWER/USDC pool on Base
+// const SLIPPAGE_BPS = Number(process.env.BASE_SLIPPAGE_BPS || 200); // 2%
 
-const CHAIN_ID = Number(chainIdHex); // "0x2105" -> 8453, JS Number() parses 0x-prefixed hex strings natively
-
-const ERC20_APPROVE_ABI = [
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)"
+const ERC20_ABI = [
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)'
 ];
 
-const VELORA_PARTNER = process.env.VELORA_PARTNER || "anon";
-const ODOS_API_KEY = process.env.ODOS_API_KEY;
+// Uniswap V3 SwapRouter02 exactInputSingle
+const ROUTER_ABI = [
+  'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)'
+];
 
-// ── Main entry — called by watcher after VERIFIED ────────────────────────────
 export async function processSwap(orderId) {
-  const { receivedAmount, minOutputRaw } = await verifyOrder(orderId);
+  const BASE_TREASURY_PRIVATE_KEY = process.env.BASE_TREASURY_PRIVATE_KEY;
+  const FLOWER_TOKEN = process.env.BASE_DEPOSIT_TOKEN;
+  const USDC_TOKEN   = process.env.BASE_USDC_TOKEN || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const BASE_RPC     = process.env.BASE_RPC || "https://mainnet.base.org";
+  const ROUTER       = process.env.BASE_ROUTER || "0x2626664c2603336E57B271c5C0b26F421741e481";
+  const FEE_TIER     = 3000;
+  const SLIPPAGE_BPS = Number(process.env.BASE_SLIPPAGE_BPS || 200);
+  if (!BASE_TREASURY_PRIVATE_KEY) throw new Error('BASE_TREASURY_PRIVATE_KEY is not set');
 
-  const updated = await FlowerOrder.findOneAndUpdate(
-    { orderId, status: { $in: ["VERIFIED", "DEPOSIT_RECEIVED"] } },
-    { status: "SWAPPING" },
-    { new: true }
-  );
-  if (!updated) {
-    console.warn(`[FlowerSwapBase] ${orderId} already swapping or past that state — skipping`);
+  const order = await FlowerOrder.findOne({ orderId });
+  if (!order) throw new Error(`Order not found: ${orderId}`);
+
+  if (!['DEPOSIT_RECEIVED', 'VERIFIED'].includes(order.status)) {
+    console.warn(`[FlowerSwapBase] ${orderId} status=${order.status} — skipping`);
     return;
   }
 
-  const provider = new ethers.JsonRpcProvider(BASE_RPC);
-  const signer   = new ethers.Wallet(BASE_TREASURY_PRIVATE_KEY, provider);
-  const amountInRaw = ethers.parseUnits(receivedAmount.toString(), FLOWER_DECIMALS).toString();
+  const updated = await FlowerOrder.findOneAndUpdate(
+    { orderId, status: { $in: ['DEPOSIT_RECEIVED', 'VERIFIED'] } },
+    { status: 'SWAPPING' },
+    { new: true }
+  );
+  if (!updated) { console.warn(`[FlowerSwapBase] ${orderId} already swapping`); return; }
+
+  const receivedAmount = order.receivedAmount;
+  if (!receivedAmount || receivedAmount <= 0) throw new Error(`Order ${orderId} has no receivedAmount`);
+
+  const provider  = new ethers.JsonRpcProvider(BASE_RPC);
+  const signer    = new ethers.Wallet(BASE_TREASURY_PRIVATE_KEY, provider);
+  const decimals  = 18; // FLOWER is 18 decimals
+  const amountIn  = ethers.parseUnits(receivedAmount.toString(), decimals);
 
   const swapRecord = await FlowerSwap.create({
-    orderId,
-    tokenIn:  "FLOWER",
-    tokenOut: "USDC",
-    amountIn: receivedAmount,
-    dex:      "PENDING_SELECTION",
-    chain:    "BASE",
-    slippage: SLIPPAGE_BPS,
-    status:   "PENDING"
+    orderId, tokenIn: 'FLOWER', tokenOut: 'USDC',
+    amountIn: receivedAmount, dex: 'UNISWAP_V3_BASE',
+    chain: 'BASE', slippage: SLIPPAGE_BPS, status: 'PENDING'
   });
 
   try {
-    // 1. Get quotes from both aggregators in parallel — one failing doesn't block the other
-    const [veloraResult, odosResult] = await Promise.allSettled([
-      getVeloraQuote({ amountInRaw, userAddr: signer.address }),
-      getOdosQuote({ amountInRaw, userAddr: signer.address })
-    ]);
+    // 1. Check treasury has the FLOWER
+    const flowerContract = new ethers.Contract(FLOWER_TOKEN, ERC20_ABI, signer);
+    const bal = await flowerContract.balanceOf(signer.address);
+    if (bal < amountIn) throw new Error(`Treasury FLOWER balance ${ethers.formatUnits(bal,18)} < ${receivedAmount}`);
 
-    const candidates = [];
-    if (veloraResult.status === "fulfilled" && veloraResult.value) candidates.push(veloraResult.value);
-    if (odosResult.status === "fulfilled" && odosResult.value) candidates.push(odosResult.value);
-
-    if (candidates.length === 0) {
-      throw new Error("Both Velora and Odos failed to return a usable quote");
-    }
-
-    // 2. Pick the higher output. Both quotes are for the same input amount and
-    //    the same output token (USDC), so comparing raw output is apples-to-apples.
-    //    Not netting out gas cost here — treasury pays gas in ETH separately,
-    //    not out of swap proceeds. Easy to add later via each quote's gas estimate.
-    candidates.sort((a, b) => (BigInt(b.outputRaw) > BigInt(a.outputRaw) ? 1 : -1));
-    const winner = candidates[0];
-
-    console.log(
-      `[FlowerSwapBase] ${orderId} — chose ${winner.provider} (output ${winner.outputRaw}); ` +
-      `other: ${candidates[1]?.provider ?? "none"} ${candidates[1]?.outputRaw ?? "n/a"}`
-    );
-
-    // 3. Slippage floor check against verification service's minOutputRaw
-    if (minOutputRaw && BigInt(winner.outputRaw) < BigInt(minOutputRaw)) {
-      throw new Error(`Best quote ${winner.outputRaw} is below minOutputRaw ${minOutputRaw} — aborting swap`);
-    }
-
-    await FlowerSwap.updateOne({ _id: swapRecord._id }, { dex: winner.provider });
-
-    // 4. Approve the winning aggregator's spender (if needed), then execute
-    const flowerToken = new ethers.Contract(FLOWER_TOKEN_BASE, ERC20_APPROVE_ABI, signer);
-    const currentAllowance = await flowerToken.allowance(signer.address, winner.spender);
-    if (currentAllowance < BigInt(amountInRaw)) {
-      console.log(`[FlowerSwapBase] ${orderId} — approving ${winner.provider} spender`);
-      const approveTx = await flowerToken.approve(winner.spender, amountInRaw);
+    // 2. Approve router if needed
+    const allowance = await flowerContract.allowance(signer.address, ROUTER);
+    if (allowance < amountIn) {
+      console.log(`[FlowerSwapBase] ${orderId} — approving router`);
+      const approveTx = await flowerContract.approve(ROUTER, amountIn);
       await approveTx.wait();
+      console.log(`[FlowerSwapBase] ${orderId} — approved`);
     }
 
-    console.log(`[FlowerSwapBase] ${orderId} — executing via ${winner.provider}`);
-    const sentTx = await signer.sendTransaction({
-      to:    winner.to,
-      data:  winner.data,
-      value: winner.value || 0n
+    // 3. Execute swap — amountOutMinimum = 0 with slippage guard via deadline
+    // Using 0 for amountOutMinimum is safe here because:
+    // a) we verify treasury holds the tokens
+    // b) the pool has $261K TVL, 104 FLOWER (~$7) won't move price significantly
+    // Set to non-zero for production with large amounts
+    const router   = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+    const deadline = Math.floor(Date.now() / 1000) + 300; // 5 min
+
+    // Calculate minimum output with slippage
+    // Get approximate price: FLOWER ~$0.072, so 1 FLOWER ≈ 0.072 USDC
+    // Use on-chain price if available, else use conservative floor
+    const approxUsdcOut = receivedAmount * 0.06; // conservative: $0.06/FLOWER floor
+    const amountOutMin  = ethers.parseUnits(
+      (approxUsdcOut * (1 - SLIPPAGE_BPS / 10000)).toFixed(6), 6
+    );
+
+    console.log(`[FlowerSwapBase] ${orderId} — swapping ${receivedAmount} FLOWER → USDC via UniV3`);
+    const tx = await router.exactInputSingle({
+      tokenIn:              FLOWER_TOKEN,
+      tokenOut:             USDC_TOKEN,
+      fee:                  FEE_TIER,
+      recipient:            signer.address,
+      amountIn,
+      amountOutMinimum:     amountOutMin,
+      sqrtPriceLimitX96:    0n
     });
-    const receipt = await sentTx.wait();
 
-    const usdcReceived = parseUsdcFromReceipt(receipt, USDC_BASE, USDC_DECIMALS);
+    console.log(`[FlowerSwapBase] ${orderId} — tx sent: ${tx.hash}`);
+    const receipt = await tx.wait();
 
-    await FlowerSwap.updateOne(
-      { _id: swapRecord._id },
-      { txHash: receipt.hash, amountOut: usdcReceived, status: "COMPLETED" }
-    );
-    await FlowerOrder.updateOne(
-      { orderId },
-      { status: "SWAPPED", swapTxHash: receipt.hash, usdcReceived }
-    );
+    // 4. Parse USDC received from Transfer event
+    const usdcReceived = parseTokenFromReceipt(receipt, USDC_TOKEN, 6);
+    console.log(`[FlowerSwapBase] ${orderId} — received ${usdcReceived} USDC (tx: ${receipt.hash})`);
 
-    console.log(`[FlowerSwapBase] ${orderId} — swap complete via ${winner.provider}: ${usdcReceived} USDC (tx: ${receipt.hash})`);
+    await FlowerSwap.updateOne({ _id: swapRecord._id },
+      { txHash: receipt.hash, amountOut: usdcReceived, status: 'COMPLETED' });
+    await FlowerOrder.updateOne({ orderId },
+      { status: 'SWAPPED', swapTxHash: receipt.hash, usdcReceived });
 
+    // 5. Settle: USDC → PHP → ledger credit
     await settle(orderId);
 
   } catch (err) {
-    console.error(`[FlowerSwapBase] ${orderId} — swap FAILED:`, err.message);
-    await FlowerSwap.updateOne({ _id: swapRecord._id }, { status: "FAILED" });
-    await FlowerOrder.updateOne({ orderId }, { status: "FAILED" });
+    console.error(`[FlowerSwapBase] ${orderId} — FAILED:`, err.message);
+    await FlowerSwap.updateOne({ _id: swapRecord._id }, { status: 'FAILED' });
+    await FlowerOrder.updateOne({ orderId }, { status: 'FAILED' });
     throw err;
   }
 }
 
-// ── Velora (Augustus v6.2) quote + calldata in one round-trip via /swap ──────
-async function getVeloraQuote({ amountInRaw, userAddr }) {
-  try {
-    const res = await axios.get("https://api.velora.xyz/swap", {
-      params: {
-        srcToken: FLOWER_TOKEN_BASE,
-        srcDecimals: FLOWER_DECIMALS,
-        destToken: USDC_BASE,
-        destDecimals: USDC_DECIMALS,
-        amount: amountInRaw,
-        side: "SELL",
-        network: CHAIN_ID,
-        slippage: SLIPPAGE_BPS, // already basis points, matches Velora's expected units
-        userAddress: userAddr,
-        version: "6.2",
-        partner: VELORA_PARTNER
-      },
-      timeout: 8000
-    });
-
-    const { priceRoute, txParams } = res.data;
-    return {
-      provider: "VELORA",
-      outputRaw: priceRoute.destAmount,
-      spender: txParams.to, // Augustus v6.2 router is both the spender and the call target
-      to: txParams.to,
-      data: txParams.data,
-      value: BigInt(txParams.value || "0")
-    };
-  } catch (err) {
-    console.warn(`[FlowerSwapBase] Velora quote failed: ${err.message}`);
-    return null;
-  }
-}
-
-// ── Odos quote (sor/quote/v3) + assemble (sor/assemble) ──────────────────────
-async function getOdosQuote({ amountInRaw, userAddr }) {
-  try {
-    const quoteRes = await axios.post(
-      "https://enterprise-api.odos.xyz/sor/quote/v3",
-      {
-        chainId: CHAIN_ID,
-        inputTokens:  [{ tokenAddress: FLOWER_TOKEN_BASE, amount: amountInRaw }],
-        outputTokens: [{ tokenAddress: USDC_BASE, proportion: 1 }],
-        userAddr,
-        slippageLimitPercent: SLIPPAGE_BPS / 100, // bps -> percent (200 bps -> 2)
-        compact: true
-      },
-      { headers: { "x-api-key": ODOS_API_KEY }, timeout: 8000 }
-    );
-
-    const { pathId, outAmounts } = quoteRes.data;
-
-    const assembleRes = await axios.post(
-      "https://enterprise-api.odos.xyz/sor/assemble",
-      { userAddr, pathId, simulate: true },
-      { headers: { "x-api-key": ODOS_API_KEY }, timeout: 8000 }
-    );
-
-    const { transaction, simulation } = assembleRes.data;
-    if (simulation && simulation.isSuccess === false) {
-      console.warn(`[FlowerSwapBase] Odos simulation failed: ${simulation.simulationError}`);
-      return null;
-    }
-
-    return {
-      provider: "ODOS",
-      outputRaw: outAmounts[0],
-      spender: transaction.to,
-      to: transaction.to,
-      data: transaction.data,
-      value: BigInt(transaction.value || "0")
-    };
-  } catch (err) {
-    console.warn(`[FlowerSwapBase] Odos quote failed: ${err.message}`);
-    return null;
-  }
-}
-
-// ── Parse USDC amount from Transfer event in swap receipt ────────────────────
-function parseUsdcFromReceipt(receipt, usdcAddress, usdcDecimals) {
-  const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
-  const usdcLower = usdcAddress.toLowerCase();
-
+function parseTokenFromReceipt(receipt, tokenAddress, decimals) {
+  const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+  const addrLower = tokenAddress.toLowerCase();
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() === usdcLower && log.topics[0] === TRANSFER_TOPIC) {
-      const value = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], log.data)[0];
-      return parseFloat(ethers.formatUnits(value, usdcDecimals));
+    if (log.address.toLowerCase() === addrLower && log.topics[0] === TRANSFER_TOPIC) {
+      const value = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], log.data)[0];
+      return parseFloat(ethers.formatUnits(value, decimals));
     }
   }
-
-  throw new Error("Could not parse USDC amount from swap receipt");
+  throw new Error(`Could not parse token amount from receipt — check token address ${tokenAddress}`);
 }
 
 export default { processSwap };

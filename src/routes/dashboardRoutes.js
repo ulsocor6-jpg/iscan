@@ -2,6 +2,7 @@ import express from "express";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import dashboardService from "../services/dashboardService.js";
 import { getDashboard } from "../controllers/dashboardController.js";
+import eventStreamService from "../services/eventStreamService.js";
 
 const router = express.Router();
 
@@ -90,3 +91,23 @@ router.get(
 );
 
 export default router;
+
+// SSE — Admin real-time event stream
+router.get("/stream", requireAuth, (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  // Send heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 30000);
+
+  // Register this admin as a live SSE client
+  eventStreamService.addAdminClient(res);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+  });
+});

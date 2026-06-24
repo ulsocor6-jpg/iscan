@@ -1,15 +1,14 @@
-// src/services/flowerSettlementService.js
-// Final stage: USDC → PHP conversion + ledger credit to user's PHP wallet.
-// Called by flowerSwapService after a successful swap.
+// src/services/flower/flowerSettlementService.js
+// Settles a completed FLOWER → USDC on-chain swap into the user's ledger.
+// Writes: FLOWER debit + USDC credit (net of fee) + FeeRecord.
 
-import FlowerOrder        from "../../models/flower/flowerOrderModel.js";
-import { writeEntry }     from "../ledgerWriter.js";
-import { convertToPHP }   from "../fx/fxService.js";
-import flowerConfig       from "../../../config/flower.js";
+import FlowerOrder    from "../../models/flower/flowerOrderModel.js";
+import FeeRecord      from "../../models/feeModel.js";
+import { writeEntry } from "../ledgerWriter.js";
+import flowerConfig   from "../../../config/flower.js";
 
 const { PLATFORM_FEE } = flowerConfig; // 2%
 
-// ── Main entry ────────────────────────────────────────────────────────────────
 export async function settle(orderId) {
   const order = await FlowerOrder.findOne({ orderId });
   if (!order) throw new Error(`Order not found: ${orderId}`);
@@ -18,7 +17,6 @@ export async function settle(orderId) {
     throw new Error(`Order ${orderId} not in SWAPPED state (current: ${order.status})`);
   }
 
-  // Idempotency guard
   const guard = await FlowerOrder.findOneAndUpdate(
     { orderId, status: "SWAPPED" },
     { status: "SETTLING" },
@@ -30,55 +28,76 @@ export async function settle(orderId) {
   }
 
   try {
-    const usdcReceived = order.usdcReceived;
-
-    // 1. Deduct platform fee (2% of USDC received)
-    const feeAmount  = parseFloat((usdcReceived * (PLATFORM_FEE / 100)).toFixed(6));
-    const netUsdc    = parseFloat((usdcReceived - feeAmount).toFixed(6));
-
-    // 2. Convert net USDC → PHP
-    const { phpAmount, rate } = await convertToPHP(netUsdc, "USDC");
+    const usdcReceived  = order.usdcReceived;
+    const flowerSwapped = order.receivedAmount;
+    const feePercent    = PLATFORM_FEE;
+    const feeAmount     = parseFloat((usdcReceived * (feePercent / 100)).toFixed(6));
+    const netUsdc       = parseFloat((usdcReceived - feeAmount).toFixed(6));
 
     console.log(
       `[FlowerSettlement] ${orderId} — ` +
-      `${usdcReceived} USDC → fee ${feeAmount} → net ${netUsdc} USDC → ₱${phpAmount} (rate: ${rate})`
+      `${flowerSwapped} FLOWER → ${usdcReceived} USDC → fee ${feeAmount} → net ${netUsdc} USDC credited`
     );
 
-    // 3. Write ledger entry — credit PHP to user
+    const meta = {
+      flowerSwapped, usdcReceived, feeAmount, netUsdc,
+      swapTxHash: order.swapTxHash, chain: order.chain
+    };
+
+    // 1. Debit FLOWER
     await writeEntry({
       userId:      order.userId,
-      referenceId: order.orderId,
-      type:        "FLOWER_SWAP_CREDIT",
-      debit:       0,
-      credit:      phpAmount,
-      currency:    "PHP",
+      referenceId: orderId + '-flower-debit',
+      type:        'flower_swap',
+      debit:       flowerSwapped,
+      credit:      0,
+      currency:    'FLOWER',
       counterparty: order.depositAddress,
-      metadata: {
-        flowReceived:  order.receivedAmount,
-        usdcReceived,
-        feeAmount,
-        netUsdc,
-        fxRate:        rate,
-        swapTxHash:    order.swapTxHash,
-        depositTxHash: order.txHash
-      }
+      metadata:    meta
+    });
+
+    // 2. Credit USDC (net of fee)
+    await writeEntry({
+      userId:      order.userId,
+      referenceId: orderId + '-usdc-credit',
+      type:        'flower_swap',
+      debit:       0,
+      credit:      netUsdc,
+      currency:    'USDC',
+      counterparty: order.depositAddress,
+      metadata:    meta
+    });
+
+    // 3. Fee record
+    await FeeRecord.create({
+      referenceId: orderId + '-fee',
+      orderId,
+      userId:      order.userId,
+      txType:      'flower_swap',
+      currency:    'USDC',
+      grossAmount: usdcReceived,
+      feePercent,
+      feeAmount,
+      netAmount:   netUsdc,
+      chain:       order.chain || 'BASE',
+      txHash:      order.swapTxHash,
+      metadata:    meta
     });
 
     // 4. Mark order COMPLETED
     await FlowerOrder.updateOne(
       { orderId },
-      {
-        status:     "COMPLETED",
-        feeAmount,
-        phpAmount
-      }
+      { status: 'COMPLETED', feeAmount, usdcReceived: netUsdc }
     );
 
-    console.log(`[FlowerSettlement] ${orderId} — COMPLETED. ₱${phpAmount} credited to user ${order.userId}`);
+    console.log(
+      `[FlowerSettlement] ${orderId} — COMPLETED. ` +
+      `${netUsdc} USDC credited, fee ${feeAmount} USDC recorded`
+    );
 
   } catch (err) {
-    console.error(`[FlowerSettlement] ${orderId} — settlement FAILED:`, err.message);
-    await FlowerOrder.updateOne({ orderId }, { status: "FAILED" });
+    console.error(`[FlowerSettlement] ${orderId} — FAILED:`, err.message);
+    await FlowerOrder.updateOne({ orderId }, { status: 'FAILED' });
     throw err;
   }
 }

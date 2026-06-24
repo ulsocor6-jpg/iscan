@@ -9,8 +9,9 @@ import Swaps        from "./pages/Swaps";
 import Remittance   from "./pages/Remittance";
 import Activity     from "./pages/Activity";
 import Compliance   from "./pages/Compliance";
+import AdminCashouts from './pages/AdminCashouts';
 import Treasury     from "./pages/Treasury";
-import Settings       from "./pages/Settings";
+import Profile        from "./pages/Profile";
 import WalletManager from "./pages/WalletManager";
 import Dashboard      from "./pages/Dashboard";
 
@@ -48,9 +49,10 @@ export default function App() {
         <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />
         <Route path="/activity"   element={<RequireAuth><Activity /></RequireAuth>} />
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
+        <Route path="/admin/cashouts" element={<RequireAdmin><AdminCashouts /></RequireAdmin>} />
         <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />
         <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />
-        <Route path="/settings"   element={<RequireAuth><Settings /></RequireAuth>} />
+        <Route path="/profile"    element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

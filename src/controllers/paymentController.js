@@ -131,3 +131,91 @@ export const webhook = async (req, res) => {
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
 };
+
+/**
+ * POST /api/v1/payment/cashout
+ * Manual cashout — creates a pending request for admin to settle
+ */
+export const cashOut = async (req, res) => {
+  try {
+    const { amount, channel, accountNumber, receiverName } = req.body;
+    const phpAmount = parseFloat(amount);
+
+    if (!phpAmount || phpAmount < 100) {
+      return res.status(400).json({ error: 'Minimum cashout is ₱100.' });
+    }
+    if (!accountNumber) {
+      return res.status(400).json({ error: 'Account number is required.' });
+    }
+
+    const wallet = await Wallet.findOne({ userId: req.user.id });
+    if (!wallet) return res.status(404).json({ error: 'Wallet not found.' });
+    if ((wallet.balance || 0) < phpAmount) {
+      return res.status(400).json({ error: `Insufficient balance. Available: ₱${(wallet.balance || 0).toFixed(2)}` });
+    }
+
+    const fee = parseFloat((phpAmount * 0.015).toFixed(2));
+    const netAmount = parseFloat((phpAmount - fee).toFixed(2));
+    const referenceId = 'CSH-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+
+    // Hold balance immediately
+    wallet.balance -= phpAmount;
+    await wallet.save();
+
+    // Import models inline to avoid circular deps
+    const { default: CashoutRequest } = await import('../models/CashoutRequest.js');
+    const { default: Transaction } = await import('../models/transactionModel.js');
+
+    await Transaction.create({
+      senderId: req.user.id,
+      receiverId: null,
+      amount: phpAmount,
+      fee,
+      currency: 'PHP',
+      type: 'cashout',
+      status: 'pending',
+      ledgerGroupId: 'ISCAN_MAIN_LEDGER',
+      referenceId,
+      metadata: { netAmount, channel, accountNumber, receiverName }
+    });
+
+    await CashoutRequest.create({
+      userId: req.user.id,
+      amount: phpAmount,
+      fee,
+      netAmount,
+      destinationType: channel,
+      destinationAccount: accountNumber,
+      referenceId,
+      status: 'PENDING',
+    });
+
+    await Ledger.create({
+      userId: req.user.id,
+      referenceId,
+      transactionType: 'cashout_request',
+      debit: phpAmount,
+      credit: 0,
+      currency: 'PHP',
+      description: `Cashout ₱${netAmount} to ${channel} ${accountNumber} (fee ₱${fee})`,
+      status: 'pending',
+      metadata: { fee, netAmount, channel, accountNumber, receiverName }
+    });
+
+    return res.json({
+      success: true,
+      referenceId,
+      amount: phpAmount,
+      fee,
+      netAmount,
+      channel,
+      accountNumber,
+      status: 'PENDING',
+      message: 'Cashout request submitted. Admin will process within 24 hours.'
+    });
+
+  } catch (err) {
+    console.error('[CASHOUT ERROR]', err);
+    return res.status(500).json({ error: 'Cashout failed: ' + err.message });
+  }
+};

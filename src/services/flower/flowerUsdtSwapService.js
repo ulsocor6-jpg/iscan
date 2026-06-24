@@ -1,177 +1,105 @@
 // src/services/flower/flowerUsdtSwapService.js
-// Internal ledger swap: FLOWER ↔ USDT
-// Uses Katana DEX price for rate, settles balances in DB.
+// FLOWER ↔ USDT swap service.
+// FLOWER→USDT: routes through real on-chain pipeline (Base or Ronin).
+//              Ledger is only credited AFTER on-chain swap confirms.
+// USDT→FLOWER: disabled until reverse on-chain swap is implemented.
 
-import { ethers }       from "ethers";
-import { v4 as uuid }   from "uuid";
-import Wallet           from "../../models/walletModel.js";
-import Transaction      from "../../models/transactionModel.js";
-import Ledger           from "../../models/ledgerModel.js";
-import flowerConfig     from "../../../config/flower.js";
-import walletService   from "../walletService.js";
-import { ERC20_ABI, KATANA_ROUTER_ABI, RONIN_TOKENS } from "../../../config/katana.js";
+import { ethers }     from "ethers";
+import { v4 as uuid } from "uuid";
+import FlowerOrder    from "../../models/flower/flowerOrderModel.js";
+import { processSwap } from "../flowerSwapServiceBase.js";
 
-const { RONIN_RPC, FLOWER_TOKEN, KATANA_ROUTER } = flowerConfig;
+const RATE_TTL = 60 * 1000;
+let _rateCache = { value: null, fetchedAt: 0 };
 
-const PLATFORM_FEE = 0.02; // 2%
-
-// ── Get live FLOWER/USDT rate from Katana ────────────────────────────────────
 export async function getFlowerUsdtRate() {
-  // 1. Try CoinGecko first (live market price)
+  if (_rateCache.value && Date.now() - _rateCache.fetchedAt < RATE_TTL) {
+    return _rateCache.value;
+  }
+  let rate = null;
   try {
-    const res   = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=flower-2&vs_currencies=usd",
-      { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(5000) }
+    const res  = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=ronin-flower&vs_currencies=usd",
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
     );
-    const data  = await res.json();
-    const price = data?.flower?.usd;
-    if (price && price > 0) {
-      console.log(`[FlowerUsdt] CoinGecko rate: 1 FLOWER = ${price} USDT`);
-      return price;
-    }
+    const data = await res.json();
+    const price = data?.["ronin-flower"]?.usd;
+    if (price && price > 0) rate = price;
   } catch (err) {
     console.warn("[FlowerUsdt] CoinGecko failed:", err.message);
   }
-
-  // 2. Fallback: Katana DEX on-chain
-  try {
-    const provider = new ethers.JsonRpcProvider(RONIN_RPC);
-    const router   = new ethers.Contract(KATANA_ROUTER, KATANA_ROUTER_ABI, provider);
-    const amountIn = ethers.parseUnits("1", 18);
-    const path     = [RONIN_TOKENS.FLOWER, RONIN_TOKENS.USDT ?? RONIN_TOKENS.USDC];
-    const amounts  = await router.getAmountsOut(amountIn, path);
-    const usdtOut  = parseFloat(ethers.formatUnits(amounts[1], 6));
-    if (usdtOut > 0) {
-      console.log(`[FlowerUsdt] Katana rate: 1 FLOWER = ${usdtOut} USDT`);
-      return usdtOut;
-    }
-  } catch (err) {
-    console.warn("[FlowerUsdt] Katana RPC failed:", err.message);
-  }
-
-  // 3. Last resort
-  console.warn("[FlowerUsdt] All sources failed — using fallback 0.0712");
-  return 0.0712;
+  if (!rate) rate = _rateCache.value || 0.0712;
+  _rateCache = { value: rate, fetchedAt: Date.now() };
+  return rate;
 }
 
-// ── Quote (no side effects) ───────────────────────────────────────────────────
 export async function quoteFlowerUsdt({ fromCurrency, toCurrency, amount }) {
-  const amt      = parseFloat(amount);
-  const rate     = await getFlowerUsdtRate(); // FLOWER per 1 USDT equivalent
-  const SPREAD   = 0.015;
-
+  const amt    = parseFloat(amount);
+  const rate   = await getFlowerUsdtRate();
+  const SPREAD = 0.015;
   let out, display, youGetLabel, slippageLabel;
 
-  if (fromCurrency === "FLOWER" && toCurrency === "USDT") {
-    // FLOWER → USDT: multiply by rate, apply spread
+  if (fromCurrency === "FLOWER" && toCurrency === "USDC") {
     const gross   = amt * rate;
-    const fee     = gross * PLATFORM_FEE;
+    const fee     = gross * 0.02;
     out           = gross * (1 - SPREAD) - fee;
     display       = `1 FLOWER = ${rate.toFixed(6)} USDT`;
     youGetLabel   = `${out.toFixed(4)} USDT`;
     slippageLabel = `${(gross * SPREAD).toFixed(4)} USDT (1.5%)`;
   } else {
-    // USDT → FLOWER: divide by rate, apply spread
-    const gross   = amt / rate;
-    const fee     = gross * PLATFORM_FEE;
-    out           = gross * (1 - SPREAD) - fee;
-    display       = `1 USDT = ${(1 / rate).toFixed(2)} FLOWER`;
-    youGetLabel   = `${out.toFixed(2)} FLOWER`;
-    slippageLabel = `${(gross * SPREAD).toFixed(2)} FLOWER (1.5%)`;
+    // USDT→FLOWER disabled
+    throw new Error("USDT→FLOWER swap is not available yet. Send FLOWER on-chain to your deposit address instead.");
   }
 
+  return { rate, youGet: +out.toFixed(6), display, youGetLabel, slippageLabel };
+}
+
+// FLOWER→USDT: creates a FlowerOrder and triggers the real on-chain swap.
+// Ledger credit only happens inside settle() after the swap tx confirms.
+export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
+  if (amount <= 0) throw new Error("Amount must be greater than 0");
+  const rate     = await getFlowerUsdtRate();
+  const gross    = amount * rate;
+  const fee      = gross * 0.02;
+  const usdtOut  = +(gross * (1 - 0.015) - fee).toFixed(6);
+
+  // Get user's Base deposit address
+  const { getOrCreateBaseDepositAddress } = await import("./baseWalletService.js");
+  const { address: depositAddress } = await getOrCreateBaseDepositAddress(userId);
+
+  // Create order — pipeline will credit ledger after on-chain confirms
+  const orderId = txRef;
+  const order = await FlowerOrder.create({
+    orderId,
+    userId,
+    token:          "FLOWER",
+    chain:          "BASE",
+    depositAddress: depositAddress.toLowerCase(),
+    expectedAmount: amount,
+    receivedAmount: amount,
+    status:         "DEPOSIT_RECEIVED"
+  });
+
+  console.log(`[FlowerUsdt] Created order ${orderId} — routing ${amount} FLOWER through on-chain pipeline`);
+
+  // Trigger on-chain swap (non-blocking — settle() will credit ledger on success)
+  processSwap(orderId).catch(err => {
+    console.error(`[FlowerUsdt] processSwap failed for ${orderId}:`, err.message);
+  });
+
   return {
+    txRef:        orderId,
     rate,
-    youGet: +out.toFixed(6),
-    display,
-    youGetLabel,
-    slippage: +(out * SPREAD).toFixed(6),
-    slippageLabel,
+    sourceAmount: amount,
+    usdtOut,
+    status:       "processing",
+    message:      "Swap submitted. Your USDT will be credited once the on-chain transaction confirms (~30s).",
   };
 }
 
-// ── Execute: FLOWER → USDT ────────────────────────────────────────────────────
-export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
-  const rate     = await getFlowerUsdtRate();
-  const gross    = amount * rate;
-  const fee      = gross * PLATFORM_FEE;
-  const usdtOut  = +(gross * (1 - 0.015) - fee).toFixed(6);
-
-  // Check FLOWER balance
-  const flowerBal = await walletService.getBalance(userId, "FLOWER");
-  if (flowerBal < amount)
-    throw new Error(`Insufficient FLOWER balance. Available: ${flowerBal}`);
-
-  // Deduct FLOWER
-  await walletService.debit(userId, "FLOWER", amount);
-
-  try {
-    // Credit USDT
-    await walletService.credit(userId, "USDT", usdtOut);
-
-    // Ledger entries
-    await Ledger.create({ referenceId: txRef, userId, transactionType: "debit",  debit: amount,  credit: 0,       currency: "FLOWER", description: "FLOWER→USDT swap debit" });
-    await Ledger.create({ referenceId: txRef, userId, transactionType: "credit", debit: 0,       credit: usdtOut, currency: "USDT",   description: "FLOWER→USDT swap credit" });
-
-    const tx = await Transaction.create({
-      referenceId: txRef,
-      senderId: userId, receiverId: userId,
-      senderAddress: "ISCAN", receiverAddress: "ISCAN",
-      amount, currency: "FLOWER",
-      type: "swap", status: "settled",
-      metadata: { rate, usdtOut, fee, destinationCurrency: "USDT" },
-      ledgerGroupId: txRef
-    });
-
-    console.log(`[FlowerUsdt] ${amount} FLOWER → ${usdtOut} USDT for ${userId}`);
-    return { txRef, rate, sourceAmount: amount, usdtOut, fee, transaction: tx };
-
-  } catch (err) {
-    // Rollback FLOWER
-    await walletService.credit(userId, "FLOWER", amount);
-    throw err;
-  }
-}
-
-// ── Execute: USDT → FLOWER ────────────────────────────────────────────────────
-export async function settleUsdtToFlower({ userId, amount, txRef = uuid() }) {
-  const rate      = await getFlowerUsdtRate();
-  const gross     = amount / rate;
-  const fee       = gross * PLATFORM_FEE;
-  const flowerOut = +(gross * (1 - 0.015) - fee).toFixed(4);
-
-  // Check USDT balance
-  const usdtBal = await walletService.getBalance(userId, "USDT");
-  if (usdtBal < amount)
-    throw new Error(`Insufficient USDT balance. Available: ${usdtBal}`);
-
-  // Deduct USDT
-  await walletService.debit(userId, "USDT", amount);
-
-  try {
-    // Credit FLOWER
-    await walletService.credit(userId, "FLOWER", flowerOut);
-
-    // Ledger entries
-    await Ledger.create({ referenceId: txRef, userId, transactionType: "debit",  debit: amount,    credit: 0,         currency: "USDT",   description: "USDT→FLOWER swap debit" });
-    await Ledger.create({ referenceId: txRef, userId, transactionType: "credit", debit: 0,         credit: flowerOut, currency: "FLOWER", description: "USDT→FLOWER swap credit" });
-
-    const tx = await Transaction.create({
-      referenceId: txRef,
-      senderId: userId, receiverId: userId,
-      senderAddress: "ISCAN", receiverAddress: "ISCAN",
-      amount, currency: "USDT",
-      type: "swap", status: "settled",
-      metadata: { rate, flowerOut, fee, destinationCurrency: "FLOWER" },
-      ledgerGroupId: txRef
-    });
-
-    console.log(`[FlowerUsdt] ${amount} USDT → ${flowerOut} FLOWER for ${userId}`);
-    return { txRef, rate, sourceAmount: amount, flowerOut, fee, transaction: tx };
-
-  } catch (err) {
-    // Rollback USDT
-    await walletService.credit(userId, "USDT", amount);
-    throw err;
-  }
+// USDT→FLOWER: not yet implemented on-chain
+export async function settleUsdtToFlower({ userId, amount }) {
+  throw new Error(
+    "USDT→FLOWER is not available yet. To get FLOWER, purchase it on a DEX and send it to your deposit address."
+  );
 }

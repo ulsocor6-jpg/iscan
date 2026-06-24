@@ -5,6 +5,8 @@ import { startRoninListener } from './src/services/blockchain/roninListener.js';
 import { startBaseListener } from './src/services/blockchain/baseListener.js';
 import { startStatusWorker } from './src/workers/statusWorker.js';
 import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.js';
+import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
+import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 
 async function startServer() {
   try {
@@ -39,6 +41,12 @@ async function startServer() {
     }
     } catch (err) {
       console.error("Ronin listener failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      startMariBankListener();
+    } catch (err) {
+      console.error("MariBank listener failed to start (continuing anyway):", err.message);
     }
 
     const PORT = process.env.PORT || 3000;
