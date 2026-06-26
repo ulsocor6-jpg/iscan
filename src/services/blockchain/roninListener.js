@@ -11,9 +11,9 @@ const RONIN_TOKENS = {
 
 async function fetchTransactions(address) {
   try {
-    const url = `${RONIN_API}/tokenTransfers?address=${address}&limit=20&offset=0`;
+    const url = `${RONIN_API}?module=account&action=tokentx&address=${address}&limit=20`;
     const res = await axios.get(url, { timeout: 10000 });
-    return res.data?.results || [];
+    return res.data?.result || [];
   } catch (err) {
     console.error(`[RONIN] fetch error for ${address}:`, err.message);
     return [];
