@@ -34,6 +34,7 @@ import paymentRoutes from './src/routes/paymentRoutes.js';
 import payoutRoutes from './src/routes/payoutRoutes.js';
 import directDepositRoutes from './src/routes/directDepositRoutes.js';
 import adminDepositRoutes from './src/routes/adminDepositRoutes.js';
+import cryptoWithdrawalRoutes from './src/routes/cryptoWithdrawalRoutes.js';
 import withdrawalRoutes from './src/routes/withdrawalRoutes.js';
 import adminWithdrawalRoutes from './src/routes/adminWithdrawalRoutes.js';
 
@@ -91,6 +92,7 @@ app.use('/api/v1/payout', payoutRoutes);
 app.use('/api/v1/deposit', directDepositRoutes);
 app.use('/api/v1/withdrawals', withdrawalRoutes);
 app.use('/api/v1/admin/withdrawals',adminWithdrawalRoutes);
+app.use('/api/v1/crypto-withdrawals', cryptoWithdrawalRoutes);
 
 
 

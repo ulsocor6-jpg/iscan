@@ -1,6 +1,7 @@
 import Imap from "imap";
 import { simpleParser } from "mailparser";
 import processTransaction from "../../core/processTransaction.js";
+import deduplicationService from "./deduplicationService.js";
 import { parseMariBankEmail } from "../../parsers/maribankEmailParser.js";
 
 export function startMariBankListener() {
@@ -41,8 +42,52 @@ export function startMariBankListener() {
                 const transaction = parseMariBankEmail(parsed.text);
 
                 if (transaction) {
-                  await processTransaction(transaction);
-                  console.log(`[MariBank Listener] Processed transaction: ${transaction.referenceId || "(no ref)"}`);
+
+                  const eventId = deduplicationService.createHash(transaction);
+
+                  const created = await deduplicationService.createEvent(
+                    "MARIBANK",
+                    eventId,
+                    transaction
+                  );
+
+                  if (!created) {
+                    console.log("[MariBank] Duplicate event ignored.");
+                    return;
+                  }
+
+                  const processing = await deduplicationService.startProcessing(
+                    "MARIBANK",
+                    eventId
+                  );
+
+                  if (!processing) {
+                    console.log("[MariBank] Event already processing.");
+                    return;
+                  }
+
+                  try {
+
+                    await processTransaction(transaction);
+
+                    await deduplicationService.markProcessed(
+                      "MARIBANK",
+                      eventId
+                    );
+
+                    console.log(`[MariBank] processed ${eventId}`);
+
+                  } catch (err) {
+
+                    await deduplicationService.markFailed(
+                      "MARIBANK",
+                      eventId,
+                      err.message
+                    );
+
+                    throw err;
+                  }
+
                 }
               } catch (procErr) {
                 console.error("[MariBank Listener] Error processing email:", procErr.message);

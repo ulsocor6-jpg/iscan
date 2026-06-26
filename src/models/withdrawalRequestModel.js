@@ -14,7 +14,9 @@ amount: Number,
 
 destinationAddress: String,
 
-approvedBy: {
+type: { type: String, enum: ['maya','bank','gcash','crypto'], default: 'maya' },
+  network: { type: String, default: null },
+  approvedBy: {
   type: mongoose.Schema.Types.ObjectId,
   ref: "User"
 },

@@ -6,6 +6,7 @@ import { startBaseListener } from './src/services/blockchain/baseListener.js';
 import { startStatusWorker } from './src/workers/statusWorker.js';
 import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.js';
 import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
+import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 
 async function startServer() {
@@ -45,6 +46,11 @@ async function startServer() {
 
     try {
       startMariBankListener();
+      try {
+        startDepositExpiryWorker();
+      } catch (err) {
+        console.error("Deposit expiry worker failed:", err.message);
+      }
     } catch (err) {
       console.error("MariBank listener failed to start (continuing anyway):", err.message);
     }

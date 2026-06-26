@@ -8,7 +8,9 @@ const chainAddressSchema = new mongoose.Schema({
 }, { _id:false });
 const linkedWalletSchema = new mongoose.Schema({
   address:       { type:String, required:true },
-  provider:      { type:String, enum:['metamask','ronin','coinbase','trustwallet','other'], default:'metamask' },
+  provider: { type:String, enum:['metamask','ronin','coinbase','trustwallet','other','MAYA','GCASH','BANK'], default:'metamask' },
+  accountNumber: { type:String },
+  accountName: { type:String },
   chainId:       { type:String, default:'0x1' },
   network:       { type:String, default:'Ethereum' },
   nativeToken:   { type:String, default:'ETH' },
