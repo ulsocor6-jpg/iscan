@@ -1,98 +1,157 @@
-import mongoose from "mongoose";
 import User from "../models/userModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import walletService from "../services/walletService.js";
 import eventStreamService from "../services/eventStreamService.js";
+import DepositReview from "../models/depositReviewModel.js";
+import BankAccount from "../models/BankAccount.js";
+import { archiveDeposit } from "../services/depositArchiveService.js";
 
 /**
  * processTransaction()
- * Matches an incoming raw deposit notification (e.g. parsed Maribank email)
- * against a pre-existing DirectDeposit record, and credits the correct user
- * only if everything lines up. Never guesses or falls back to a default user.
+ *
+ * Matches an incoming Maya notification (parsed by mayaNotificationParser.js)
+ * against a pending DirectDeposit record for the correct user.
+ *
+ * Matching strategy (in order):
+ *   1. Maya-to-Maya: match sender phone → linkedWallets (provider=MAYA, accountNumber)
+ *   2. InstaPay:     match sender name + last 4 → linkedWallets (accountName, accountNumber)
+ *   3. If multiple deposits match (ambiguous) → flag for admin, never auto-credit
+ *
+ * The referenceId is NOT used for matching — it is only stored for audit/tracking.
+ * The admin dashboard handles all flagged/ambiguous cases via /admin/confirm.
  */
 export default async function processTransaction(raw) {
-  const { amount, referenceId, sender, source } = raw;
+  const { amount, senderPhone, senderName, senderLastFour, source } = raw;
 
-  if (!referenceId) {
-    console.warn(`[processTransaction] No referenceId found in ${source || "unknown"} notification — cannot match. Raw:`, raw);
-    await flagForReview(raw, "MISSING_REFERENCE");
-    return null;
-  }
-
+  // ── Basic validation ───────────────────────────────────────────────────
   if (!amount || isNaN(amount) || amount <= 0) {
-    console.warn(`[processTransaction] Invalid amount for ref ${referenceId}:`, amount);
+    console.warn(`[processTransaction] Invalid amount from ${source}:`, amount);
     await flagForReview(raw, "INVALID_AMOUNT");
     return null;
   }
 
-  // Look up the pending deposit request this notification should match
-  const deposit = await DirectDeposit.findOne({ referenceId });
-
-  if (!deposit) {
-    console.warn(`[processTransaction] No DirectDeposit found for ref ${referenceId}. Flagging for manual review.`);
-    await flagForReview(raw, "NO_MATCHING_DEPOSIT");
+  if (!senderPhone && !senderName) {
+    console.warn(`[processTransaction] Cannot identify sender from ${source} notification`);
+    await flagForReview(raw, "UNIDENTIFIABLE_SENDER");
     return null;
   }
 
-  // Idempotency — already handled, do nothing
-  if (deposit.status === "CREDITED") {
-    console.log(`[processTransaction] Ref ${referenceId} already CREDITED — skipping duplicate.`);
-    return { skipped: true, reason: "ALREADY_CREDITED", referenceId };
+  // ── Step 1: Find the ISCAN user who sent this ──────────────────────────
+  let user = null;
+
+  if (senderPhone) {
+    // Maya-to-Maya: match by phone number stored in linkedWallets
+    user = await User.findOne({
+      linkedWallets: {
+        $elemMatch: {
+          provider: "MAYA",
+          accountNumber: senderPhone,
+        },
+      },
+    }).lean();
   }
 
-  if (deposit.status === "EXPIRED") {
-    console.warn(`[processTransaction] Ref ${referenceId} is EXPIRED but money arrived. Flagging for manual review.`);
-    await flagForReview(raw, "DEPOSIT_EXPIRED", deposit.userId);
+  if (!user && senderName && senderLastFour) {
+    // InstaPay: match by account name + last 4 digits
+    // accountName stored as "RAUL ANINO ROCO", accountNumber ends in "7726"
+    const bankAccount = await BankAccount.findOne({
+  accountName: {
+    $regex: new RegExp(escapeRegex(senderName), "i")
+  },
+  accountNumber: {
+    $regex: new RegExp(escapeRegex(senderLastFour) + "$")
+  }
+}).lean();
+
+if (bankAccount) {
+  user = await User.findById(bankAccount.userId).lean();
+}
+    
+  }
+
+  if (!user) {
+    console.warn(`[processTransaction] No ISCAN user found for sender:`, { senderPhone, senderName, senderLastFour });
+    await flagForReview(raw, "NO_MATCHING_USER");
     return null;
   }
 
-  // Amount must match what the user said they'd send — refuse to silently auto-correct
-  if (Number(amount) !== Number(deposit.amount)) {
-    console.warn(`[processTransaction] Amount mismatch for ref ${referenceId}: expected ₱${deposit.amount}, got ₱${amount}. Flagging for manual review.`);
-    await flagForReview(raw, "AMOUNT_MISMATCH", deposit.userId);
+  // ── Step 2: Find their PENDING deposit that matches this amount ────────
+  const pendingDeposits = await DirectDeposit.find({
+    userId: user._id,
+    status: "PENDING",
+    amount: amount,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (pendingDeposits.length === 0) {
+    console.warn(`[processTransaction] User ${user._id} has no PENDING MAYA deposit for ₱${amount}`);
+    await flagForReview(raw, "NO_MATCHING_DEPOSIT", user._id);
     return null;
   }
 
-  // Atomically claim this deposit so concurrent/duplicate emails can't double-process it
+  if (pendingDeposits.length > 1) {
+    // Two pending deposits for the same amount — cannot auto-resolve safely
+    console.warn(`[processTransaction] Ambiguous: ${pendingDeposits.length} PENDING deposits for user ${user._id} at ₱${amount}`);
+    await flagForReview(raw, "AMBIGUOUS_DEPOSIT", user._id);
+    return null;
+  }
+
+  const deposit = pendingDeposits[0];
+
+  // ── Step 3: Atomic claim — prevents double-credit race conditions ───────
   const claimed = await DirectDeposit.findOneAndUpdate(
-    { referenceId, status: "PENDING" },
-    { status: "CREDITED", creditedAt: new Date(), senderName: sender || "unknown" },
+    { _id: deposit._id, status: "PENDING" },
+    {
+      status: "CREDITED",
+      creditedAt: new Date(),
+      senderName: senderPhone || senderName || "unknown",
+    },
     { new: true }
   );
 
   if (!claimed) {
-    // Someone else (e.g. a concurrent webhook, or admin manual confirm) already claimed it
-    console.log(`[processTransaction] Ref ${referenceId} was claimed by another process — skipping.`);
-    return { skipped: true, reason: "RACE_CONDITION_ALREADY_CLAIMED", referenceId };
+    // Another process (concurrent webhook or admin confirm) already claimed it
+    console.log(`[processTransaction] Deposit ${deposit._id} already claimed — skipping.`);
+    return { skipped: true, reason: "RACE_CONDITION_ALREADY_CLAIMED", depositId: deposit._id };
   }
 
+  // ── Step 4: Credit the ledger ──────────────────────────────────────────
   try {
-    await walletService.credit(claimed.userId.toString(), "PHP", claimed.amount, {
-      referenceId,
-      description: `Direct deposit via ${claimed.channel} from ${sender || "unknown"} (auto-matched, source: ${source})`,
+    await walletService.credit(user._id.toString(), "PHP", claimed.amount, {
+      referenceId: claimed.referenceId,
+      description: `Maya deposit ₱${claimed.amount} from ${senderPhone || senderName} (ref: ${claimed.referenceId}, auto-matched)`,
       transactionType: "cashin",
     });
+
+    await archiveDeposit(
+      claimed,
+      "CREDITED",
+      {
+        creditedAt: new Date(),
+        senderName,
+        senderPhone
+      }
+    )
   } catch (creditErr) {
-    // Roll back the claim so this can be retried/manually fixed
-    await DirectDeposit.findOneAndUpdate({ referenceId }, { status: "PENDING" });
-    console.error(`[processTransaction] Ledger credit failed for ref ${referenceId}, rolled back:`, creditErr.message);
+    // Roll back so admin can retry or confirm manually
+    await DirectDeposit.findOneAndUpdate({ _id: claimed._id }, { status: "PENDING" });
+    console.error(`[processTransaction] Ledger credit failed, rolled back deposit ${claimed._id}:`, creditErr.message);
     throw creditErr;
   }
 
-  console.log(`[processTransaction] ✅ Credited ₱${claimed.amount} to user ${claimed.userId} (ref: ${referenceId}, source: ${source})`);
+  console.log(`[processTransaction] ✅ ₱${claimed.amount} credited to user ${user._id} (ref: ${claimed.referenceId})`);
 
-  // Emit event for live dashboard / audit trail — safe to fail silently, not core to the credit itself
+  // ── Step 5: Emit event for live dashboard ─────────────────────────────
   try {
-    const user = await User.findById(claimed.userId).select("email firstName lastName").lean();
     await eventStreamService.emit("deposit.credited", {
-      entityId: referenceId,
-      userId: claimed.userId.toString(),
+      entityId: claimed.referenceId,
+      userId: user._id.toString(),
       amount: claimed.amount,
       channel: claimed.channel,
       source,
-      sender: sender || "unknown",
-      userEmail: user?.email || "unknown",
-      userName: user?.firstName ? user.firstName + " " + (user.lastName || "") : "unknown",
+      sender: senderPhone || senderName || "unknown",
+      userEmail: user.email || "unknown",
+      userName: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : "unknown",
     });
   } catch (eventErr) {
     console.error("[processTransaction] Failed to emit deposit event (non-fatal):", eventErr.message);
@@ -100,8 +159,8 @@ export default async function processTransaction(raw) {
 
   return {
     success: true,
-    referenceId,
-    userId: claimed.userId,
+    referenceId: claimed.referenceId,
+    userId: user._id,
     amount: claimed.amount,
     channel: claimed.channel,
   };
@@ -109,18 +168,31 @@ export default async function processTransaction(raw) {
 
 /**
  * flagForReview()
- * Records an unmatched/suspicious incoming deposit notification for manual admin handling.
- * Never throws — a flagging failure should never crash the listener.
+ * Sends unmatched/ambiguous notifications to the admin dashboard event stream.
+ * Never throws — flagging failure must never crash the listener.
  */
 async function flagForReview(raw, reason, userId = null) {
   try {
+    await DepositReview.create({
+      userId,
+      chain: raw.source || "PHP",
+      asset: "PHP",
+      amount: raw.amount || 0,
+      txHash: raw.referenceId || ("REVIEW-" + Date.now()),
+      status: "pending_review"
+    });
+
     await eventStreamService.emit("deposit.flagged", {
-      entityId: raw.referenceId || null,
+      entityId: null,
       userId: userId ? userId.toString() : null,
       reason,
       raw,
     });
   } catch (err) {
-    console.error("[processTransaction] Failed to flag for review (non-fatal):", err.message);
+    console.error("[processTransaction] Failed to flag for review:", err.message);
   }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

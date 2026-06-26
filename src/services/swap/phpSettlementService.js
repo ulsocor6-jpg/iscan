@@ -1,3 +1,4 @@
+import { sendStablecoinToUser } from './../treasury/treasurySendService.js';
 import PhpLiquidityPool from '../../models/phpLiquidityPool.js';
 import { getUSDPHPRate, getPHPUSDRate } from '../fx/phpRateOracle.js';
 import Wallet from '../../models/walletModel.js';
@@ -90,7 +91,7 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
 
   try {
     // Credit stablecoin to user
-    await walletService.credit(userId, currency, usdtOut);
+    await sendStablecoinToUser({ userId, amount: usdtOut, currency, txRef });
 
     // Settle pools
     phpPool.balance          += phpAmount;

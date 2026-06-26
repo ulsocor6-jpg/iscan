@@ -1,6 +1,7 @@
 import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "../services/walletService.js";
 import crypto from "crypto";
+import eventStreamService from "../services/eventStreamService.js";
 
 export async function createWithdrawal(req, res) {
   try {
@@ -29,6 +30,19 @@ export async function createWithdrawal(req, res) {
         amount,
         destinationAddress
       });
+
+    await eventStreamService.emit("withdrawal.created", {
+  entityId: withdrawal._id.toString(),
+        userId: req.user.id,
+        asset,
+        amount,
+        destinationAddress,
+        status: withdrawal.status,
+        createdAt: withdrawal.createdAt
+      ,
+  userEmail: req.user.email || "unknown",
+  userName: req.user.firstName ? (req.user.firstName + " " + (req.user.lastName || "")) : "unknown"
+});
 
     res.json({
       success: true,

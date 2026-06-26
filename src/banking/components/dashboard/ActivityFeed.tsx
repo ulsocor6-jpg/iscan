@@ -73,6 +73,31 @@ export default function ActivityFeed({ data = [] }: Props) {
           showToast(toast);
         }
 
+
+        if (type === "withdrawal.created") {
+
+          const toast: Toast = {
+            id: Date.now(),
+            type: "WITHDRAWAL",
+            amount: data.amount,
+            referenceId: data.entityId,
+            sender: data.destinationAddress || "",
+            channel: data.asset || "PHP",
+            userEmail: data.userEmail || "unknown",
+            userName: data.userName || "unknown",
+          };
+
+          showToast(toast);
+
+          setActivity(prev => [{
+            type: "withdrawal",
+            amount: data.amount,
+            currency: data.asset,
+            status: data.status,
+            reference: data.entityId,
+          }, ...prev.slice(0,19)]);
+        }
+
       } catch (err) {
         console.error("[ActivityFeed] SSE parse error:", err);
       }

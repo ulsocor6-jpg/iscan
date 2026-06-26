@@ -1,17 +1,21 @@
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+
+dotenv.config();
+
 import processTransaction from "./src/core/processTransaction.js";
 
-async function run() {
-  const result = await processTransaction({
-    userId: "000000000000000000000001",
-    type: "deposit",
-    source: "MARI_BANK",
-    amount: 1000,
-    currency: "FLOWER",
-    referenceId: "REF_TEST_001"
-  });
+await mongoose.connect(
+  process.env.MONGODB_URI || process.env.MONGO_URL
+);
 
-  console.log("LEDGER RESULT:");
-  console.log(result);
-}
+const result = await processTransaction({
+  source: "MARI_BANK",
+  amount: 20,
+  senderName: "RAUL ROCO",
+  senderLastFour: "7726"
+});
 
-run().catch(console.error);
+console.log(result);
+
+process.exit(0);
