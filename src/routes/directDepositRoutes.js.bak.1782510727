@@ -14,9 +14,6 @@ const router = express.Router();
 // payments. Without it, auto-credit is impossible.
 router.post('/request', requireAuth, async (req, res) => {
   try {
-    console.log("=== /deposit/request HIT ===");
-    console.log("[DepositRequest] Body:", req.body);
-    console.log("[DepositRequest] User:", req.user?.id);
     const { amount, channel = 'GCASH' } = req.body;
 
     const php = parseFloat(amount);

@@ -14,18 +14,18 @@ const CHAIN_CONFIG = {
   base: {
     provider:   BASE_PROVIDER,
     privateKey: () => process.env.BASE_TREASURY_PRIVATE_KEY,
-    tokens: {
+    tokens: () => ({
       USDT: process.env.BASE_USDT_TOKEN,
       USDC: process.env.BASE_USDC_TOKEN,
-    }
+    })
   },
   ronin: {
     provider:   RONIN_PROVIDER,
     privateKey: () => process.env.RONIN_TREASURY_PRIVATE_KEY,
-    tokens: {
+    tokens: () => ({
       USDT: process.env.RONIN_USDT_TOKEN,
       USDC: process.env.RONIN_USDC_TOKEN,
-    }
+    })
   }
 };
 
@@ -59,7 +59,14 @@ export async function sendStablecoinToUser({ userId, amount, currency, txRef, pr
   const config = CHAIN_CONFIG[chain];
   if (!config) throw new Error(`Unsupported chain: ${chain}`);
 
-  const tokenAddress = config.tokens[currency];
+  console.log("\n================ TREASURY DEBUG ================");
+  console.log("CHAIN:", chain);
+  console.log("CURRENCY:", currency);
+  const tokens = config.tokens();
+  console.log("TOKENS:", tokens);
+  const tokenAddress = tokens[currency];
+  console.log("TOKEN ADDRESS:", tokenAddress);
+  console.log("===============================================\n");
   if (!tokenAddress) throw new Error(`No ${currency} contract on ${chain}`);
 
   const privateKey = config.privateKey();
@@ -69,6 +76,14 @@ export async function sendStablecoinToUser({ userId, amount, currency, txRef, pr
   const treasuryWallet = new ethers.Wallet(privateKey, config.provider);
   const token          = new ethers.Contract(tokenAddress, ERC20_ABI, treasuryWallet);
   const decimals       = await token.decimals();
+
+  console.log("========== PARSE DEBUG ==========");
+  console.log("amount:", amount);
+  console.log("typeof amount:", typeof amount);
+  console.log("amount string:", amount.toString());
+  console.log("decimals:", decimals);
+  console.log("=================================");
+
   const amountWei      = ethers.parseUnits(amount.toString(), decimals);
 
   console.log(`[treasury] Sending ${amount} ${currency} on ${chain} to ${toAddress} | ref: ${txRef}`);

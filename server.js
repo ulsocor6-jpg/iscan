@@ -20,6 +20,14 @@ async function startServer() {
 
     await mongoose.connect(mongoUrl);
     console.log("MongoDB connected");
+console.log("BASE_USDC =", process.env.BASE_USDC_TOKEN);
+console.log("BASE_USDT =", process.env.BASE_USDT_TOKEN);
+
+    console.log("==================================");
+    console.log("DATABASE =", mongoose.connection.db.databaseName);
+    console.log("COLLECTIONS =", await mongoose.connection.db.listCollections().toArray());
+    console.log("==================================");
+
 
     try {
       startSettlementWorker();
