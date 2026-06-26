@@ -124,7 +124,12 @@ export default function ActivityFeed({ data = [] }: Props) {
       <div style={{ position: "absolute", top: 8, right: 8, zIndex: 99, display: "flex", flexDirection: "column", gap: 8 }}>
         {toasts.map(toast => (
           <div key={toast.id} style={{
-            background: toast.type === "CREDITED" ? "#16a34a" : "#dc2626",
+            background:
+toast.type==="CREDITED"
+? "#16a34a"
+: toast.type==="WITHDRAWAL"
+? "#2563eb"
+: "#dc2626",
             color: "#fff",
             borderRadius: 8,
             padding: "10px 14px",
@@ -133,7 +138,13 @@ export default function ActivityFeed({ data = [] }: Props) {
             animation: "slideIn 0.3s ease",
           }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>
-              {toast.type === "CREDITED" ? "✅ Deposit Verified" : "⚠️ Deposit Flagged"}
+              {
+toast.type==="CREDITED"
+? "✅ Deposit Verified"
+: toast.type==="WITHDRAWAL"
+? "💸 Withdrawal Requested"
+: "⚠️ Deposit Flagged"
+}
             </div>
             <div style={{ fontSize: 12, marginTop: 4 }}>
               <strong>PHP {toast.amount?.toLocaleString()}</strong> — Ref: {toast.referenceId}

@@ -73,8 +73,11 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
 
 // PHP → USDT/USDC
 export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USDT', txRef }) {
-  const rate    = await getPHPUSDRate();
-  const usdtOut = phpAmount * rate;
+  const rate = await getPHPUSDRate();
+
+  // USDC/USDT support only 6 decimal places.
+  // Truncate instead of using JS floating-point precision.
+  const usdtOut = Math.floor((phpAmount * rate) * 1_000_000) / 1_000_000;
 
   const phpPool    = await getPool('PHP');
   const stablePool = await getPool(currency);

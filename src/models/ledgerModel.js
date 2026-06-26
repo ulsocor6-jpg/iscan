@@ -40,6 +40,6 @@ const ledgerSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ledgerSchema.index({ userId: 1, createdAt: -1 });
-ledgerSchema.index({ referenceId: 1 }, { unique: true });
+ledgerSchema.index({ referenceId: 1 });
 
 export default mongoose.model('Ledger', ledgerSchema);

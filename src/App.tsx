@@ -11,6 +11,7 @@ import Remittance   from "./pages/Remittance";
 import Activity     from "./pages/Activity";
 import Compliance   from "./pages/Compliance";
 import AdminCashouts from './pages/AdminCashouts';
+import AdminDeposits from './pages/AdminDeposits';
 import Treasury     from "./pages/Treasury";
 import Profile        from "./pages/Profile";
 import WalletManager from "./pages/WalletManager";
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/activity"   element={<RequireAuth><Activity /></RequireAuth>} />
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
         <Route path="/admin/cashouts" element={<RequireAdmin><AdminCashouts /></RequireAdmin>} />
+        <Route path="/admin/deposits" element={<RequireAdmin><AdminDeposits /></RequireAdmin>} />
         <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />
         <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />
         <Route path="/profile"    element={<RequireAuth><Profile /></RequireAuth>} />

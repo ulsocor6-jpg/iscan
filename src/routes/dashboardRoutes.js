@@ -94,6 +94,11 @@ export default router;
 
 // SSE — Admin real-time event stream
 router.get("/stream", requireAuth, (req, res) => {
+
+  console.log(
+    "[SSE] Stream opened by",
+    req.user?.email || req.user?.id || "unknown"
+  );
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");

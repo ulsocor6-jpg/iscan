@@ -48,14 +48,15 @@ export default async function processTransaction(raw) {
   let user = null;
 
   if (senderPhone) {
-    // Maya-to-Maya: match by phone number stored in BankAccount (provider=maya)
-    const mayaAccount = await BankAccount.findOne({
-      provider: "maya",
-      accountNumber: senderPhone,
+    // Maya-to-Maya: match by phone number stored in linkedWallets
+    user = await User.findOne({
+      linkedWallets: {
+        $elemMatch: {
+          provider: "MAYA",
+          accountNumber: senderPhone,
+        },
+      },
     }).lean();
-    if (mayaAccount) {
-      user = await User.findById(mayaAccount.userId).lean();
-    }
   }
 
   if (!user && senderName && senderLastFour) {
@@ -104,7 +105,7 @@ console.log(
 );
 
   if (pendingDeposits.length === 0) {
-    console.warn(`[processTransaction] User ${user._id} has no PENDING ${channel} deposit for ₱${amount}`);
+    console.warn(`[processTransaction] User ${user._id} has no PENDING MAYA deposit for ₱${amount}`);
     await flagForReview(raw, "NO_MATCHING_DEPOSIT", user._id);
     return null;
   }
