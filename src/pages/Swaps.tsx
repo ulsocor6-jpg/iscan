@@ -526,8 +526,16 @@ export default function Swaps() {
 
                     <div style={{background:"#121b2f",borderRadius:8,padding:14,marginBottom:12}}>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                        <span style={{color:"#94a3b8",fontSize:12}}>Bank</span>
-                        <span style={{color:"white",fontSize:13,fontWeight:600}}>{bankDeposit.instructions?.bank}</span>
+                        <span style={{color:"#94a3b8",fontSize:12}}>{bankDeposit.channel === "MAYA" ? "Maya Number" : "Bank Account"}</span>
+                        <span style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{color:"white",fontSize:13,fontWeight:600}}>
+                            {bankDeposit.channel === "MAYA" ? bankDeposit.instructions?.maya : bankDeposit.instructions?.bank}
+                          </span>
+                          <button onClick={() => navigator.clipboard.writeText(bankDeposit.channel === "MAYA" ? bankDeposit.instructions?.maya : bankDeposit.instructions?.bank)} style={{
+                            background:"#1d2942",border:"1px solid #2d3f5e",borderRadius:6,padding:"4px 8px",
+                            color:"white",fontSize:11,cursor:"pointer"
+                          }}>Copy</button>
+                        </span>
                       </div>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
                         <span style={{color:"#94a3b8",fontSize:12}}>Account Name</span>

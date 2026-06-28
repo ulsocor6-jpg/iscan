@@ -254,9 +254,12 @@ function CryptoDepositRow({ dep, onAction }: { dep: CryptoDeposit; onAction: () 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminDeposits() {
-  const [tab, setTab]               = useState<"php" | "crypto">("php");
+  const [tab, setTab]               = useState<"php" | "crypto" | "logs" | "flagged" | "ingress">("php");
   const [phpDeps, setPhpDeps]       = useState<DirectDeposit[]>([]);
   const [cryptoDeps, setCryptoDeps] = useState<CryptoDeposit[]>([]);
+  const [logs, setLogs]             = useState<any[]>([]);
+  const [flagged, setFlagged]       = useState<any[]>([]);
+  const [ingress, setIngress]       = useState<any[]>([]);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -264,14 +267,23 @@ export default function AdminDeposits() {
   const fetchAll = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [phpRes, cryptoRes] = await Promise.all([
+      const [phpRes, cryptoRes, logsRes, flaggedRes, ingressRes] = await Promise.all([
         fetch("/api/v1/deposit/admin/pending", { credentials: "include" }),
         fetch("/api/v1/admin/deposits/pending",  { credentials: "include" }),
+        fetch("/api/v1/deposit/admin/logs",          { credentials: "include" }),
+        fetch("/api/v1/deposit/admin/flagged",       { credentials: "include" }),
+        fetch("/api/v1/deposit/admin/ingress",       { credentials: "include" }),
       ]);
       const phpData    = await phpRes.json();
       const cryptoData = await cryptoRes.json();
       if (phpData.success)    setPhpDeps(phpData.deposits    || []);
       if (cryptoData.success) setCryptoDeps(cryptoData.deposits || []);
+      const logsData    = await logsRes.json();
+      const flaggedData = await flaggedRes.json();
+      const ingressData = await ingressRes.json();
+      if (logsData.success)    setLogs(logsData.deposits      || []);
+      if (flaggedData.success) setFlagged(flaggedData.reviews || []);
+      if (ingressData.success) setIngress(ingressData.events  || []);
       setLastRefresh(new Date());
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
@@ -339,7 +351,7 @@ export default function AdminDeposits() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          {([["php", "💵 PHP Deposits", phpDeps.length], ["crypto", "🔗 Crypto Deposits", cryptoDeps.length]] as const).map(([id, label, count]) => (
+          {([["php", "💵 PHP Deposits", phpDeps.length], ["crypto", "🔗 Crypto Deposits", cryptoDeps.length], ["logs", "📋 All Logs", logs.length], ["flagged", "⚠️ Flagged", flagged.length], ["ingress", "📡 Watcher Events", ingress.length]] as const).map(([id, label, count]) => (
             <button key={id} onClick={() => setTab(id)} style={{
               padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer",
               fontWeight: 700, fontSize: 13,
@@ -379,6 +391,76 @@ export default function AdminDeposits() {
             ) : (
               cryptoDeps.map(d => <CryptoDepositRow key={d._id} dep={d} onAction={fetchAll} />)
             )}
+          </div>
+        )}
+
+        {tab === "logs" && (
+          <div>
+            {logs.length === 0 ? (
+              <div style={{ color: "#475569", textAlign: "center", padding: "40px 0", fontSize: 14 }}>No deposit logs found</div>
+            ) : logs.map((d: any) => (
+              <div key={d._id} style={{ background: "#0d1526", border: "1px solid #1d2942", borderRadius: 10, padding: "14px 20px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 16 }}>{d.channel === "MAYA" ? "🟣" : d.channel === "GCASH" ? "💙" : "🏦"}</span>
+                  <span style={{ color: "white", fontWeight: 700 }}>₱{d.amount}</span>
+                  {statusPill(d.status)}
+                  <span style={{ color: "#475569", fontSize: 11 }}>{timeAgo(d.createdAt)}</span>
+                </div>
+                <div style={{ color: "#64748b", fontSize: 12 }}>
+                  <span style={{ marginRight: 12 }}>👤 {typeof d.userId === "object" ? `${d.userId?.firstName} ${d.userId?.lastName} (${d.userId?.email})` : d.userId}</span>
+                  <span style={{ marginRight: 12 }}>📋 {d.referenceId}</span>
+                  <span>{d.channel}</span>
+                  {d.senderName && <span style={{ marginLeft: 12 }}>· Sender: {d.senderName}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "flagged" && (
+          <div>
+            {flagged.length === 0 ? (
+              <div style={{ color: "#475569", textAlign: "center", padding: "40px 0", fontSize: 14 }}>No flagged deposits</div>
+            ) : flagged.map((r: any) => (
+              <div key={r._id} style={{ background: "#1a0f00", border: "1px solid #854d0e", borderRadius: 10, padding: "14px 20px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: "#f59e0b", fontWeight: 700 }}>⚠️ Flagged — {r.chain}</span>
+                  <span style={{ color: "#fbbf24", fontSize: 13, fontWeight: 700 }}>₱{r.amount}</span>
+                  <span style={{ color: "#475569", fontSize: 11 }}>{timeAgo(r.createdAt)}</span>
+                </div>
+                <div style={{ color: "#64748b", fontSize: 12 }}>
+                  <span style={{ marginRight: 12 }}>Asset: {r.asset}</span>
+                  <span style={{ marginRight: 12 }}>Status: {r.status}</span>
+                  {r.txHash && <span>Ref: {r.txHash}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "ingress" && (
+          <div>
+            {ingress.length === 0 ? (
+              <div style={{ color: "#475569", textAlign: "center", padding: "40px 0", fontSize: 14 }}>No watcher events found</div>
+            ) : ingress.map((e: any) => (
+              <div key={e._id} style={{
+                background: "#0d1526",
+                border: `1px solid ${e.status === "PROCESSED" ? "#14532d" : e.status === "FAILED" ? "#7f1d1d" : "#1d2942"}`,
+                borderRadius: 10, padding: "14px 20px", marginBottom: 10
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: "white", fontWeight: 700 }}>📡 {e.source}</span>
+                  {statusPill(e.status)}
+                  <span style={{ color: "#475569", fontSize: 11 }}>{timeAgo(e.receivedAt)}</span>
+                </div>
+                <div style={{ color: "#64748b", fontSize: 12 }}>
+                  {e.metadata?.amount && <span style={{ marginRight: 12 }}>Amount: ₱{e.metadata.amount}</span>}
+                  {e.metadata?.senderPhone && <span style={{ marginRight: 12 }}>Phone: {e.metadata.senderPhone}</span>}
+                  {e.metadata?.senderName && <span style={{ marginRight: 12 }}>Name: {e.metadata.senderName}</span>}
+                  {e.failureReason && <span style={{ color: "#f87171" }}>Error: {e.failureReason}</span>}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

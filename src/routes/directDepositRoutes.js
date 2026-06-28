@@ -184,3 +184,46 @@ router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
 });
 
 export default router;
+
+// ── GET /deposit/admin/logs ────────────────────────────────────────────────
+// All DirectDeposits (any status) for full history view
+router.get('/admin/logs', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const deposits = await DirectDeposit.find()
+      .populate('userId', 'email firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(limit);
+    res.json({ success: true, deposits });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /deposit/admin/flagged ─────────────────────────────────────────────
+// Deposits the watcher found but couldn't auto-match (flagged for review)
+router.get('/admin/flagged', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { default: DepositReview } = await import('../models/depositReviewModel.js');
+    const reviews = await DepositReview.find({ status: 'pending_review' })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json({ success: true, reviews });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /deposit/admin/ingress ─────────────────────────────────────────────
+// Watcher ingress events — shows what was received and processing status
+router.get('/admin/ingress', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { default: IngressEvent } = await import('../models/IngressEvent.js');
+    const events = await IngressEvent.find()
+      .sort({ receivedAt: -1 })
+      .limit(100);
+    res.json({ success: true, events });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
