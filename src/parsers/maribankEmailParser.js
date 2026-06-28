@@ -14,6 +14,12 @@ export function parseMariBankEmail(text) {
 const lastFourMatch =
   text.match(/(\d{4})\s*$/m);
 
+console.log("\n=== MARIBANK PARSER ===");
+console.log(text);
+console.log("amountMatch=", amountMatch?.[1]);
+console.log("senderName=", senderNameMatch?.[1]);
+console.log("lastFour=", lastFourMatch?.[1]);
+
 return {
   source: "MARI_BANK",
   amount: parseFloat(amountMatch[1].replace(/,/g, "")),

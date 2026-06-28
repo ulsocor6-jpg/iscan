@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import { settleStablecoinToPHP, settlePHPToStablecoin, getPoolStatus } from '../services/swap/phpSettlementService.js';
 import { getUSDPHPRate, getPHPUSDRate } from '../services/fx/phpRateOracle.js';
+import FeeRecord from '../models/feeModel.js';
 
 export async function quoteSwap(req, res) {
   try {
@@ -48,6 +49,23 @@ export async function executeSwap(req, res) {
       result = await settlePHPToStablecoin({ userId, phpAmount: +amount, currency: toCurrency, txRef });
     } else {
       result = await settleStablecoinToPHP({ userId, stablecoinAmount: +amount, currency: fromCurrency, txRef });
+    }
+    try {
+      const grossAmount = +amount;
+      const feeAmount = parseFloat((grossAmount * 0.015).toFixed(6));
+      await FeeRecord.create({
+        referenceId: 'FEE-' + txRef,
+        userId,
+        txType: 'crypto_swap',
+        currency: fromCurrency === 'PHP' ? toCurrency : 'PHP',
+        grossAmount,
+        feePercent: 1.5,
+        feeAmount,
+        netAmount: grossAmount - feeAmount,
+        metadata: { fromCurrency, toCurrency, txRef }
+      });
+    } catch (feeErr) {
+      console.error('[phpSwap] FeeRecord failed (non-fatal):', feeErr.message);
     }
     res.json({ success: true, txRef, ...result });
   } catch (err) {

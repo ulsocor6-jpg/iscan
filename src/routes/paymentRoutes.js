@@ -8,6 +8,7 @@ import { cashIn, webhook } from '../controllers/paymentController.js';
 import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';
 import CashoutRequest from '../models/CashoutRequest.js';
+import FeeRecord from '../models/feeModel.js';
 
 const router = express.Router();
 
@@ -67,6 +68,17 @@ router.post('/cashout', requireAuth, async (req, res) => {
       status: 'PENDING'
     });
 
+    await FeeRecord.create({
+      referenceId: 'FEE-' + ref,
+      userId: req.user.id,
+      txType: 'cashout',
+      currency: 'PHP',
+      grossAmount: php,
+      feePercent: 1.5,
+      feeAmount: fee,
+      netAmount: php - fee,
+      metadata: { channel, receiverName, accountNumber }
+    });
     await Wallet.findOneAndUpdate({ userId: req.user.id }, { balance: await getLedgerBalance(req.user.id) });
 
     res.json({ success: true, referenceId: ref, amount: php, fee, total, cashoutRequest: co });
