@@ -34,13 +34,32 @@ export function startMariBankListener() {
                 const parsed = await simpleParser(stream);
                 const emailText = parsed.text;
 
-                // ── Start inspector flow ─────────────────────────────
-                flow = await inspectorService.startFlow({
-                  pipeline: "PHP_DEPOSIT",
-                  source: "MARI_BANK",
-                  transactionType: "cashin",
-                  rawNotification: { subject: parsed.subject, from: parsed.from?.text, text: emailText?.slice(0, 500) },
-                });
+                // ── Parse the email first so we know the reference ID ──
+                // before deciding whether to start a new flow or continue
+                // one that already exists from a UI deposit request.
+                const transaction = parseMariBankEmail(emailText);
+
+                // ── Link to an existing deposit-request flow if possible ──
+                let reused = false;
+                if (transaction?.referenceId) {
+                  const existing = await inspectorService.findRunningByReference(transaction.referenceId);
+                  if (existing) {
+                    flow = existing;
+                    reused = true;
+                  }
+                }
+
+                // ── Otherwise start a fresh flow (e.g. unsolicited transfer
+                // with no matching deposit request, or parse failed) ──
+                if (!flow) {
+                  flow = await inspectorService.startFlow({
+                    pipeline: "PHP_DEPOSIT",
+                    source: "MARI_BANK",
+                    transactionType: "cashin",
+                    referenceId: transaction?.referenceId || null,
+                    rawNotification: { subject: parsed.subject, from: parsed.from?.text, text: emailText?.slice(0, 500) },
+                  });
+                }
                 const flowId = flow.flowId;
 
                 // ── WATCHER stage ────────────────────────────────────
@@ -49,13 +68,12 @@ export function startMariBankListener() {
                   from: parsed.from?.text,
                 });
                 await inspectorService.finishStage(flowId, InspectorStage.WATCHER, {
-                  result: { emailReceived: true, subject: parsed.subject },
+                  result: { emailReceived: true, subject: parsed.subject, linkedToDepositRequest: reused },
                   decision: { reason: "EMAIL_RECEIVED" },
                 });
 
                 // ── PARSER stage ─────────────────────────────────────
                 await inspectorService.startStage(flowId, InspectorStage.PARSER, { text: emailText?.slice(0, 300) });
-                const transaction = parseMariBankEmail(emailText);
 
                 if (!transaction) {
                   await inspectorService.failStage(flowId, InspectorStage.PARSER, "Not a MariBank transaction email", {
@@ -104,6 +122,7 @@ export function startMariBankListener() {
                 try {
                   await processTransaction({ ...transaction, _flowId: flowId });
                   await deduplicationService.markProcessed("MARIBANK", eventId);
+                  await inspectorService.finishFlow(flowId);
                   console.log(`[MariBank] processed ${eventId}`);
                 } catch (err) {
                   await deduplicationService.markFailed("MARIBANK", eventId, err.message);
@@ -112,7 +131,9 @@ export function startMariBankListener() {
 
               } catch (procErr) {
                 console.error("[MariBank Listener] Error:", procErr.message);
-                if (flow) await inspectorService.failStage(flow.flowId, "PROCESS_TRANSACTION", procErr.message).catch(() => {});
+                if (flow) {
+                  await inspectorService.failStage(flow.flowId, "PROCESS_TRANSACTION", procErr.message).catch(() => {});
+                }
               }
             });
           });

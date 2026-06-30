@@ -1,5 +1,7 @@
 export const InspectorStage = {
 
+  DEPOSIT_REQUESTED: "DEPOSIT_REQUESTED",
+
   WATCHER: "WATCHER",
 
   PARSER: "PARSER",

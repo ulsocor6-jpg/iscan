@@ -252,6 +252,19 @@ class InspectorService {
 
     }
 
+    // Used to link a flow that started at deposit-request time (UI) to the
+    // email/notification that later confirms it, via the shared referenceId.
+    async findRunningByReference(referenceId) {
+
+        if (!referenceId) return null;
+
+        return Inspector.findOne({
+            referenceId,
+            status: "RUNNING"
+        }).sort({ createdAt: -1 });
+
+    }
+
     async latest(limit = 100) {
 
         return Inspector
