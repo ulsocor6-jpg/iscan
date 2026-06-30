@@ -2,16 +2,17 @@
 import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail', 
+  service: 'gmail',
   auth: {
-    user: 'your-email@gmail.com', // Use your business email
-    pass: 'your-app-password'      // Get this from Google Account Security
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
 export const sendVerificationEmail = async (email, token) => {
-  const url = `http://localhost:3000/api/v1/auth/verify?token=${token}`;
-  
+  const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+  const url = `${baseUrl}/api/v1/auth/verify?token=${token}`;
+
   await transporter.sendMail({
     from: '"iSCAN Security" <noreply@iscan.com>',
     to: email,
