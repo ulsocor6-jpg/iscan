@@ -5,6 +5,8 @@ import DirectDeposit from '../models/DirectDepositModel.js';
 import User from '../models/userModel.js';
 import BankAccount from '../models/BankAccount.js';
 import walletService from '../services/walletService.js';
+import inspectorService from '../services/inspectorService.js';
+import { InspectorStage } from '../inspector/inspectorConstants.js';
 
 const router = express.Router();
 
@@ -77,6 +79,31 @@ router.post('/request', requireAuth, async (req, res) => {
       amount: php,
       channel,
     });
+
+    // Start the visual pipeline now — this is stage 0, before any bank
+    // email/notification has arrived. The MariBank listener will look up
+    // this same flow by referenceId and continue it once the email lands.
+    try {
+      const flow = await inspectorService.startFlow({
+        pipeline: 'PHP_DEPOSIT',
+        source: channel,
+        transactionType: 'cashin',
+        referenceId,
+        amount: php,
+      });
+      await inspectorService.startStage(flow.flowId, InspectorStage.DEPOSIT_REQUESTED, {
+        userId: req.user.id,
+        channel,
+        amount: php,
+      });
+      await inspectorService.finishStage(flow.flowId, InspectorStage.DEPOSIT_REQUESTED, {
+        result: { referenceId, amount: php, channel },
+        decision: { reason: 'DEPOSIT_REQUEST_CREATED' },
+      });
+    } catch (inspectorErr) {
+      // Never let Inspector tracking break the actual deposit flow.
+      console.error('[Inspector] Failed to start flow for deposit request:', inspectorErr.message);
+    }
 
     res.json({
       success: true,

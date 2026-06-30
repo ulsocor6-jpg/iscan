@@ -1,6 +1,7 @@
 // Visual pipeline tracker — shows each ingestion stage as a node with live status.
 // Stage names MUST match InspectorStage constants exactly (all-caps) or matching silently fails.
 const STAGES = [
+  "DEPOSIT_REQUESTED",
   "WATCHER",
   "PARSER",
   "DEDUP",
