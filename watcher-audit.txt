@@ -1,0 +1,1113 @@
+===== baseListener.js =====
+// src/services/blockchain/baseListener.js
+import { ethers }      from "ethers";
+import crypto          from "crypto";
+import DepositAddress  from "../../models/depositAddressModel.js";
+import FlowerOrder     from "../../models/flower/flowerOrderModel.js";
+import { processSwap } from "../flowerSwapServiceBase.js";
+
+const provider = new ethers.JsonRpcProvider(
+  process.env.BASE_RPC || "https://mainnet.base.org"
+);
+
+const FLOWER_TOKEN_ADDRESS = process.env.BASE_DEPOSIT_TOKEN;
+
+const FLOWER = new ethers.Contract(
+  FLOWER_TOKEN_ADDRESS,
+  [
+    "function balanceOf(address) view returns (uint256)",
+    "function decimals() view returns (uint8)"
+  ],
+  provider
+);
+
+let _decimals = null;
+async function getDecimals() {
+  if (_decimals !== null) return _decimals;
+  _decimals = await FLOWER.decimals();
+  return _decimals;
+}
+
+async function checkFlowerBalance(address) {
+  const [bal, decimals] = await Promise.all([FLOWER.balanceOf(address), getDecimals()]);
+  return parseFloat(ethers.formatUnits(bal, decimals));
+}
+
+async function handleNewDeposit({ addr, newAmount, balance }) {
+  const existing = await FlowerOrder.findOne({
+    depositAddress: addr.address.toLowerCase(),
+    chain:          "BASE",
+    status:         { $in: ["WAITING_DEPOSIT", "DEPOSIT_RECEIVED", "VERIFIED", "SWAPPING"] }
+  });
+
+  if (existing) {
+    existing.receivedAmount = newAmount;
+    existing.status         = "DEPOSIT_RECEIVED";
+    await existing.save();
+    console.log(`[BASE LISTENER] Updated order ${existing.orderId} — ${newAmount} FLOWER`);
+    processSwap(existing.orderId).catch(err =>
+      console.error(`[BASE LISTENER] processSwap failed for ${existing.orderId}:`, err.message)
+    );
+    return;
+  }
+
+  const orderId = "FLW-BASE-" + crypto.randomBytes(6).toString("hex");
+  await FlowerOrder.create({
+    orderId,
+    userId:         addr.userId,
+    token:          "FLOWER",
+    chain:          "BASE",
+    depositAddress: addr.address.toLowerCase(),
+    expectedAmount: newAmount,
+    receivedAmount: newAmount,
+    status:         "DEPOSIT_RECEIVED"
+  });
+
+  console.log(`[BASE LISTENER] Created order ${orderId} — ${newAmount} FLOWER from ${addr.address}`);
+  processSwap(orderId).catch(err =>
+    console.error(`[BASE LISTENER] processSwap failed for ${orderId}:`, err.message)
+  );
+}
+
+export async function startBaseListener() {
+  if (!FLOWER_TOKEN_ADDRESS) {
+    console.error("[BASE LISTENER] BASE_DEPOSIT_TOKEN not set — not started"); return;
+  }
+  if (!process.env.BASE_TREASURY_PRIVATE_KEY) {
+    console.error("[BASE LISTENER] BASE_TREASURY_PRIVATE_KEY not set — not started"); return;
+  }
+
+  console.log("[BASE LISTENER] starting — polling every 15s");
+
+  setInterval(async () => {
+    try {
+      const addresses = await DepositAddress.find({ chain:"base", token:"FLOWER", status:"active" });
+      for (const addr of addresses) {
+        try {
+          const balance = await checkFlowerBalance(addr.address);
+          console.log(`[BASE SCAN] ${addr.address} balance=${balance}`);
+          if (balance <= 0)                 continue;
+          if (balance === addr.lastAmount)  continue;
+          const newAmount = balance - (addr.lastAmount || 0);
+          if (newAmount <= 0.001)           continue;
+          await handleNewDeposit({ addr, newAmount, balance });
+          addr.lastAmount = balance;
+          await addr.save();
+        } catch (err) {
+          console.error(`[BASE LISTENER] error checking ${addr.address}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error("[BASE LISTENER ERROR]", err.message);
+    }
+  }, 15000);
+
+  console.log("[BASE LISTENER] running");
+}
+
+===== baseStableListener.js =====
+// src/services/blockchain/baseStableListener.js
+// Watches Base chain deposit addresses for USDC/USDT deposits
+// then sweeps them to treasury and credits the user's ledger.
+
+import { ethers }            from "ethers";
+import DepositAddress        from "../../models/depositAddressModel.js";
+import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
+import { deriveBaseAddress } from "../hdWalletService.js";
+
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+];
+
+// Hardcode decimals — some Base tokens don't expose decimals()
+const TOKEN_DECIMALS = {
+  USDC: 6,
+  USDT: 6,
+};
+
+const BASE_RPC           = process.env.BASE_RPC || "https://mainnet.base.org";
+const TREASURY_WALLET    = process.env.BASE_TREASURY_WALLET;
+const TREASURY_PRIV_KEY  = process.env.BASE_TREASURY_PRIVATE_KEY;
+
+const TOKENS = {
+  USDC: process.env.BASE_USDC_TOKEN || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  USDT: process.env.BASE_USDT_TOKEN || "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+};
+
+const provider = new ethers.JsonRpcProvider(BASE_RPC);
+
+async function checkAndSweep(addr) {
+  for (const [symbol, tokenAddress] of Object.entries(TOKENS)) {
+    try {
+      const token    = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+      const decimals = TOKEN_DECIMALS[symbol] || 6;
+      const balance  = await token.balanceOf(addr.address);
+
+      if (balance === 0n) continue;
+
+      const amount = parseFloat(ethers.formatUnits(balance, decimals));
+      if (amount < 0.01) continue;
+
+      console.log(`[BASE STABLE] Detected ${amount} ${symbol} at ${addr.address}`);
+
+      // Record deposit in DB
+      await createDetectedDeposit({
+        userId:  addr.userId,
+        token:   symbol,
+        amount,
+        txHash:  `${addr.address}-${symbol}-${Date.now()}`,
+        address: addr.address,
+        chain:   "base"
+      });
+
+      // Sweep to treasury
+      if (addr.hdIndex !== null && TREASURY_WALLET) {
+        try {
+          const derived = await deriveBaseAddress(addr.hdIndex);
+          if (!derived?.privateKey) throw new Error("No private key derived");
+
+          const signer      = new ethers.Wallet(derived.privateKey, provider);
+          const tokenSigner = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+
+          // Check ETH for gas — skip sweep if insufficient
+          const ethBal = await provider.getBalance(addr.address);
+          if (ethBal < ethers.parseEther("0.0001")) {
+            console.warn(`[BASE STABLE] ${addr.address} has no ETH for gas — sweep skipped, deposit recorded`);
+            continue;
+          }
+
+          const tx      = await tokenSigner.transfer(TREASURY_WALLET, balance);
+          const receipt = await tx.wait();
+          console.log(`[BASE STABLE] ✅ Swept ${amount} ${symbol} → treasury | tx: ${receipt.hash}`);
+
+          addr.lastTxHash = receipt.hash;
+          addr.lastAmount = amount;
+          await addr.save();
+
+        } catch (sweepErr) {
+          console.error(`[BASE STABLE] Sweep failed for ${addr.address}:`, sweepErr.message);
+        }
+      }
+
+    } catch (err) {
+      console.error(`[BASE STABLE] Error checking ${symbol} at ${addr.address}:`, err.message);
+    }
+  }
+}
+
+export async function startBaseStableListener() {
+  if (!TREASURY_WALLET) {
+    console.error("[BASE STABLE] BASE_TREASURY_WALLET not set — not started");
+    return;
+  }
+
+  console.log("[BASE STABLE] Starting USDC/USDT listener on Base — polling every 30s");
+
+  setInterval(async () => {
+    try {
+      const addresses = await DepositAddress.find({
+        chain:  "base",
+        token:  { $in: ["USDC", "USDT"] },
+        status: "active"
+      });
+
+      for (const addr of addresses) {
+        await checkAndSweep(addr);
+      }
+    } catch (err) {
+      console.error("[BASE STABLE ERROR]", err.message);
+    }
+  }, 30000);
+}
+
+===== roninListener.js =====
+import axios from "axios";
+import DepositAddress from "../../models/depositAddressModel.js";
+import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
+
+const RONIN_API = "https://explorer.roninchain.com/api";
+
+const RONIN_TOKENS = {
+  USDC: "0x0b7007c13325c48911f73a2dad5fa5dcbf808adc",
+  USDT: "0x1c84981f3b05dde0a2ab8e3a78bc3a32a0564cb4",
+};
+
+async function fetchTransactions(address) {
+  try {
+    const url = `${RONIN_API}?module=account&action=tokentx&address=${address}&limit=20`;
+    const res = await axios.get(url, { timeout: 10000 });
+    return res.data?.result || [];
+  } catch (err) {
+    console.error(`[RONIN] fetch error for ${address}:`, err.message);
+    return [];
+  }
+}
+
+async function processDeposit(tx, depositAddress, token) {
+  const amount = Number(tx.value) / 1e6;
+
+  if (amount <= 0) return;
+
+  await createDetectedDeposit({
+    userId: depositAddress.userId,
+    token,
+    amount,
+    txHash: tx.transaction_hash,
+    address: depositAddress.address,
+    chain: "ronin"
+  });
+
+  console.log(
+    `[RONIN DETECTED] user=${depositAddress.userId} amount=${amount} ${token}`
+  );
+}
+
+export async function startRoninListener() {
+  console.log("[RONIN LISTENER] starting...");
+
+  setInterval(async () => {
+    try {
+      const addresses = await DepositAddress.find({
+        status: "active",
+        chain: "ronin"
+      });
+
+      for (const addr of addresses) {
+        const txs = await fetchTransactions(addr.address);
+
+        for (const tx of txs) {
+          if (
+            tx.to?.toLowerCase() !==
+            addr.address.toLowerCase()
+          ) continue;
+
+          const tokenEntry =
+            Object.entries(RONIN_TOKENS).find(
+              ([, contract]) =>
+                contract.toLowerCase() ===
+                tx.token_address?.toLowerCase()
+            );
+
+          if (!tokenEntry) continue;
+
+          const [token] = tokenEntry;
+
+          if (addr.lastTxHash === tx.transaction_hash)
+            continue;
+
+          await processDeposit(tx, addr, token);
+
+          addr.lastTxHash = tx.transaction_hash;
+          addr.lastAmount = Number(tx.value) / 1e6;
+
+          await addr.save();
+        }
+      }
+    } catch (err) {
+      console.error(
+        "[RONIN LISTENER ERROR]",
+        err.message
+      );
+    }
+  }, 15000);
+
+  console.log(
+    "[RONIN LISTENER] running — polling every 15s"
+  );
+}
+
+===== tronListener.js =====
+import axios from "axios";
+import DepositAddress from "../../models/depositAddressModel.js";
+import { creditUser } from "../ledger/creditService.js";
+
+/**
+ * Simple TRON USDT scanner (MVP polling version)
+ * Replace later with full node / webhook provider
+ */
+
+const TRONGRID_API = "https://api.trongrid.io";
+
+async function fetchTransactions(address) {
+  const url = `${TRONGRID_API}/v1/accounts/${address}/transactions/trc20?limit=20`;
+
+  const res = await axios.get(url);
+  return res.data?.data || [];
+}
+
+async function processDeposit(tx, depositAddress) {
+  const amount = Number(tx.value) / 1e6; // USDT decimals
+
+  if (amount <= 0) return;
+
+  await creditUser({
+    userId: depositAddress.userId,
+    amount,
+    txHash: tx.transaction_id,
+    chain: "tron"
+  });
+
+  console.log(`[DEPOSIT CREDITED] ${depositAddress.userId} +${amount} USDT`);
+}
+
+export async function startTronListener() {
+  console.log("[TRON LISTENER] running...");
+
+  setInterval(async () => {
+    try {
+      const addresses = await DepositAddress.find({ status: "active" });
+
+      for (const addr of addresses) {
+        const txs = await fetchTransactions(addr.address);
+
+        for (const tx of txs) {
+          if (tx.to !== addr.address) continue;
+          if (tx.token_info?.symbol !== "USDT") continue;
+
+          // avoid double credit
+          if (addr.lastTxHash === tx.transaction_id) continue;
+
+          await processDeposit(tx, addr);
+
+          addr.lastTxHash = tx.transaction_id;
+          addr.lastAmount = Number(tx.value) / 1e6;
+
+          await addr.save();
+        }
+      }
+    } catch (err) {
+      console.error("[TRON LISTENER ERROR]", err.message);
+    }
+  }, 15000); // every 15 sec (MVP)
+}
+
+===== cryptoDepositPipeline.js =====
+import CryptoDeposit from "../models/cryptoDepositModel.js";
+
+export async function createDetectedDeposit({
+  userId,
+  token,
+  amount,
+  txHash,
+  address,
+  chain
+}) {
+  return CryptoDeposit.create({
+    userId,
+    token,
+    usdAmount: Number(amount),
+    expectedAddress: address,
+    detectedTxHash: txHash,
+    chainId: chain,
+    status: "deposit_detected"
+  });
+}
+
+===== depositScannerService.js =====
+import axios from 'axios';
+import DepositAddress from '../models/depositAddressModel.js';
+import Wallet from '../models/walletModel.js';
+import Ledger from '../models/ledgerModel.js';
+import mongoose from 'mongoose';
+
+/**
+ * REAL TRON USDT (TRC20) LISTENER
+ * Uses TronGrid API
+ */
+class DepositScannerService {
+  constructor() {
+    this.running = false;
+    this.lastBlock = 0;
+    this.interval = null;
+  }
+
+  start() {
+    if (this.running) return;
+    this.running = true;
+
+    console.log('[TRON SCANNER] Started USDT TRC20 listener...');
+
+    // poll every 10 seconds
+    this.interval = setInterval(() => {
+      this.scan();
+    }, 10000);
+  }
+
+  stop() {
+    if (this.interval) clearInterval(this.interval);
+    this.running = false;
+  }
+
+  async scan() {
+    try {
+      const apiKey = process.env.TRONGRID_API_KEY;
+
+      // USDT TRC20 contract (fixed)
+      const USDT_CONTRACT =
+        'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+
+      const url =
+        `https://api.trongrid.io/v1/contracts/${USDT_CONTRACT}/events?limit=20&only_confirmed=true`;
+
+      const res = await axios.get(url, {
+        headers: {
+          'TRON-PRO-API-KEY': apiKey
+        }
+      });
+
+      const events = res.data?.data || [];
+
+      for (const event of events) {
+        await this.processEvent(event);
+      }
+
+    } catch (err) {
+      console.error('[TRON SCANNER ERROR]', err.message);
+    }
+  }
+
+  /**
+   * PROCESS EACH USDT TRANSFER EVENT
+   */
+  async processEvent(event) {
+    try {
+      const { result, block_timestamp, transaction_id } = event;
+
+      if (!result || result !== 'SUCCESS') return;
+
+      const from = event?.from;
+      const to = event?.to;
+      const value = event?.value;
+
+      if (!to || !value) return;
+
+      const depositAddress = await DepositAddress.findOne({
+        address: to,
+        chain: 'tron',
+        status: 'active'
+      });
+
+      if (!depositAddress) return;
+
+      const amount = Number(value) / 1e6; // USDT decimals
+
+      // prevent double credit
+      const existing = await Ledger.findOne({
+        referenceId: transaction_id
+      });
+
+      if (existing) return;
+
+      await this.creditUser({
+        userId: depositAddress.userId,
+        amount,
+        txHash: transaction_id,
+        chain: 'tron',
+        depositAddress: to
+      });
+
+    } catch (err) {
+      console.error('[EVENT PROCESS ERROR]', err.message);
+    }
+  }
+
+  /**
+   * CREDIT USER WALLET + LEDGER
+   */
+  async creditUser({ userId, amount, txHash, chain, depositAddress }) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const wallet = await Wallet.findOne({ userId }).session(session);
+
+      if (!wallet) throw new Error('Wallet not found');
+
+      wallet.balance += amount;
+      await wallet.save({ session });
+
+      await Ledger.create([{
+        userId,
+        type: 'DEPOSIT',
+        referenceId: txHash,
+        description: `USDT TRC20 deposit`,
+        metadata: {
+          amount,
+          chain,
+          depositAddress
+        }
+      }], { session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      console.log(`[CREDITED] ${userId} +${amount} USDT`);
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      console.error('[CREDIT ERROR]', err.message);
+    }
+  }
+}
+
+export default new DepositScannerService();
+
+===== confirmationService.js =====
+import blockchainScanner from './blockchainScanner.js';
+import ledgerService from './ledgerService.js';
+import Wallet from '../models/walletModel.js';
+import cryptoDepositModel from '../models/cryptoDepositModel.js';
+
+/**
+ * CONFIRMATION SERVICE
+ * Ensures blockchain finality before crediting users
+ */
+class ConfirmationService {
+
+  /**
+   * Confirm deposit and settle to ledger
+   */
+  async confirmDeposit(tx) {
+
+    // 1. Check if already processed (idempotency)
+    const existing = await cryptoDepositModel.findOne({
+      txHash: tx.txHash
+    });
+
+    if (existing?.status === 'SETTLED') {
+      return { skipped: true };
+    }
+
+    // 2. Validate wallet
+    const wallet = await Wallet.findOne({
+      address: tx.to
+    });
+
+    if (!wallet) {
+      throw new Error('Unknown deposit address');
+    }
+
+    // 3. Block confirmation threshold
+    if (tx.confirmations < 12) {
+      return { status: 'PENDING_CONFIRMATION' };
+    }
+
+    // 4. Create or update deposit record
+    const deposit = await cryptoDepositModel.findOneAndUpdate(
+      { txHash: tx.txHash },
+      {
+        userId: wallet.userId,
+        amount: tx.amount,
+        asset: tx.asset,
+        status: 'CONFIRMED'
+      },
+      { upsert: true, new: true }
+    );
+
+    // 5. FINAL SETTLEMENT → ledger credit
+    await ledgerService.credit({
+      userId: wallet.userId,
+      amount: tx.amount,
+      type: 'CRYPTO_DEPOSIT',
+      referenceId: tx.txHash
+    });
+
+    // 6. Mark as settled
+    deposit.status = 'SETTLED';
+    await deposit.save();
+
+    return {
+      status: 'SETTLED',
+      userId: wallet.userId
+    };
+  }
+}
+
+export default new ConfirmationService();
+
+===== depositVerificationService.js =====
+import Wallet from "../models/walletModel.js";
+import walletService from "./walletService.js";
+import Transaction from "../models/transactionModel.js";
+import DirectDeposit from "../models/DirectDepositModel.js";
+import DepositVerificationLog from "../models/DepositVerificationLog.js";
+
+export async function verifyDeposit({
+
+  senderAccount,
+  receiverAccount,
+  amount,
+  channel,
+  payload
+
+}) {
+
+  const wallet = await Wallet.findOne({
+  linkedWallets: {
+    $elemMatch: {
+      provider: channel,
+      accountNumber: senderAccount
+    }
+  }
+});
+
+if (!wallet) {
+
+  await DepositVerificationLog.create({
+    senderAccount,
+    receiverAccount,
+    receivedAmount: amount,
+    channel,
+    verificationResult: "SENDER_MISMATCH",
+    rawPayload: payload
+  });
+
+  return {
+    matched:false,
+    code:"SENDER_MISMATCH"
+  };
+}
+
+const deposit = await DirectDeposit.findOne({
+  userId: wallet.userId,
+  channel,
+  status:"PENDING",
+  expiresAt:{ $gt:new Date() }
+}).sort({ createdAt:-1 });
+
+  if (!deposit) {
+
+    await DepositVerificationLog.create({
+      senderAccount,
+      receiverAccount,
+      receivedAmount: amount,
+      channel,
+      verificationResult: "NO_ACTIVE_REQUEST",
+      rawPayload: payload
+    });
+
+    return {
+      matched: false,
+      code: "NO_ACTIVE_REQUEST"
+    };
+  }
+
+  if (deposit.amount !== amount) {
+
+    deposit.status = "PENDING_REVIEW";
+    deposit.verificationResult = "AMOUNT_MISMATCH";
+    await deposit.save();
+
+    await DepositVerificationLog.create({
+      referenceId: deposit.referenceId,
+      userId: deposit.userId,
+      senderAccount,
+      receiverAccount,
+      requestedAmount: deposit.amount,
+      receivedAmount: amount,
+      channel,
+      verificationResult: "AMOUNT_MISMATCH",
+      rawPayload: payload
+    });
+
+    return {
+      matched: false,
+      code: "AMOUNT_MISMATCH",
+      deposit
+    };
+  }
+
+  await walletService.credit(
+    deposit.userId,
+    "PHP",
+    amount,
+    {
+      referenceId: deposit.referenceId,
+      description: `Direct deposit ${channel}`,
+      transactionType: "cashin"
+    }
+  );
+
+  await Transaction.create({
+    senderId: deposit.userId,
+    receiverId: deposit.userId,
+    senderAddress: senderAccount,
+    receiverAddress: receiverAccount || "ISCAN",
+    amount,
+    currency: "PHP",
+    type: "cashin",
+    status: "completed",
+    referenceId: deposit.referenceId,
+    notes: `${channel} direct deposit`,
+    metadata: {
+      channel,
+      senderAccount
+    }
+  });
+
+  await DepositVerificationLog.create({
+    referenceId: deposit.referenceId,
+    userId: deposit.userId,
+    senderAccount,
+    receiverAccount,
+    requestedAmount: deposit.amount,
+    receivedAmount: amount,
+    channel,
+    verificationResult: "MATCHED",
+    rawPayload: payload
+  });
+
+  deposit.status = "CREDITED";
+  deposit.verificationResult = "MATCHED";
+  deposit.creditedAt = new Date();
+
+  await deposit.save();
+
+  return {
+    matched: true,
+    code: "MATCHED",
+    deposit
+  };
+}
+
+===== walletService.js =====
+import Wallet from '../models/walletModel.js';
+import Ledger from '../models/ledgerModel.js';
+import crypto from 'crypto';
+import { deriveUserWallets, SUPPORTED_CHAINS } from './hdWalletService.js';
+
+class WalletService {
+  async getOrCreateWallet(userId) {
+    let wallet = await Wallet.findOne({ userId });
+    if (wallet) return wallet;
+
+    const walletIndex = await Wallet.countDocuments();
+    const derived = await deriveUserWallets(walletIndex);
+    const chainAddresses = Object.entries(derived).map(([chain, data]) => ({
+      chain,
+      address: data.address,
+      chainId: SUPPORTED_CHAINS[chain].chainId,
+      usdtBalance: 0,
+      usdcBalance: 0
+    }));
+
+    wallet = await Wallet.create({
+      userId,
+      walletIndex,
+      iscanAddress: 'ISCAN-' + crypto.randomBytes(8).toString('hex').toUpperCase(),
+      chainAddresses,
+      balances: new Map([['USDT', 0], ['USDC', 0], ['FLOWER', 0], ['RON', 0], ['ETH', 0], ['PHP', 0]]),
+      linkedWallets: [],
+      status: 'active'
+    });
+    return wallet;
+  }
+
+  async getBalance(userId, asset = 'USDT') {
+    // Read from Ledger (source of truth), not wallet.balances Map
+    const mongoose = (await import('mongoose')).default;
+    const result = await Ledger.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId.toString()), currency: asset } },
+      { $group: { _id: null, credit: { $sum: { $ifNull: ['$credit', 0] } }, debit: { $sum: { $ifNull: ['$debit', 0] } } } }
+    ]);
+    return result.length > 0 ? Math.max(0, result[0].credit - result[0].debit) : 0;
+  }
+
+  // referenceId/description let callers (swap services, etc.) pass
+  // meaningful audit context. Falls back to a generated ref if omitted.
+  async credit(userId, asset, amount, { referenceId, description, transactionType = 'credit' } = {}) {
+    const wallet = await this.getOrCreateWallet(userId);
+    await Ledger.create({
+      referenceId: referenceId || ('CREDIT-' + crypto.randomBytes(8).toString('hex')),
+      userId,
+      transactionType,
+      debit: 0,
+      credit: Number(amount),
+      currency: asset,
+      description: description || `${asset} credit via walletService`,
+      status: 'completed',
+    });
+
+    return wallet;
+  }
+
+  async debit(userId, asset, amount, { referenceId, description } = {}) {
+    const wallet = await this.getOrCreateWallet(userId);
+    // Check balance from Ledger before debiting
+    const bal = await this.getBalance(userId, asset);
+    if (bal < amount) throw new Error(`Insufficient ${asset} balance. Available: ${bal}`);
+
+    await Ledger.create({
+      referenceId: referenceId || ('DEBIT-' + crypto.randomBytes(8).toString('hex')),
+      userId,
+      transactionType: 'debit',
+      debit: Number(amount),
+      credit: 0,
+      currency: asset,
+      description: description || `${asset} debit via walletService`,
+      status: 'completed',
+    });
+
+    return wallet;
+  }
+}
+
+export default new WalletService();
+
+===== ledger/creditService.js =====
+import crypto from "crypto";
+import Ledger from "../../models/ledgerModel.js";
+import Wallet from "../../models/walletModel.js";
+import { convertToPHP } from "../fxEngine.js";
+
+/**
+ * creditUser()
+ * Called by baseListener, roninListener, tronListener on confirmed deposit.
+ * - Idempotency: skips if txHash already in ledger
+ * - Credits crypto balance on wallet.balances Map
+ * - Converts to PHP and credits wallet.balance (PHP)
+ * - Writes ledger entry
+ */
+export async function creditUser({
+  userId,
+  amount,
+  asset = "USDT",
+  txHash = null,
+  chain = null,
+}) {
+  // ── 1. Idempotency: skip if already processed ──────────────────────────
+  const referenceId = txHash || crypto.randomUUID();
+  const already = await Ledger.findOne({ referenceId });
+  if (already) {
+    console.log(`[creditService] ${referenceId} already processed — skipping`);
+    return { skipped: true, referenceId };
+  }
+
+  // ── 2. Load wallet ─────────────────────────────────────────────────────
+  const wallet = await Wallet.findOne({ userId });
+  if (!wallet) throw new Error("Wallet not found");
+
+  // ── 3. Credit crypto balance ───────────────────────────────────────────
+  if (!wallet.balances) wallet.balances = new Map();
+  const currentBalance = wallet.balances.get(asset) || 0;
+  wallet.balances.set(asset, currentBalance + Number(amount));
+  wallet.markModified("balances");
+
+  // ── 4. Convert to PHP and credit PHP balance ───────────────────────────
+  const { phpAmount, rate } = await convertToPHP(amount, asset);
+  wallet.balance = (wallet.balance || 0) + phpAmount;
+
+  await wallet.save();
+
+  // ── 5. Write ledger entry ──────────────────────────────────────────────
+  await Ledger.create({
+    userId,
+    referenceId,
+    transactionType: "crypto_deposit",
+    debit:  0,
+    credit: Number(amount),
+    currency: asset,
+    description: `${amount} ${asset} deposit → ₱${phpAmount.toFixed(2)} PHP`,
+    status: "completed",
+    metadata: { txHash, chain, phpAmount, rate },
+  });
+
+  console.log(`[creditService] ✅ +${amount} ${asset} → ₱${phpAmount} for user ${userId}`);
+  return { success: true, amount, asset, phpAmount, rate, referenceId };
+}
+
+===== cryptoDepositModel.js =====
+import mongoose from 'mongoose';
+
+const cryptoDepositSchema = new mongoose.Schema(
+{
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
+
+  referenceId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+
+  token: {
+    type: String,
+    enum: ['USDC', 'USDT'],
+    required: true
+  },
+
+  usdAmount: {
+    type: Number,
+    required: true
+  },
+
+  expectedAddress: {
+    type: String,
+    required: true
+  },
+
+  chainId: {
+    type: String,
+    default: '0x1'
+  },
+
+  channel: {
+    type: String,
+    enum: ['maya', 'gcash'],
+    required: true
+  },
+
+  mobileNumber: {
+    type: String,
+    required: true
+  },
+
+  detectedTxHash: {
+    type: String,
+    default: null
+  },
+
+  confirmations: {
+    type: Number,
+    default: 0
+  },
+
+  status: {
+    type: String,
+    enum: [
+      'waiting_deposit',
+      'deposit_detected',
+      'confirming',
+      'processing',
+      'completed',
+      'failed'
+    ],
+    default: 'waiting_deposit'
+  },
+
+  metadata: {
+    type: Object,
+    default: {}
+  }
+},
+{
+  timestamps: true
+});
+
+export default mongoose.model(
+  'CryptoDeposit',
+  cryptoDepositSchema
+);
+
+===== processedIngressEventModel.js =====
+import mongoose from "mongoose";
+
+const schema = new mongoose.Schema({
+  source: {
+    type: String,
+    required: true,
+    index: true
+  },
+
+  eventId: {
+    type: String,
+    required: true
+  },
+
+  eventHash: {
+    type: String,
+    required: true
+  },
+
+  processedAt: {
+    type: Date,
+    default: Date.now
+  },
+
+  metadata: {
+    type: Object,
+    default: {}
+  }
+});
+
+schema.index(
+  {
+    source:1,
+    eventId:1
+  },
+  {
+    unique:true
+  }
+);
+
+export default mongoose.model(
+  "ProcessedIngressEvent",
+  schema
+);
+
+===== depositAddressModel.js =====
+import mongoose from 'mongoose';
+
+const depositAddressSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true
+    },
+
+    chain: {
+      type: String,
+      required: true,
+      default: 'tron'
+    },
+
+    token: {
+      type: String,
+      required: true,
+      default: 'USDT'
+    },
+
+    address: {
+      type: String,
+      required: true,
+      unique: true
+    },
+
+    hdIndex: {
+      type: Number,
+      default: null,
+      index: true
+    },
+
+    status: {
+      type: String,
+      enum: ['active', 'used', 'expired'],
+      default: 'active'
+    },
+
+    lastTxHash: {
+      type: String,
+      default: null
+    },
+
+    lastAmount: {
+      type: Number,
+      default: 0
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+export default mongoose.model(
+  'DepositAddress',
+  depositAddressSchema
+);

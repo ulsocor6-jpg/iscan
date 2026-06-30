@@ -18,7 +18,7 @@ public class MayaNotificationListener extends NotificationListenerService {
     private static final String TAG = "MayaIngestor";
     private static final String MAYA_PACKAGE = "ph.paymaya.personal";
     // Change this to your server IP or Railway URL
-    private static final String SERVER_URL = "http://192.168.1.29:3000/api/maya/notify";
+    private static final String SERVER_URL = "http://192.168.1.29:3000/api/v1/maya/notify";
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
@@ -34,7 +34,7 @@ public class MayaNotificationListener extends NotificationListenerService {
         Log.d(TAG, "Maya notif — title: " + title + " | text: " + bigText);
 
         // Only forward financial notifications
-        if (!bigText.contains("PHP") && !text.contains("PHP")) return;
+        if (bigText.isEmpty() && text.isEmpty()) return;
 
         forwardToServer(title, bigText.isEmpty() ? text : bigText);
     }
@@ -64,6 +64,7 @@ public class MayaNotificationListener extends NotificationListenerService {
                 }
 
                 int code = conn.getResponseCode();
+Log.d(TAG, "POST URL = " + SERVER_URL);
                 Log.d(TAG, "Forwarded to server — HTTP " + code);
                 conn.disconnect();
 

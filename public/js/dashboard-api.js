@@ -74,7 +74,7 @@ export const wallet = {
     return {
       wallet: res.wallet,
       balances: res.balances || {},
-      balance: Object.values(res.balances || {}).reduce((a, b) => a + b, 0)
+      balance: res.balances?.PHP || 0
     };
   }
 };
@@ -118,9 +118,7 @@ export function startLiveDashboardSync(onUpdate, ms = 5000) {
     try {
       const data = await dashboard.get();
 
-      const balance =
-        Object.values(data.balances || {})
-          .reduce((a, b) => a + b, 0);
+      const balance = data.balances?.PHP || 0; // FIXED: PHP only
 
       onUpdate?.({
         wallet: data.wallet,
@@ -148,9 +146,7 @@ export async function dashboardInit() {
     dashboard.get()
   ]);
 
-  const balance =
-    Object.values(dash.balances || {})
-      .reduce((a, b) => a + b, 0);
+  const balance = dash.balances?.PHP || 0; // FIXED: PHP only
 
   return {
     user: me.user || me,

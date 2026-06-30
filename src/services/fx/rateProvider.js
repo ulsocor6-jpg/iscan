@@ -25,3 +25,14 @@ export async function getRate(currency) {
     return null;
   }
 }
+// Simple 15s cache to prevent CoinGecko rate limiting
+const _cache = {};
+const _RATE_TTL = 15_000;
+export async function getRateCached(currency) {
+  const now = Date.now();
+  if (_cache[currency] && now - _cache[currency].ts < _RATE_TTL)
+    return _cache[currency].rate;
+  const rate = await getRate(currency);
+  _cache[currency] = { rate, ts: now };
+  return rate;
+}

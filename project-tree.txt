@@ -1,0 +1,503 @@
+.
+├──  
+├── =
+├── adapters
+│   ├── base
+│   │   └── adapter.js
+│   ├── ChainAdapter.js
+│   ├── EvmV2DexAdapter.js
+│   ├── index.js
+│   └── ronin
+│       └── adapter.js
+├── addTestMaya.js
+├── app.js
+├── apply-php-deposit-fix.js
+├── audit-bundle.zip
+├── backup-wallets.js
+├── check-bank.js
+├── check-credited.js
+├── check-deposits.js
+├── check-flower.mjs
+├── check-indexes.js
+├── check-ledger.mjs
+├── check-logs.js
+├── check-php-address.mjs
+├── check-reviews.js
+├── cleanupTestMaya.js
+├── config
+│   ├── abi
+│   │   └── uniswapV2.js
+│   ├── chains
+│   │   ├── base.js
+│   │   └── ronin.js
+│   ├── database.js
+│   ├── db.js
+│   ├── env.js
+│   ├── flower.js
+│   ├── katana.js
+│   ├── passport.js
+│   ├── ronin.js
+│   ├── session.js
+│   └── treasury.js
+├── core
+│   ├── ledgerEngine.js
+│   └── transactionFinalizer.js
+├── count-deposits.js
+├── debug-bank.js
+├── docker
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   └── nginx.conf\012
+├── docker-compose.yml
+├── .env
+├── expire-one.js
+├── files
+│   ├── advancedFraudService.js
+│   ├── fraudAIService.js
+│   ├── fraudBlockingService.js
+│   └── fraudService.js
+├── .gitignore
+├── index.html
+├── inspect-bank.js
+├── inspectDeposit.js
+├── inspectLinkedAccounts.js
+├── inspect-number.js
+├── inspect-pending.js
+├── inspect-raw.js
+├── inspectWalletLinks.js
+├── middleware
+│   ├── auditMiddleware.js
+│   ├── authGuard.js
+│   ├── errorMiddleware.js
+│   ├── kycMiddleware.js
+│   ├── sessionMiddleware.js
+│   └── walletGuard.js
+├── migrate-kyc-tester.mjs
+├── missing-env-template.txt
+├── package.json
+├── package-lock.json
+├── patch-metamask.mjs
+├── patch-metamask-v2.mjs
+├── project-tree.txt
+├── public
+│   ├── backend-additions.js
+│   ├── css
+│   │   └── dashboard.css
+│   ├── dashboard_v3.html
+│   ├── dashboard_v3.html.bak
+│   ├── js
+│   │   ├── api.js
+│   │   ├── dashboard-api.js
+│   │   ├── dashboard.js
+│   │   ├── login.js
+│   │   └── state.js
+│   ├── qr
+│   │   ├── maribank-qr.png
+│   │   └── maya-qr.png
+│   ├── register.html
+│   └── reset-password.html
+├── railway.toml
+├── README.md
+├── required-env.txt
+├── run_sweep.mjs
+├── scripts
+│   ├── assign-wallet-index.js
+│   ├── backfill-balances.js
+│   ├── backfill-chain-addresses.js
+│   ├── backfill-wallets.js
+│   ├── fix-wallet-addresses.js
+│   ├── fix-wallet-addresses-v2.js
+│   ├── inspect-user.js
+│   ├── make-admin.js
+│   ├── reconcile-php-balances.js
+│   ├── seedFlowerLiquidity.js
+│   ├── seedPool.js
+│   ├── seedPools.js
+│   ├── seedUSDTPool.js
+│   └── walletService.js
+├── security
+│   ├── hash.js
+│   ├── jwt.js
+│   └── rateLimiter.js
+├── server.js
+├── server.js.bak
+├── simulate_production.js
+├── src
+│   ├── App.tsx
+│   ├── App.tsx.bak
+│   ├── ARCHITECTURE_RULES.md
+│   ├── banking
+│   │   └── components
+│   │       ├── dashboard
+│   │       │   ├── ActivityFeed.tsx
+│   │       │   ├── ActivityFeed.tsx.bak
+│   │       │   ├── ComplianceSnapshot.tsx
+│   │       │   ├── creative.pptx
+│   │       │   ├── creative tech
+│   │       │   ├── FlowerChart.tsx
+│   │       │   ├── FlowerTicker.tsx
+│   │       │   ├── MarketsPanel.tsx
+│   │       │   ├── OperationsPanel.tsx
+│   │       │   ├── TreasuryHealth.tsx
+│   │       │   └── WalletPortfolio.tsx
+│   │       ├── DashboardLayout.tsx
+│   │       ├── Header.tsx
+│   │       ├── HeroBalance.tsx
+│   │       ├── KPIRow.tsx
+│   │       ├── Sidebar.tsx
+│   │       └── Sidebar.tsx.bak
+│   ├── controllers
+│   │   ├── adminDepositController.js
+│   │   ├── adminTreasuryController.js
+│   │   ├── adminWithdrawalController.js
+│   │   ├── authController.js
+│   │   ├── authController.js.bak
+│   │   ├── bankController.js
+│   │   ├── beneficiaryController.js
+│   │   ├── cashoutController.js
+│   │   ├── cryptoOnrampController.js
+│   │   ├── cryptoWithdrawalController.js
+│   │   ├── dashboardController.js
+│   │   ├── depositController.js
+│   │   ├── diditController.js
+│   │   ├── flower
+│   │   │   ├── flowerController.js
+│   │   │   └── flowerUsdtController.js
+│   │   ├── kycController.js
+│   │   ├── ledgerController.js
+│   │   ├── moonpayWebhookController.js
+│   │   ├── onrampController.js
+│   │   ├── paymentController.js
+│   │   ├── payoutController.js
+│   │   ├── phpDepositController.js
+│   │   ├── phpSwapController.js
+│   │   ├── swapController.js
+│   │   ├── transferController.js
+│   │   ├── walletController.js
+│   │   ├── walletController.js.bak
+│   │   ├── withdrawalController.js
+│   │   └── withdrawalController.js.bak
+│   ├── core
+│   │   ├── processMariBankDeposit.js
+│   │   ├── processTransaction.js
+│   │   └── processTransaction.js.bak.review
+│   ├── DOMAIN_MAP.md
+│   ├── engine
+│   │   └── feeEngine.js
+│   ├── hooks
+│   │   ├── useAdminAlerts.ts
+│   │   ├── useAuth.ts
+│   │   ├── useAuth.ts.bak
+│   │   ├── useDashboardActions.ts
+│   │   ├── useDashboard.ts
+│   │   └── useSession.ts
+│   ├── integrations
+│   │   ├── coinsph.js
+│   │   ├── maya.js
+│   │   ├── moonpayService.js
+│   │   └── paymentProviders
+│   │       ├── baseProvider.js
+│   │       ├── coinsphProvider.js
+│   │       ├── mayaProvider.js
+│   │       └── transakProvider.js
+│   ├── jobs
+│   │   └── depositExpiryJob.js
+│   ├── ledger
+│   │   └── balanceSnapshotModel.js
+│   ├── main.tsx
+│   ├── middleware
+│   │   ├── authMiddleware.js
+│   │   ├── authMiddleware.js.bak
+│   │   ├── idempotencyMiddleware.js
+│   │   └── kycTierMiddleware.js
+│   ├── models
+│   │   ├── auditModel.js
+│   │   ├── BankAccount.js
+│   │   ├── Beneficiary.js
+│   │   ├── CashoutRequest.js
+│   │   ├── cryptoDepositModel.js
+│   │   ├── depositAddressModel.js
+│   │   ├── DepositLog.js
+│   │   ├── depositModel.js
+│   │   ├── depositReviewModel.js
+│   │   ├── depositReviewModel.js.bak
+│   │   ├── DepositVerificationLog.js
+│   │   ├── DirectDepositModel.js
+│   │   ├── DirectDepositModel.js.bak.1782368607
+│   │   ├── DirectDepositModel.js.bak.1782368800
+│   │   ├── feeModel.js
+│   │   ├── flower
+│   │   │   ├── flowerOrderModel.js
+│   │   │   └── flowerSwapModel.js
+│   │   ├── flowerLiquidityPool.js
+│   │   ├── IdentityProfile.js
+│   │   ├── IngressEvent.js
+│   │   ├── IngressEvent.js.bak
+│   │   ├── ledgerModel.js
+│   │   ├── phpDepositModel.js
+│   │   ├── phpLiquidityPool.js
+│   │   ├── processedIngressEventModel.js
+│   │   ├── RemittancePickup.js
+│   │   ├── transactionModel.js
+│   │   ├── transactionReservationModel.js
+│   │   ├── TransferRequest.js
+│   │   ├── treasuryAccountModel.js
+│   │   ├── treasuryPoolModel.js
+│   │   ├── userModel.js
+│   │   ├── userModel.js.bak
+│   │   ├── walletModel.js
+│   │   ├── walletModel.js.bak
+│   │   ├── walletModel.js.bak.1782382507
+│   │   ├── webhookEventModel.js
+│   │   ├── webhookService.js
+│   │   └── withdrawalRequestModel.js
+│   ├── modules
+│   │   ├── ledger
+│   │   ├── payments
+│   │   ├── settlement
+│   │   │   ├── MatchingEngine.ts
+│   │   │   ├── SettlementCoordinator.ts
+│   │   │   └── types.ts
+│   │   └── wallets
+│   ├── pages
+│   │   ├── Activity.tsx
+│   │   ├── AdminCashouts.tsx
+│   │   ├── AdminDeposits.tsx
+│   │   ├── AdminDeposits.tsx.bak
+│   │   ├── Compliance.tsx
+│   │   ├── Copy1-Bamboo_Flood_Barrier_with_Video.pptx
+│   │   ├── Dashboard.tsx
+│   │   ├── Deposits.tsx
+│   │   ├── ForgotPassword.tsx
+│   │   ├── Grade 10 STE - Digital and Analog Inputs.pdf
+│   │   ├── Grade 10 STE - Digital and Analog Inputs.pdf ct
+│   │   ├── GROUP2 (1).docx
+│   │   ├── GROUP2.docx
+│   │   ├── Login.tsx
+│   │   ├── Pink and Peach Modern Company Research Proposal Presentation.pptx
+│   │   ├── Profile.tsx
+│   │   ├── Register.tsx
+│   │   ├── Remittance.tsx
+│   │   ├── Swaps.tsx
+│   │   ├── Swaps.tsx.bak
+│   │   ├── Swaps.tsx.bak2
+│   │   ├── Transfers.tsx
+│   │   ├── Treasury (1).tsx
+│   │   ├── Treasury.tsx
+│   │   ├── Treasury.tsx.bak
+│   │   ├── WalletManager.tsx
+│   │   ├── WalletManager.tsx.bak
+│   │   ├── Withdrawals.tsx
+│   │   └── Withdrawals.tsx.bak
+│   ├── parsers
+│   │   ├── app.js
+│   │   ├── Grade 10 STE - Digital and Analog Inputs.pdf
+│   │   ├── maribankEmailParser.js
+│   │   ├── maribankEmailParser.js.bak.1782605605
+│   │   └── mayaNotificationParser.js
+│   ├── providers
+│   │   └── NotificationProvider.tsx
+│   ├── queues
+│   │   └── transactionQueue.js
+│   ├── routes
+│   │   ├── adminDepositController.js
+│   │   ├── adminDepositRoutes.js
+│   │   ├── adminWithdrawalRoutes.js
+│   │   ├── adminWithdrawalRoutes.js.backup
+│   │   ├── authRoutes.js
+│   │   ├── bankRoutes.js
+│   │   ├── beneficiaryRoutes.js
+│   │   ├── CryptoOnramproutes.js
+│   │   ├── cryptoWithdrawalRoutes.js
+│   │   ├── dashboardRoutes.js
+│   │   ├── dashboardRoutes.js.bak
+│   │   ├── depositRoutes.js
+│   │   ├── diditRoutes.js
+│   │   ├── directDepositRoutes.js
+│   │   ├── directDepositRoutes.js.bak
+│   │   ├── directDepositRoutes.js.bak.1782313734
+│   │   ├── directDepositRoutes.js.bak.1782366323
+│   │   ├── feeRoutes.js
+│   │   ├── flower
+│   │   │   └── flowerRoutes.js
+│   │   ├── internalWalletRoutes.js
+│   │   ├── kycRoutes.js
+│   │   ├── ledgerRoutes.js
+│   │   ├── mayaNotifyRoute.js
+│   │   ├── mayaNotifyRoute.js.bak
+│   │   ├── mayaNotifyRoute.js.bak.1782605932
+│   │   ├── onrampRoutes.js
+│   │   ├── p2pRoutes.js
+│   │   ├── paymentRoutes.js
+│   │   ├── payoutRoutes.js
+│   │   ├── phpDepositRoutes.js
+│   │   ├── phpSwapRoutes.js
+│   │   ├── remittanceRoutes.js
+│   │   ├── swapRoutes.js
+│   │   ├── transactionRoutes.js
+│   │   ├── transferRoutes.js
+│   │   ├── treasuryRoutes.js
+│   │   ├── userRoutes.js
+│   │   ├── walletRoutes.js
+│   │   ├── walletRoutes.js.bak
+│   │   ├── webhookRoutes.js
+│   │   └── withdrawalRoutes.js
+│   ├── services
+│   │   ├── advancedFraudService.js
+│   │   ├── amlService.js
+│   │   ├── api.ts
+│   │   ├── authService.ts
+│   │   ├── balanceService.js
+│   │   ├── blockchain
+│   │   │   ├── baseListener.js
+│   │   │   ├── baseListener.js.bak
+│   │   │   ├── baseStableListener.js
+│   │   │   ├── roninListener.js
+│   │   │   └── tronListener.js
+│   │   ├── blockchainScanner.js
+│   │   ├── cashoutService.js
+│   │   ├── confirmationService.js
+│   │   ├── cryptoDepositPipeline.js
+│   │   ├── cryptoOnrampService.js
+│   │   ├── dashboardService.js
+│   │   ├── depositArchiveService.js
+│   │   ├── depositExpiryWorker.js
+│   │   ├── depositMonitor.js
+│   │   ├── depositScannerService.js
+│   │   ├── depositVerificationService.js
+│   │   ├── emailService.js
+│   │   ├── eventStreamService.js
+│   │   ├── evmWalletService.js
+│   │   ├── FaceVerificationService.js
+│   │   ├── feeCalculator.js
+│   │   ├── fintechCashoutEngine.js
+│   │   ├── flower
+│   │   │   ├── baseWalletService.js
+│   │   │   ├── flowerLiquidityService.js
+│   │   │   ├── flowerSettlementService.js
+│   │   │   ├── flowerSwapService.js
+│   │   │   ├── flowerSweepService.js
+│   │   │   ├── flowerUsdtSwapService.js
+│   │   │   ├── flowerUsdtSwapService.js.bak
+│   │   │   ├── flowerVerificationService.js
+│   │   │   ├── flowerWalletService.js
+│   │   │   ├── flowerWalletService.js.bak
+│   │   │   └── flowerWatcherService.js
+│   │   ├── flowerSwapServiceBase.js
+│   │   ├── fraudAIService.js
+│   │   ├── fraudBlockingService.js
+│   │   ├── fraudService.js
+│   │   ├── fx
+│   │   │   ├── fxAudit.js
+│   │   │   ├── fxCache.js
+│   │   │   ├── fxService.js
+│   │   │   ├── fxValidator.js
+│   │   │   ├── lockedFxEngine.js
+│   │   │   ├── phpRateOracle.js
+│   │   │   ├── phpRateOracle.js.bak
+│   │   │   └── rateProvider.js
+│   │   ├── fxEngine.js
+│   │   ├── hdWalletService.js
+│   │   ├── hdWalletService.js.bak
+│   │   ├── idempotencyService.js
+│   │   ├── IdentityService.js
+│   │   ├── ingestion
+│   │   │   ├── deduplicationService.js
+│   │   │   ├── deduplicationService.js.bak
+│   │   │   ├── maribankEmailListener.js
+│   │   │   ├── maribankEmailListener.js.bak
+│   │   │   ├── maribankEmailListener.js.bak.1782605661
+│   │   │   ├── mayaNotificationListener.java
+│   │   │   ├── mayaNotificationListener.java.bak.1782606576
+│   │   │   └── mayaNotificationListener.java.bak.1782606620
+│   │   ├── kycService.js
+│   │   ├── ledger
+│   │   │   └── creditService.js
+│   │   ├── ledgerCashoutEngine.js
+│   │   ├── ledgerRecoveryService.js
+│   │   ├── ledgerReplayService.js
+│   │   ├── ledgerService.js
+│   │   ├── ledgerSourceOfTruthGuard.js
+│   │   ├── ledgerWriter.js
+│   │   ├── lockService.js
+│   │   ├── marketService.ts
+│   │   ├── monitoringService.js
+│   │   ├── normalizer
+│   │   │   └── transactionNormalizer.js
+│   │   ├── OCRService.js
+│   │   ├── p2pTransferService.js
+│   │   ├── paymentService.js
+│   │   ├── payoutService.js
+│   │   ├── pickupCodeService.js
+│   │   ├── reconciliationService.js
+│   │   ├── routing
+│   │   │   ├── executionEngine.js
+│   │   │   ├── institutional
+│   │   │   │   ├── executionQualityEngine.js
+│   │   │   │   ├── exposureManager.js
+│   │   │   │   ├── liquidityScoringModel.js
+│   │   │   │   ├── mevProtectionService.js
+│   │   │   │   ├── riskCircuitBreaker.js
+│   │   │   │   ├── smartOrderRouter.js
+│   │   │   │   └── treasuryRebalancer.js
+│   │   │   ├── liquidityRouter.js
+│   │   │   ├── priceAggregator.js
+│   │   │   └── routeEvaluator.js
+│   │   ├── routingEngine.js
+│   │   ├── settlement
+│   │   │   ├── index.js
+│   │   │   ├── retry.js
+│   │   │   ├── retryPolicy.js
+│   │   │   ├── settlementProcessor.js
+│   │   │   ├── settlementQueue.js
+│   │   │   └── settlementWorker.js
+│   │   ├── settlementEngine.js
+│   │   ├── settlementService.js
+│   │   ├── slippageModel.js
+│   │   ├── swap
+│   │   │   └── phpSettlementService.js
+│   │   ├── swapService.js
+│   │   ├── transactionService.js
+│   │   ├── transactionStateMachine.js
+│   │   ├── transferOrchestrator.js
+│   │   ├── treasury
+│   │   │   ├── treasuryBalancer.js
+│   │   │   ├── treasurySendService.js
+│   │   │   └── treasurySendService.ts
+│   │   ├── walletService.js
+│   │   ├── walletService.js.bak
+│   │   └── withdrawalQueueService.js
+│   ├── styles
+│   │   ├── auth.css
+│   │   └── dashboard.css
+│   ├── swap
+│   │   ├── flowerUsdtSwapService.js
+│   │   └── phpSettlementService.js
+│   ├── treasury
+│   │   └── treasuryService.js
+│   └── workers
+│       ├── statusWorker.js
+│       └── transactionWorker.js
+├── sweep_flower.mjs
+├── test-bank-match.js
+├── test-bank-query.js
+├── testemail.mjs
+├── test-expiry.js
+├── testFlow.js
+├── test-imap-login.mjs
+├── test-parser.js
+├── test-user.js
+├── testVerifierLookup.js
+├── verifyMaya.js
+├── verify.ts
+├── vite.config.js
+├── wallets
+│   ├── depositWalletGenerator.js
+│   ├── signer.js
+│   └── walletManager.js
+├── wallets-backup-1781774324957.json
+└── watchers
+    ├── baseWatcher.js
+    └── roninWatcher.js
+
+62 directories, 439 files

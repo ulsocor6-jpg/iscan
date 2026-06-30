@@ -1,0 +1,35 @@
+export const InspectorStage = {
+
+  WATCHER: "WATCHER",
+
+  PARSER: "PARSER",
+
+  USER_LOOKUP: "USER_LOOKUP",
+
+  DEPOSIT_MATCH: "DEPOSIT_MATCH",
+
+  VERIFIER: "VERIFIER",
+
+  LEDGER: "LEDGER",
+
+  WALLET: "WALLET",
+
+  EVENT_STREAM: "EVENT_STREAM",
+
+  SETTLEMENT: "SETTLEMENT",
+
+  DONE: "DONE"
+
+};
+
+export const InspectorStatus = {
+
+  RUNNING: "RUNNING",
+
+  SUCCESS: "SUCCESS",
+
+  FAILED: "FAILED",
+
+  WARNING: "WARNING"
+
+};

@@ -29,9 +29,6 @@ router.post('/request', requireAuth, async (req, res) => {
     }
 
     // ── Maya channel: verify the user has a linked Maya number ────────────
-    // The auto-matcher looks up incoming payments by the sender's Maya number.
-    // If none is linked, the payment will arrive but can't be auto-credited —
-    // it will fall to the admin dashboard instead.
     if (channel === 'MAYA') {
       const linkedMaya = await BankAccount.findOne({
         userId: req.user.id,
@@ -47,31 +44,31 @@ router.post('/request', requireAuth, async (req, res) => {
     }
 
     const existingDeposit = await DirectDeposit.findOne({
-  userId: req.user.id,
-  channel,
-  status: "PENDING",
-  expiresAt: { $gt: new Date() }
-});
+      userId: req.user.id,
+      channel,
+      status: "PENDING",
+      expiresAt: { $gt: new Date() }
+    });
 
-if (existingDeposit) {
-  return res.json({
-    success: true,
-    existing: true,
-    referenceId: existingDeposit.referenceId,
-    amount: existingDeposit.amount,
-    channel: existingDeposit.channel,
-    expiresAt: existingDeposit.expiresAt,
-    instructions: {
-      gcash: process.env.GCASH_NUMBER || "Not configured",
-      maya: process.env.MAYA_NUMBER || "Not configured",
-      bank: process.env.BANK_ACCOUNT || "Not configured",
-      name: process.env.ACCOUNT_NAME || "ISCAN",
-      message: `Send exactly ₱ — Reference: `,
+    if (existingDeposit) {
+      return res.json({
+        success: true,
+        existing: true,
+        referenceId: existingDeposit.referenceId,
+        amount: existingDeposit.amount,
+        channel: existingDeposit.channel,
+        expiresAt: existingDeposit.expiresAt,
+        instructions: {
+          gcash: process.env.GCASH_NUMBER || "Not configured",
+          maya:  process.env.MAYA_NUMBER  || "Not configured",
+          bank:  process.env.BANK_ACCOUNT || "Not configured",
+          name:  process.env.ACCOUNT_NAME || "ISCAN",
+          message: `Send exactly ₱ — Reference: `,
+        }
+      });
     }
-  });
-}
 
-// ── Generate reference ID (audit trail, shown on QR) ─────────────────
+    // ── Generate reference ID (audit trail, shown on QR) ─────────────────
     const referenceId = 'ISCAN-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
     const deposit = await DirectDeposit.create({
@@ -92,8 +89,6 @@ if (existingDeposit) {
         maya:    process.env.MAYA_NUMBER   || 'Not configured',
         bank:    process.env.BANK_ACCOUNT  || 'Not configured',
         name:    process.env.ACCOUNT_NAME  || 'ISCAN',
-        // Reference is shown to user and embedded in QR — for tracking only,
-        // not required for auto-matching (matching is by linked account number)
         message: `Send exactly ₱${php} — Reference: ${referenceId}`,
       },
     });
@@ -135,11 +130,10 @@ router.post('/admin/confirm', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { referenceId, senderName, adminNote } = req.body;
 
-    // Atomically claim — if already CREDITED this returns null
     const deposit = await DirectDeposit.findOneAndUpdate(
       { referenceId, status: 'PENDING' },
       { status: 'CREDITED', creditedAt: new Date(), senderName, adminNote },
-      { new: false } // return the doc BEFORE update so we have original amount/userId
+      { new: false }
     );
 
     if (!deposit) {
@@ -155,7 +149,6 @@ router.post('/admin/confirm', requireAuth, requireAdmin, async (req, res) => {
         transactionType: 'cashin',
       });
     } catch (ledgerErr) {
-      // Roll back status so admin can retry
       await DirectDeposit.findOneAndUpdate({ referenceId }, { status: 'PENDING' });
       throw ledgerErr;
     }
@@ -183,10 +176,9 @@ router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-export default router;
-
 // ── GET /deposit/admin/logs ────────────────────────────────────────────────
-// All DirectDeposits (any status) for full history view
+// FIX #11: Moved above export default — these were previously unreachable
+// because they were defined after the export statement.
 router.get('/admin/logs', requireAuth, requireAdmin, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
@@ -201,7 +193,6 @@ router.get('/admin/logs', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // ── GET /deposit/admin/flagged ─────────────────────────────────────────────
-// Deposits the watcher found but couldn't auto-match (flagged for review)
 router.get('/admin/flagged', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { default: DepositReview } = await import('../models/depositReviewModel.js');
@@ -215,7 +206,6 @@ router.get('/admin/flagged', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // ── GET /deposit/admin/ingress ─────────────────────────────────────────────
-// Watcher ingress events — shows what was received and processing status
 router.get('/admin/ingress', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { default: IngressEvent } = await import('../models/IngressEvent.js');
@@ -227,3 +217,5 @@ router.get('/admin/ingress', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+export default router;

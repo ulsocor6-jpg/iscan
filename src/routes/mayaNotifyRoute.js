@@ -27,6 +27,24 @@ router.post("/notify", async (req, res) => {
   });
 
   if (!transaction) {
+    // Not a deposit-related notification at all (e.g. an unrelated push
+    // notification). Still record it so it's visible in the admin Logs
+    // view — same as how MariBank logs non-transaction emails as FAILED —
+    // but it must never enter the Flagged/DepositReview queue, since
+    // there's nothing here for an admin to act on.
+    const ignoredEventId = deduplicationService.createHash({ title, text });
+    const ignoredCreated = await deduplicationService.createEvent(
+      "MAYA",
+      ignoredEventId,
+      { title, text, raw: `${title || ""} ${text || ""}`.trim() }
+    );
+    if (ignoredCreated) {
+      await deduplicationService.markIgnored(
+        "MAYA",
+        ignoredEventId,
+        "Not a financial transaction"
+      );
+    }
     return res.status(200).json({ status: "ignored", reason: "Not a financial transaction" });
   }
 

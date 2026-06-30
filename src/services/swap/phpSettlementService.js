@@ -1,4 +1,5 @@
 import { sendStablecoinToUser } from './../treasury/treasurySendService.js';
+import { sweepStablecoinToTreasury } from '../treasury/stablecoinSweepService.js';
 import PhpLiquidityPool from '../../models/phpLiquidityPool.js';
 import { getUSDPHPRate, getPHPUSDRate } from '../fx/phpRateOracle.js';
 import Wallet from '../../models/walletModel.js';
@@ -12,8 +13,8 @@ async function getPool(currency) {
 }
 
 // USDC/USDT → PHP
-export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency = 'USDC', txRef }) {
-  const rate   = await getUSDPHPRate();
+export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency = 'USDC', txRef, chain = 'base' }) {
+  const rate   = await getUSDPHPRate(chain, stablecoinAmount);
   const phpOut = stablecoinAmount * rate;
 
   const phpPool    = await getPool('PHP');
@@ -62,6 +63,29 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     });
 
     console.log(`[swap] ${stablecoinAmount} ${currency} → ₱${phpOut.toFixed(2)} for ${userId}`);
+
+    // Sweep the user's real on-chain stablecoin into treasury now that
+    // they've been credited PHP for it. This is the actual on-chain
+    // settlement leg — without it, the user's real USDC/USDT just sits
+    // in their HD wallet untouched while they've already been paid PHP.
+    // Non-fatal if it fails: the user has already been correctly
+    // credited, and the sweep can be retried/reconciled separately.
+    try {
+      const wallet = await Wallet.findOne({ userId });
+      if (wallet?.walletIndex !== undefined && wallet?.walletIndex !== null) {
+        const sweepResult = await sweepStablecoinToTreasury({
+          chain,
+          token: currency,
+          walletIndex: wallet.walletIndex,
+        });
+        console.log(`[swap] sweep result for ${userId}:`, sweepResult);
+      } else {
+        console.error(`[swap] sweep skipped — no walletIndex for ${userId}`);
+      }
+    } catch (sweepErr) {
+      console.error(`[swap] SWEEP FAILED for ${userId} (PHP already credited, needs manual reconciliation):`, sweepErr.message);
+    }
+
     return { phpOut, rate, txRef };
 
   } catch (err) {
@@ -72,8 +96,12 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
 }
 
 // PHP → USDT/USDC
-export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USDT', txRef }) {
-  const rate = await getPHPUSDRate();
+export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USDT', txRef, chain = 'base' }) {
+  // Rough USD size of this swap (no gas adjustment) just to scale the
+  // gas cost proportionally — small swaps shouldn't eat a flat gas fee.
+  const baseRate = await getPHPUSDRate();
+  const roughUsdAmount = phpAmount * baseRate;
+  const rate = await getPHPUSDRate(chain, roughUsdAmount);
 
   // USDC/USDT support only 6 decimal places.
   // Truncate instead of using JS floating-point precision.

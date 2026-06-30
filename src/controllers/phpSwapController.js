@@ -40,15 +40,15 @@ export async function quoteSwap(req, res) {
 
 export async function executeSwap(req, res) {
   try {
-    const { fromCurrency, toCurrency, amount } = req.body;
+    const { fromCurrency, toCurrency, amount, chain = 'base' } = req.body;
     const userId = req.user.id;
     const txRef  = uuid();
 
     let result;
     if (fromCurrency === 'PHP') {
-      result = await settlePHPToStablecoin({ userId, phpAmount: +amount, currency: toCurrency, txRef });
+      result = await settlePHPToStablecoin({ userId, phpAmount: +amount, currency: toCurrency, txRef, chain });
     } else {
-      result = await settleStablecoinToPHP({ userId, stablecoinAmount: +amount, currency: fromCurrency, txRef });
+      result = await settleStablecoinToPHP({ userId, stablecoinAmount: +amount, currency: fromCurrency, txRef, chain });
     }
     try {
       const grossAmount = +amount;

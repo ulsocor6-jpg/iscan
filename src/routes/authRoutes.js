@@ -13,6 +13,12 @@ import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+router.use((req,res,next)=>{
+  console.log("[AUTH ROUTE HIT]", req.method, req.originalUrl);
+  next();
+});
+
+
 router.post('/register', register);
 router.post('/login', login);
 router.post('/logout', logout);

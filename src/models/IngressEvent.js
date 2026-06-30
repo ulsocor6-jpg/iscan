@@ -20,7 +20,7 @@ const schema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["RECEIVED","PROCESSING","PROCESSED","FAILED"],
+    enum: ["RECEIVED","PROCESSING","PROCESSED","FAILED","IGNORED"],
     default: "RECEIVED",
     index: true
   },

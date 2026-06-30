@@ -9,8 +9,8 @@ import { v4 as uuid } from "uuid";
 import FlowerOrder    from "../../models/flower/flowerOrderModel.js";
 import { processSwap } from "../flowerSwapServiceBase.js";
 
-const RATE_TTL = 60 * 1000;
-let _rateCache = { value: null, fetchedAt: 0 };
+const RATE_TTL = 15 * 1000;
+let _rateCache = { value: null, fetchedAt: 0 }; // cache cleared
 
 export async function getFlowerUsdtRate() {
   if (_rateCache.value && Date.now() - _rateCache.fetchedAt < RATE_TTL) {
@@ -19,16 +19,16 @@ export async function getFlowerUsdtRate() {
   let rate = null;
   try {
     const res  = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=ronin-flower&vs_currencies=usd",
+      "https://api.coingecko.com/api/v3/simple/price?ids=flower-2&vs_currencies=usd",
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
     );
     const data = await res.json();
-    const price = data?.["ronin-flower"]?.usd;
+    const price = data?.["flower-2"]?.usd;
     if (price && price > 0) rate = price;
   } catch (err) {
     console.warn("[FlowerUsdt] CoinGecko failed:", err.message);
   }
-  if (!rate) rate = _rateCache.value || 0.0712;
+  if (!rate) rate = _rateCache.value ?? null; // no hardcoded fallback
   _rateCache = { value: rate, fetchedAt: Date.now() };
   return rate;
 }

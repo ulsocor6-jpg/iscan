@@ -16,6 +16,7 @@ import Treasury     from "./pages/Treasury";
 import Profile        from "./pages/Profile";
 import WalletManager from "./pages/WalletManager";
 import Dashboard      from "./pages/Dashboard";
+import InternalInspector from "./pages/technical/InternalInspector";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { loading, authenticated } = useAuth();
@@ -54,8 +55,10 @@ export default function App() {
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
         <Route path="/admin/cashouts" element={<RequireAdmin><AdminCashouts /></RequireAdmin>} />
         <Route path="/admin/deposits" element={<RequireAdmin><AdminDeposits /></RequireAdmin>} />
+        <Route path="/admin/inspector" element={<RequireAdmin><InternalInspector /></RequireAdmin>} />
         <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />
         <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />
+        <Route path="/inspector"     element={<RequireAdmin><InternalInspector /></RequireAdmin>} />
         <Route path="/profile"    element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
