@@ -34,6 +34,15 @@ export function startMariBankListener() {
                 const parsed = await simpleParser(stream);
                 const emailText = parsed.text;
 
+                // ── Filter: only process real MariBank transaction alerts ──
+                // Skips MongoDB/Railway/marketing mail before any Inspector
+                // flow is created, so the Inspector stays clean.
+                const fromAddress = (parsed.from?.value?.[0]?.address || "").toLowerCase();
+                if (!fromAddress.includes("alerts@maribank.com.ph")) {
+                  console.log(`[MariBank Listener] Skipped — not from MariBank (from: ${fromAddress || "unknown"})`);
+                  return;
+                }
+
                 // ── Parse the email first so we know the reference ID ──
                 // before deciding whether to start a new flow or continue
                 // one that already exists from a UI deposit request.
