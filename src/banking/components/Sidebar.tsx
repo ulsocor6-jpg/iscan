@@ -14,7 +14,7 @@ export default function Sidebar() {
     {label:"Swaps",path:"/swaps"},
     {label:"Wallets",path:"/wallets"},
     {label:"Remittance",path:"/remittance"},
-    ...(user?.role === "admin" ? [{label:"⚙ Cashouts",path:"/admin/cashouts"},{label:"Treasury",path:"/treasury"},{label:"📥 Deposits",path:"/admin/deposits"}] : []),
+    ...(user?.role === "admin" ? [{label:"⚙ Cashouts",path:"/admin/cashouts"},{label:"Treasury",path:"/treasury"},{label:"📥 Deposits",path:"/admin/deposits"},{label:"🔬 Inspector",path:"/inspector"}] : []),
     {label:"Compliance",path:"/compliance"},
     {label:"Activity",path:"/activity"},
   ];

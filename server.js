@@ -21,8 +21,10 @@ async function startServer() {
     await mongoose.connect(mongoUrl);
     console.log("MongoDB connected");
 
-
-
+    // FIX #9: Each worker/listener is independently wrapped so a failure in one
+    // does not prevent the others from starting. Previously startBaseListener,
+    // startTreasuryBalancer and startStatusWorker were nested inside the
+    // startRoninListener try block — if Ronin threw, all three were silently skipped.
     try {
       startSettlementWorker();
     } catch (err) {
@@ -31,30 +33,38 @@ async function startServer() {
 
     try {
       startRoninListener();
-    try {
-      startBaseListener();
-    } catch (err) {
-      console.error("Base listener failed to start (continuing anyway):", err.message);
-    }
-    try {
-      startTreasuryBalancer();
-      try { startStatusWorker(); } catch (err) { console.error('Status worker failed to start:', err.message); }
-    } catch (err) {
-      console.error("Treasury balancer failed to start (continuing anyway):", err.message);
-    }
     } catch (err) {
       console.error("Ronin listener failed to start (continuing anyway):", err.message);
     }
 
     try {
+      startBaseListener();
+    } catch (err) {
+      console.error("Base listener failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      startTreasuryBalancer();
+    } catch (err) {
+      console.error("Treasury balancer failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      startStatusWorker();
+    } catch (err) {
+      console.error("Status worker failed to start (continuing anyway):", err.message);
+    }
+
+    try {
       startMariBankListener();
-      try {
-        startDepositExpiryWorker();
-      } catch (err) {
-        console.error("Deposit expiry worker failed:", err.message);
-      }
     } catch (err) {
       console.error("MariBank listener failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      startDepositExpiryWorker();
+    } catch (err) {
+      console.error("Deposit expiry worker failed to start (continuing anyway):", err.message);
     }
 
     const PORT = process.env.PORT || 3000;

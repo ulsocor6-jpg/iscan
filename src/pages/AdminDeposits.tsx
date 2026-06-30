@@ -54,6 +54,7 @@ function statusPill(status: string) {
     completed:      { bg: "#14532d", color: "#4ade80", label: "Completed" },
     failed:         { bg: "#3b1f1f", color: "#f87171", label: "Failed" },
     confirming:     { bg: "#2d1f42", color: "#c084fc", label: "Confirming" },
+    IGNORED:        { bg: "#1e293b", color: "#64748b", label: "Ignored" },
   };
   const s = map[status] || { bg: "#1d2942", color: "#94a3b8", label: status };
   return (

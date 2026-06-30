@@ -100,6 +100,32 @@ class DeduplicationService {
 
   }
 
+  async markIgnored(source, eventId, reason) {
+
+    return IngressEvent.findOneAndUpdate(
+
+      {
+        source,
+        eventId
+      },
+
+      {
+        $set: {
+          status: "IGNORED",
+          processedAt: new Date(),
+          failureReason: reason
+        }
+      },
+
+      {
+        upsert: false,
+        new: true
+      }
+
+    );
+
+  }
+
 }
 
 export default new DeduplicationService();

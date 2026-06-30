@@ -25,6 +25,15 @@ const schema = new mongoose.Schema({
 }, { timestamps: true });
 
 
-schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// NOTE: previously had a TTL index here ({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+// that made MongoDB hard-delete PENDING deposits the instant they expired,
+// bypassing depositExpiryWorker.js entirely. The 3-minute window itself is
+// intentional (keeps the candidate pool narrow for auto-credit matching) —
+// the bug was that expired deposits vanished instead of being preserved.
+// Status transitions (PENDING -> EXPIRED) are now handled exclusively by
+// src/services/depositExpiryWorker.js, which archives to DepositLog and
+// flips status to EXPIRED before anything is removed, so expired deposits
+// stay visible in the admin Logs view instead of disappearing with no trace.
+schema.index({ expiresAt: 1 });
 
 export default mongoose.model("DirectDeposit", schema);

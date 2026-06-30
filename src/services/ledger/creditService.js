@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import Ledger from "../../models/ledgerModel.js";
 import Wallet from "../../models/walletModel.js";
-import { convertToPHP } from "../fxEngine.js";
 
 /**
  * creditUser()
@@ -22,7 +21,7 @@ export async function creditUser({
   const referenceId = txHash || crypto.randomUUID();
   const already = await Ledger.findOne({ referenceId });
   if (already) {
-    console.log(`[creditService] ${referenceId} already processed — skipping`);
+    console.log(`[creditService] ✅ +${amount} ${asset} credited to user ${userId}`);
     return { skipped: true, referenceId };
   }
 
@@ -35,12 +34,7 @@ export async function creditUser({
   const currentBalance = wallet.balances.get(asset) || 0;
   wallet.balances.set(asset, currentBalance + Number(amount));
   wallet.markModified("balances");
-
-  // ── 4. Convert to PHP and credit PHP balance ───────────────────────────
-  const { phpAmount, rate } = await convertToPHP(amount, asset);
-  wallet.balance = (wallet.balance || 0) + phpAmount;
-
-  await wallet.save();
+await wallet.save();
 
   // ── 5. Write ledger entry ──────────────────────────────────────────────
   await Ledger.create({
@@ -50,11 +44,10 @@ export async function creditUser({
     debit:  0,
     credit: Number(amount),
     currency: asset,
-    description: `${amount} ${asset} deposit → ₱${phpAmount.toFixed(2)} PHP`,
-    status: "completed",
-    metadata: { txHash, chain, phpAmount, rate },
+    description: `${amount} ${asset} deposit`,
+    status: "completed", metadata: { txHash, chain },
   });
 
-  console.log(`[creditService] ✅ +${amount} ${asset} → ₱${phpAmount} for user ${userId}`);
-  return { success: true, amount, asset, phpAmount, rate, referenceId };
+  console.log(`[creditService] ✅ +${amount} ${asset} credited to user ${userId}`);
+  return { success: true, amount, asset, referenceId };
 }

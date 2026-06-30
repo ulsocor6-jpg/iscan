@@ -15,7 +15,11 @@ export const addBank = async (req, res) => {
     const isFirst = (await BankAccount.countDocuments({ userId: req.user.id })) === 0;
     const bank = await BankAccount.create({
       userId: req.user.id, provider, bankName, accountName, accountNumber,
-      isDefault: isFirst
+      isDefault: isFirst,
+      status: 'active' // no separate approval workflow exists; without this,
+                        // processTransaction.js can never auto-match deposits
+                        // (it requires status: "active") and every real
+                        // transaction silently falls through to manual review.
     });
     res.json({ success: true, bank });
   } catch (err) {

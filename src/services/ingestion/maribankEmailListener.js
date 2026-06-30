@@ -3,6 +3,8 @@ import { simpleParser } from "mailparser";
 import processTransaction from "../../core/processTransaction.js";
 import deduplicationService from "./deduplicationService.js";
 import { parseMariBankEmail } from "../../parsers/maribankEmailParser.js";
+import inspectorService from "../../services/inspectorService.js";
+import { InspectorStage } from "../../inspector/inspectorConstants.js";
 
 export function startMariBankListener() {
   const imap = new Imap({
@@ -16,99 +18,114 @@ export function startMariBankListener() {
 
   imap.once("ready", () => {
     console.log("[MariBank Listener] IMAP connected, watching inbox...");
-
     imap.openBox("INBOX", false, (err) => {
-      if (err) {
-        console.error("[MariBank Listener] Failed to open inbox:", err.message);
-        return;
-      }
+      if (err) { console.error("[MariBank Listener] Failed to open inbox:", err.message); return; }
 
       imap.on("mail", () => {
-        const searchCriteria = ["UNSEEN"];
-
-        imap.search(searchCriteria, (err, results) => {
-          if (err) {
-            console.error("[MariBank Listener] Search error:", err.message);
-            return;
-          }
+        imap.search(["UNSEEN"], async (err, results) => {
+          if (err) { console.error("[MariBank Listener] Search error:", err.message); return; }
           if (!results || !results.length) return;
 
           const f = imap.fetch(results, { bodies: "" });
-
           f.on("message", (msg) => {
             msg.on("body", async (stream) => {
+              let flow = null;
               try {
                 const parsed = await simpleParser(stream);
-                const transaction = parseMariBankEmail(parsed.text);
+                const emailText = parsed.text;
 
-                if (transaction) {
+                // ── Start inspector flow ─────────────────────────────
+                flow = await inspectorService.startFlow({
+                  pipeline: "PHP_DEPOSIT",
+                  source: "MARI_BANK",
+                  transactionType: "cashin",
+                  rawNotification: { subject: parsed.subject, from: parsed.from?.text, text: emailText?.slice(0, 500) },
+                });
+                const flowId = flow.flowId;
 
-                  const eventId = deduplicationService.createHash(transaction);
+                // ── WATCHER stage ────────────────────────────────────
+                await inspectorService.startStage(flowId, InspectorStage.WATCHER, {
+                  subject: parsed.subject,
+                  from: parsed.from?.text,
+                });
+                await inspectorService.finishStage(flowId, InspectorStage.WATCHER, {
+                  result: { emailReceived: true, subject: parsed.subject },
+                  decision: { reason: "EMAIL_RECEIVED" },
+                });
 
-                  const created = await deduplicationService.createEvent(
-                    "MARIBANK",
-                    eventId,
-                    transaction
-                  );
+                // ── PARSER stage ─────────────────────────────────────
+                await inspectorService.startStage(flowId, InspectorStage.PARSER, { text: emailText?.slice(0, 300) });
+                const transaction = parseMariBankEmail(emailText);
 
-                  if (!created) {
-                    console.log("[MariBank] Duplicate event ignored.");
-                    return;
-                  }
-
-                  const processing = await deduplicationService.startProcessing(
-                    "MARIBANK",
-                    eventId
-                  );
-
-                  if (!processing) {
-                    console.log("[MariBank] Event already processing.");
-                    return;
-                  }
-
-                  try {
-
-                    await processTransaction(transaction);
-
-                    await deduplicationService.markProcessed(
-                      "MARIBANK",
-                      eventId
-                    );
-
-                    console.log(`[MariBank] processed ${eventId}`);
-
-                  } catch (err) {
-
-                    await deduplicationService.markFailed(
-                      "MARIBANK",
-                      eventId,
-                      err.message
-                    );
-
-                    throw err;
-                  }
-
+                if (!transaction) {
+                  await inspectorService.failStage(flowId, InspectorStage.PARSER, "Not a MariBank transaction email", {
+                    decision: { reason: "IGNORED" },
+                  });
+                  return;
                 }
+
+                await inspectorService.finishStage(flowId, InspectorStage.PARSER, {
+                  result: {
+                    amount: transaction.amount,
+                    senderName: transaction.senderName,
+                    senderLastFour: transaction.senderLastFour,
+                    recipientLastFour: transaction.recipientLastFour,
+                    referenceId: transaction.referenceId,
+                  },
+                  decision: { reason: "PARSED_OK" },
+                });
+
+                // ── DEDUP stage ──────────────────────────────────────
+                await inspectorService.startStage(flowId, "DEDUP", {});
+                const eventId = deduplicationService.createHash(transaction);
+                const created = await deduplicationService.createEvent("MARIBANK", eventId, transaction);
+
+                if (!created) {
+                  await inspectorService.failStage(flowId, "DEDUP", "Duplicate event", {
+                    decision: { reason: "DUPLICATE" },
+                  });
+                  return;
+                }
+
+                const processing = await deduplicationService.startProcessing("MARIBANK", eventId);
+                if (!processing) {
+                  await inspectorService.failStage(flowId, "DEDUP", "Already processing", {
+                    decision: { reason: "ALREADY_PROCESSING" },
+                  });
+                  return;
+                }
+
+                await inspectorService.finishStage(flowId, "DEDUP", {
+                  result: { eventId },
+                  decision: { reason: "NEW_EVENT" },
+                });
+
+                // ── processTransaction ────────────────────────────────
+                try {
+                  await processTransaction({ ...transaction, _flowId: flowId });
+                  await deduplicationService.markProcessed("MARIBANK", eventId);
+                  console.log(`[MariBank] processed ${eventId}`);
+                } catch (err) {
+                  await deduplicationService.markFailed("MARIBANK", eventId, err.message);
+                  throw err;
+                }
+
               } catch (procErr) {
-                console.error("[MariBank Listener] Error processing email:", procErr.message);
+                console.error("[MariBank Listener] Error:", procErr.message);
+                if (flow) await inspectorService.failStage(flow.flowId, "PROCESS_TRANSACTION", procErr.message).catch(() => {});
               }
             });
           });
 
-          f.once("error", (fetchErr) => {
-            console.error("[MariBank Listener] Fetch error:", fetchErr.message);
-          });
+          f.once("error", (err) => console.error("[MariBank Listener] Fetch error:", err.message));
         });
       });
     });
   });
 
-  imap.once("error", (err) => {
-    console.error("[MariBank Listener] IMAP connection error:", err.message);
-  });
-
+  imap.once("error", (err) => console.error("[MariBank Listener] IMAP error:", err.message));
   imap.once("end", () => {
-    console.warn("[MariBank Listener] IMAP connection ended. Reconnecting in 10s...");
+    console.warn("[MariBank Listener] Connection ended. Reconnecting in 10s...");
     setTimeout(() => startMariBankListener(), 10000);
   });
 
