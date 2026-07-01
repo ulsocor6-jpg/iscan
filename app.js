@@ -60,6 +60,7 @@ import adminDepositRoutes from "./src/routes/adminDepositRoutes.js";
 import cryptoWithdrawalRoutes from "./src/routes/cryptoWithdrawalRoutes.js";
 import withdrawalRoutes from "./src/routes/withdrawalRoutes.js";
 import adminWithdrawalRoutes from "./src/routes/adminWithdrawalRoutes.js";
+import maribankNotifyRoute from "./src/routes/maribankNotifyRoute.js";
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 
@@ -103,6 +104,8 @@ app.use("/api/v1/remittance", remittanceRoutes);
 
 app.use("/api/v1/p2p", p2pRoutes);
 app.use("/api/v1/users", userRoutes);
+
+app.use("/api/v1/maribank", maribankNotifyRoute);
 
 app.use("/api/v1/internal-wallets", internalWalletRoutes);
 
