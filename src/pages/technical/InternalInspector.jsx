@@ -59,6 +59,66 @@ function StageRow({ stage }) {
   );
 }
 
+// ── Pipeline step definitions ────────────────────────────────────────────
+const PIPELINE_STEPS = [
+  { label: "Receive Event",    stages: ["WATCHER"],                     icon: "📡" },
+  { label: "Normalize",        stages: ["PARSER"],                      icon: "🔍" },
+  { label: "Duplicate Check",  stages: ["DEDUP"],                       icon: "🔒" },
+  { label: "Verify Tx",        stages: ["USER_LOOKUP", "DEPOSIT_MATCH"],icon: "🎯" },
+  { label: "Ledger Credit",    stages: ["LEDGER"],                      icon: "📒" },
+  { label: "Wallet Update",    stages: ["EVENT_STREAM"],                icon: "💳" },
+];
+
+function getStepStatus(stages, stageNames) {
+  const matching = (stages || []).filter(s => stageNames.includes(s.name));
+  if (matching.length === 0) return "PENDING";
+  if (matching.some(s => s.status === "FAILED"))  return "FAILED";
+  if (matching.some(s => s.status === "RUNNING")) return "RUNNING";
+  if (matching.every(s => s.status === "SUCCESS")) return "SUCCESS";
+  return "PENDING";
+}
+
+function PipelineProgress({ flow }) {
+  // Only show for PHP_DEPOSIT pipelines
+  if (flow.pipeline !== "PHP_DEPOSIT") return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
+      {PIPELINE_STEPS.map((step, i) => {
+        const status = getStepStatus(flow.stages, step.stages);
+        const color  = status === "SUCCESS" ? "#4ade80"
+                     : status === "FAILED"  ? "#f87171"
+                     : status === "RUNNING" ? "#facc15"
+                     : "#334155";
+        const bg     = status === "SUCCESS" ? "#14532d"
+                     : status === "FAILED"  ? "#450a0a"
+                     : status === "RUNNING" ? "#422006"
+                     : "#0d1526";
+        const icon   = status === "SUCCESS" ? "✓"
+                     : status === "FAILED"  ? "✗"
+                     : status === "RUNNING" ? "⟳"
+                     : "·";
+        return (
+          <div key={step.label} style={{ display: "flex", alignItems: "center" }}>
+            <div style={{
+              background: bg, border: `1px solid ${color}`, borderRadius: 8,
+              padding: "6px 10px", textAlign: "center", minWidth: 80,
+              transition: "all 0.3s ease",
+            }}>
+              <div style={{ fontSize: 14 }}>{step.icon}</div>
+              <div style={{ color, fontSize: 9, fontWeight: 700, marginTop: 2, lineHeight: 1.2 }}>
+                {icon} {step.label}
+              </div>
+            </div>
+            {i < PIPELINE_STEPS.length - 1 && (
+              <div style={{ color: "#334155", fontSize: 16, padding: "0 2px", flexShrink: 0 }}>→</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FlowCard({ flow }) {
   const [expanded, setExpanded] = useState(flow.status !== "SUCCESS");
   const borderColor = flow.status === "SUCCESS" ? "#166534" : flow.status === "FAILED" ? "#7f1d1d" : "#1e3a5f";
@@ -111,6 +171,9 @@ function FlowCard({ flow }) {
               </div>
             </div>
           )}
+
+          {/* Pipeline progress */}
+          <PipelineProgress flow={flow} />
 
           {/* Stages */}
           {flow.stages?.length > 0
