@@ -56,11 +56,14 @@ async function startServer() {
       console.error("Status worker failed to start (continuing anyway):", err.message);
     }
 
-    try {
-      startMariBankListener();
-    } catch (err) {
-      console.error("MariBank listener failed to start (continuing anyway):", err.message);
-    }
+    // DISABLED 2026-07-01: IMAP listener replaced by Android notification
+    // watcher (maribankNotifyRoute.js). Left commented rather than removed
+    // in case email-based ingestion is ever needed again.
+    // try {
+    //   startMariBankListener();
+    // } catch (err) {
+    //   console.error("MariBank listener failed to start (continuing anyway):", err.message);
+    // }
 
     try {
       startDepositExpiryWorker();
