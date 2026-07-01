@@ -85,8 +85,22 @@ export function startMariBankListener() {
                 await inspectorService.startStage(flowId, InspectorStage.PARSER, { text: emailText?.slice(0, 300) });
 
                 if (!transaction) {
-                  await inspectorService.failStage(flowId, InspectorStage.PARSER, "Not a MariBank transaction email", {
-                    decision: { reason: "IGNORED" },
+                  // The sender check already passed (we're inside the
+                  // MariBank filter), so a null `transaction` here means
+                  // the amount regex inside parseMariBankEmail() didn't
+                  // match this email's body — not that the sender was
+                  // wrong. Report which check actually failed and include
+                  // a snippet so the real cause is visible without having
+                  // to re-derive it from scratch next time.
+                  const amountMatched = /PHP\s?([\d,]+\.\d{2})/.test(emailText || "");
+                  const refMatched = /Reference\s?No\:\s?(\w+)/.test(emailText || "");
+                  await inspectorService.failStage(flowId, InspectorStage.PARSER, "Amount pattern did not match email body", {
+                    result: {
+                      amountPatternMatched: amountMatched,
+                      referencePatternMatched: refMatched,
+                      bodySnippet: (emailText || "").slice(0, 300),
+                    },
+                    decision: { reason: "PARSE_REGEX_MISMATCH" },
                   });
                   return;
                 }
