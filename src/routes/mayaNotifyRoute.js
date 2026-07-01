@@ -9,6 +9,11 @@ const MAYA_SECRET = process.env.MAYA_SECRET || "iscan-maya-secret-2024";
 router.post("/notify", async (req, res) => {
   const secret = req.headers["x-maya-secret"];
   if (secret !== MAYA_SECRET) {
+    if (!secret) {
+      console.warn("[Maya Webhook] Rejected — no x-maya-secret header sent");
+    } else {
+      console.warn("[Maya Webhook] Rejected — secret mismatch");
+    }
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -82,7 +87,7 @@ router.post("/notify", async (req, res) => {
         eventId
       );
 
-      console.log(`[Maya] processed `);
+      console.log(`[Maya] processed ${eventId}`);
 
       return res.status(200).json({
         status:"ok",
