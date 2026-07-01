@@ -7,3 +7,4 @@ missing-env-template.txt
 required-env.txt
 src/banking/components/dashboard/creative tech
 *.bak*
+.env

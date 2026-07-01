@@ -31,6 +31,10 @@ router.post("/notify", async (req, res) => {
   const transaction = parseMariBankEmail(combined);
 
   if (!transaction) {
+    // FIX: this ignored-event hash still only uses {title, text} — kept as
+    // is here since non-financial notifications (promos, balance pings)
+    // are expected to legitimately repeat verbatim, so exact-match dedup
+    // is the correct behavior for this branch specifically.
     const ignoredEventId = deduplicationService.createHash({ title, text });
     const ignoredCreated = await deduplicationService.createEvent(
       "MARIBANK",
@@ -76,21 +80,62 @@ router.post("/notify", async (req, res) => {
       amount: transaction.amount,
       senderName: transaction.senderName,
       referenceId: transaction.referenceId,
+      recipientLastFour: transaction.recipientLastFour,
     },
     decision: { reason: "PARSED_OK" },
   });
 
-  const eventId = deduplicationService.createHash({ title, text });
+  // ── DEDUP stage ──────────────────────────────────────────────────────
+  // FIX: this stage previously had zero Inspector instrumentation — a
+  // duplicate (real or false-positive) caused the route to silently
+  // return 200 "duplicate" with the flow left permanently stuck at
+  // RUNNING and no indication anywhere of what happened or why.
+  //
+  // FIX: the hash previously was createHash({ title, text }) with no
+  // time component. Two genuinely separate transfers with identical
+  // phrasing (e.g. two ₱20 test transfers with the same notification
+  // text) hash identically and collide on the eventId unique index,
+  // so the second real transaction was silently dropped as a "duplicate"
+  // forever. Bucketing on the transaction's actual identifying fields
+  // plus a coarse time window (5 minutes) preserves real dedup — a
+  // notification genuinely redelivered by Android within the window
+  // still collides and is correctly dropped — while letting legitimate
+  // repeat transfers with the same amount through once the window
+  // passes.
+  await inspectorService.startStage(flowId, "DEDUP", { transaction });
+
+  const notificationTime = timestamp ? new Date(timestamp) : new Date();
+  const timeBucket = Math.floor(notificationTime.getTime() / (5 * 60 * 1000)); // 5-min buckets
+  const eventId = deduplicationService.createHash({
+    amount: transaction.amount,
+    referenceId: transaction.referenceId,
+    recipientLastFour: transaction.recipientLastFour,
+    timeBucket,
+  });
+
   const created = await deduplicationService.createEvent("MARIBANK", eventId, transaction);
 
   if (!created) {
+    await inspectorService.failStage(flowId, "DEDUP", "Duplicate event within time window", {
+      result: { eventId, timeBucket },
+      decision: { reason: "DUPLICATE" },
+    });
     return res.status(200).json({ status: "duplicate" });
   }
 
   const processing = await deduplicationService.startProcessing("MARIBANK", eventId);
   if (!processing) {
+    await inspectorService.failStage(flowId, "DEDUP", "Already processing", {
+      result: { eventId },
+      decision: { reason: "ALREADY_PROCESSING" },
+    });
     return res.status(200).json({ status: "already_processing" });
   }
+
+  await inspectorService.finishStage(flowId, "DEDUP", {
+    result: { eventId },
+    decision: { reason: "NEW_EVENT" },
+  });
 
   try {
     await processTransaction({ ...transaction, _flowId: flowId });
@@ -100,6 +145,7 @@ router.post("/notify", async (req, res) => {
     return res.status(200).json({ status: "ok", transaction });
   } catch (err) {
     await deduplicationService.markFailed("MARIBANK", eventId, err.message);
+    await inspectorService.failStage(flowId, "PROCESS_TRANSACTION", err.message).catch(() => {});
     throw err;
   }
 });
