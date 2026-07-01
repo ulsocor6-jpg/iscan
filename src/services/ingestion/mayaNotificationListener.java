@@ -18,8 +18,7 @@ public class MayaNotificationListener extends NotificationListenerService {
     private static final String TAG = "MayaIngestor";
     private static final String MAYA_PACKAGE = "ph.paymaya.personal";
     // Change this to your server IP or Railway URL
-    private static final String SERVER_URL = "http://192.168.1.29:3000/api/v1/maya/notify";
-
+    private static final String SERVER_URL = "https://iscansystem.up.railway.app/api/v1/maya/notify";
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         if (!MAYA_PACKAGE.equals(sbn.getPackageName())) return;
