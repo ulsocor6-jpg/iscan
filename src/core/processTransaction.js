@@ -132,7 +132,27 @@ export default async function processTransaction(raw) {
 
   const deposit = pendingDeposits[0];
 
-  // ── Step 3: Atomic claim ───────────────────────────────────────────────
+  // ── Step 3: VERIFIER ────────────────────────────────────────────────────
+  // Re-checks the specific deposit record right before we commit to it.
+  // DEPOSIT_MATCH already filtered on status/amount/expiry at query time,
+  // but time has passed since (DB round trip, event loop), so we verify
+  // the exact record is still eligible immediately before claiming it.
+  await inspectorService.startStage(flowId, InspectorStage.VERIFIER, { depositId: deposit._id, expectedAmount: amount });
+  const stillValid = deposit.status === "PENDING" && deposit.expiresAt > new Date() && deposit.amount === amount;
+  if (!stillValid) {
+    await inspectorService.failStage(flowId, InspectorStage.VERIFIER, "Deposit no longer eligible at verify time", {
+      result: { status: deposit.status, expiresAt: deposit.expiresAt, amountMatches: deposit.amount === amount },
+      decision: { reason: "STALE_DEPOSIT" },
+    });
+    await flagForReview(raw, "STALE_DEPOSIT_AT_VERIFY", user._id);
+    return null;
+  }
+  await inspectorService.finishStage(flowId, InspectorStage.VERIFIER, {
+    result: { depositId: deposit._id, verifiedAmount: deposit.amount, verifiedStatus: deposit.status },
+    decision: { reason: "VERIFIED_ELIGIBLE" },
+  });
+
+  // ── Step 4: Atomic claim ───────────────────────────────────────────────
   const claimed = await DirectDeposit.findOneAndUpdate(
     { _id: deposit._id, status: "PENDING" },
     { status: "CREDITED", creditedAt: new Date(), senderName: senderPhone || senderName || "unknown", senderLastFour: senderLastFour || null },
@@ -144,10 +164,11 @@ export default async function processTransaction(raw) {
     return { skipped: true, reason: "RACE_CONDITION_ALREADY_CLAIMED", depositId: deposit._id };
   }
 
-  // ── Step 4: LEDGER ─────────────────────────────────────────────────────
+  // ── Step 5: LEDGER ─────────────────────────────────────────────────────
   await inspectorService.startStage(flowId, InspectorStage.LEDGER, { userId: user._id, amount: claimed.amount });
+  let wallet;
   try {
-    await walletService.credit(user._id.toString(), "PHP", claimed.amount, {
+    wallet = await walletService.credit(user._id.toString(), "PHP", claimed.amount, {
       referenceId: claimed.referenceId,
       description: `PHP deposit ₱${claimed.amount} from ${senderPhone || senderName || "unknown"} (ref: ${claimed.referenceId}, auto-matched)`,
       transactionType: "cashin",
@@ -163,7 +184,28 @@ export default async function processTransaction(raw) {
     throw creditErr;
   }
 
-  // ── Step 5: EVENT STREAM ───────────────────────────────────────────────
+  // ── Step 6: WALLET ──────────────────────────────────────────────────────
+  // walletService.credit() writes the Ledger entry (source of truth for
+  // balance, via aggregation) and ensures the user's Wallet document
+  // exists. This stage makes that visible in the Inspector instead of it
+  // being an invisible side effect of the LEDGER step.
+  await inspectorService.startStage(flowId, InspectorStage.WALLET, { userId: user._id });
+  try {
+    const newBalance = await walletService.getBalance(user._id.toString(), "PHP");
+    await inspectorService.finishStage(flowId, InspectorStage.WALLET, {
+      result: { walletId: wallet?._id, iscanAddress: wallet?.iscanAddress, newPhpBalance: newBalance },
+      decision: { reason: "WALLET_BALANCE_CONFIRMED" },
+    });
+  } catch (walletErr) {
+    // Non-fatal: the credit already succeeded and is durable in the
+    // Ledger. This only means we couldn't confirm/display the resulting
+    // balance right now — surface it without failing the whole flow.
+    await inspectorService.failStage(flowId, InspectorStage.WALLET, walletErr.message, {
+      decision: { reason: "BALANCE_CONFIRM_FAILED_NON_FATAL" },
+    });
+  }
+
+  // ── Step 7: EVENT STREAM ───────────────────────────────────────────────
   await inspectorService.startStage(flowId, InspectorStage.EVENT_STREAM, {});
   try {
     await eventStreamService.emit("deposit.credited", {
