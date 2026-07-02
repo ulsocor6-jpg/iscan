@@ -53,6 +53,22 @@ export default function Swaps() {
       .then(r => r.json()).then(d => setLinkedAccounts(d.banks || []));
   }, []);
 
+  // Restore an in-flight deposit after a page refresh. Without this, reloading
+  // the page cleared local state while the server still had a PENDING record,
+  // letting someone bypass the lock simply by refreshing.
+  useEffect(() => {
+    fetch("/api/v1/deposit/pending", { credentials:"include" })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.deposit) {
+          setBankDeposit({ ...d.deposit, status: d.deposit.status || "PENDING" });
+          setCashInMode("bank");
+          setTab("cashin");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     function fetchBal() {
       fetch("/api/v1/wallet/balances", { credentials:"include" })
@@ -197,6 +213,44 @@ export default function Swaps() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function cancelBankDeposit() {
+    if (!bankDeposit?.referenceId) { setBankDeposit(null); return; }
+    setBankDepositLoading(true);
+    try {
+      const res = await fetch("/api/v1/deposit/cancel", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referenceId: bankDeposit.referenceId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message);
+      setBankDeposit(null);
+      setCashInAmount("");
+    } catch (err: any) {
+      // Deposit may have already resolved server-side (e.g. credited a
+      // moment ago) — refresh from the server instead of leaving stale
+      // local state that disagrees with what actually happened.
+      setBankDepositError(err.message);
+      try {
+        const r = await fetch("/api/v1/deposit/pending", { credentials: "include" });
+        const d = await r.json();
+        setBankDeposit(d?.deposit ? { ...d.deposit } : null);
+      } catch {}
+    } finally {
+      setBankDepositLoading(false);
+    }
+  }
+
+  // The page is locked to the Cash In flow whenever there's a live PENDING
+  // bank/Maya deposit request — until it's credited, expires, or the user
+  // explicitly cancels it. This stops someone from wandering off to another
+  // tab mid-deposit and losing track of an open request.
+  const depositLocked = !!bankDeposit && bankDeposit.status === "PENDING";
+
+  useEffect(() => {
+    if (depositLocked && tab !== "cashin") setTab("cashin");
+  }, [depositLocked, tab]);
+
   useEffect(() => {
     if (!bankDeposit?.referenceId || bankDeposit.status !== "PENDING") return;
     const iv = setInterval(async () => {
@@ -303,13 +357,21 @@ export default function Swaps() {
         </div>
 
         <div style={{marginBottom:24}}>
-          <button style={tabStyle("crypto-php")} onClick={()=>{setTab("crypto-php");setError("");setResult(null);setQuote(null);}}>
+          {depositLocked && (
+            <div style={{
+              background:"#2a2410", border:"1px solid #eab308", borderRadius:8,
+              padding:"10px 14px", marginBottom:12, color:"#eab308", fontSize:13,
+            }}>
+              🔒 You have a deposit awaiting confirmation. Other actions are locked until it's credited, expires, or you cancel it.
+            </div>
+          )}
+          <button style={{...tabStyle("crypto-php"), opacity: depositLocked?0.4:1, cursor: depositLocked?"not-allowed":"pointer"}} disabled={depositLocked} onClick={()=>{setTab("crypto-php");setError("");setResult(null);setQuote(null);}}>
             Crypto → PHP
           </button>
-          <button style={tabStyle("php-usdt")} onClick={()=>{setTab("php-usdt");setError("");setResult(null);setQuote(null);}}>
+          <button style={{...tabStyle("php-usdt"), opacity: depositLocked?0.4:1, cursor: depositLocked?"not-allowed":"pointer"}} disabled={depositLocked} onClick={()=>{setTab("php-usdt");setError("");setResult(null);setQuote(null);}}>
             PHP → USDT/USDC
           </button>
-          <button style={tabStyle("cashout")} onClick={()=>{setTab("cashout");setError("");setResult(null);}}>
+          <button style={{...tabStyle("cashout"), opacity: depositLocked?0.4:1, cursor: depositLocked?"not-allowed":"pointer"}} disabled={depositLocked} onClick={()=>{setTab("cashout");setError("");setResult(null);}}>
             Cash Out
           </button>
           <button style={tabStyle("cashin")} onClick={()=>{setTab("cashin");setError("");setResult(null);}}>
@@ -320,8 +382,10 @@ export default function Swaps() {
               ...tabStyle("flower-usdt"),
               background: tab==="flower-usdt"
                 ? "linear-gradient(135deg,#9333ea,#f59e0b)"
-                : "#1d2942"
+                : "#1d2942",
+              opacity: depositLocked?0.4:1, cursor: depositLocked?"not-allowed":"pointer"
             }}
+            disabled={depositLocked}
             onClick={()=>{setTab("flower-usdt");setFuError("");setFuResult(null);}}
           >
             🌸 FLOWER ↔ USDC
@@ -570,14 +634,34 @@ export default function Swaps() {
                       Include reference <b style={{color:"white"}}>{bankDeposit.referenceId}</b> in your transfer memo/notes. Mismatched amounts or missing references will delay confirmation.
                     </p>
 
+                    {bankDeposit.status==="CREDITED" && (
+                      <div style={{marginBottom:16,padding:14,background:"#0a1f0a",border:"1px solid #22c55e",borderRadius:8}}>
+                        <p style={{color:"#22c55e",margin:0,fontSize:15,fontWeight:700}}>✓ Deposit confirmed!</p>
+                        <p style={{color:"#94a3b8",fontSize:12,margin:"6px 0 0"}}>
+                          ₱{(+bankDeposit.amount).toFixed(2)} has been credited to your PHP balance.
+                        </p>
+                        <p style={{color:"#94a3b8",fontSize:11,margin:"4px 0 0"}}>Ref: {bankDeposit.referenceId}</p>
+                      </div>
+                    )}
+
+                    {bankDeposit.status==="EXPIRED" && (
+                      <div style={{marginBottom:16,padding:14,background:"#2a0a0a",border:"1px solid #ef4444",borderRadius:8}}>
+                        <p style={{color:"#ef4444",margin:0,fontSize:15,fontWeight:700}}>✗ This request expired</p>
+                        <p style={{color:"#94a3b8",fontSize:12,margin:"6px 0 0"}}>
+                          No payment was matched to this reference in time. Start a new deposit below if you still want to send funds.
+                        </p>
+                      </div>
+                    )}
+
                     {bankDeposit.status==="PENDING" && (
                       <p style={{color:"#94a3b8",fontSize:12}}>Checking for confirmation automatically...</p>
                     )}
 
-                    <button onClick={()=>{setBankDeposit(null);setCashInAmount("");}} style={{
+                    <button onClick={bankDeposit.status==="PENDING" ? cancelBankDeposit : ()=>{setBankDeposit(null);setCashInAmount("");}} disabled={bankDepositLoading} style={{
                       background:"#1d2942",border:"1px solid #2d3f5e",borderRadius:8,padding:"8px 16px",
-                      color:"white",fontSize:13,cursor:"pointer"
-                    }}>{bankDeposit.status==="PENDING" ? "Cancel" : "New Deposit"}</button>
+                      color:"white",fontSize:13,cursor: bankDepositLoading ? "wait" : "pointer", opacity: bankDepositLoading?0.6:1
+                    }}>{bankDeposit.status==="PENDING" ? (bankDepositLoading ? "Cancelling..." : "Cancel") : "New Deposit"}</button>
+                    {bankDepositError && <p style={{color:"#ef4444",marginTop:8,fontSize:12}}>{bankDepositError}</p>}
                   </div>
                 )}
               </>
