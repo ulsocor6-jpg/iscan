@@ -21,6 +21,7 @@ const CHAIN_CONFIG = {
   base: {
     rpcUrl: () => process.env.BASE_RPC || 'https://mainnet.base.org',
     treasuryWallet: () => process.env.BASE_TREASURY_WALLET,
+    treasuryPrivateKey: () => process.env.BASE_TREASURY_PRIVATE_KEY,
     deriveAddress: deriveBaseAddress,
     tokens: () => ({
       USDC: process.env.BASE_USDC_TOKEN || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
@@ -30,6 +31,7 @@ const CHAIN_CONFIG = {
   ronin: {
     rpcUrl: () => process.env.RONIN_RPC || 'https://api.roninchain.com/rpc',
     treasuryWallet: () => process.env.TREASURY_WALLET || process.env.RONIN_TREASURY_WALLET,
+    treasuryPrivateKey: () => process.env.RONIN_TREASURY_PRIVATE_KEY,
     deriveAddress: deriveRoninAddress,
     tokens: () => ({
       USDC: process.env.USDC_TOKEN || '0x0b7007c13325c48911f73a2dad5fa5dcbf808adc',
@@ -47,6 +49,40 @@ const CHAIN_CONFIG = {
  * @param {number} walletIndex - the user's HD derivation index (Wallet.walletIndex)
  * @returns {{ swept: number, txHash: string|null, fromAddress: string }}
  */
+const GAS_UNITS = 100_000n; // ERC20 transfer ~65k gas, padded for safety
+const GAS_BUFFER_PCT = 130n; // 1.3x current estimate, to survive price movement before execution
+
+async function ensureGasForSweep({ chain, provider, config, derivedAddress }) {
+  const nativeBalance = await provider.getBalance(derivedAddress);
+
+  const feeData = await provider.getFeeData();
+  const gasPrice = feeData.gasPrice ?? feeData.maxFeePerGas;
+  if (!gasPrice) {
+    console.error(`[SWEEP] Could not fetch gas price on ${chain} \u2014 skipping gas check, sweep may fail`);
+    return { funded: false };
+  }
+
+  const requiredWei = (gasPrice * GAS_UNITS * GAS_BUFFER_PCT) / 100n;
+  if (nativeBalance >= requiredWei) {
+    return { funded: false };
+  }
+
+  const privateKey = config.treasuryPrivateKey();
+  if (!privateKey) {
+    throw new Error(`No treasury private key configured for ${chain} \u2014 cannot fund gas for sweep`);
+  }
+
+  const treasurySigner = new ethers.Wallet(privateKey, provider);
+  const topUpWei = requiredWei - nativeBalance;
+
+  console.log(`[SWEEP] Funding gas: sending ${ethers.formatEther(topUpWei)} native to ${derivedAddress} on ${chain}`);
+  const fundTx = await treasurySigner.sendTransaction({ to: derivedAddress, value: topUpWei });
+  await fundTx.wait();
+  console.log(`[SWEEP] Gas funded \u2014 tx: ${fundTx.hash}`);
+
+  return { funded: true, amount: ethers.formatEther(topUpWei), txHash: fundTx.hash };
+}
+
 export async function sweepStablecoinToTreasury({ chain, token, walletIndex }) {
   const config = CHAIN_CONFIG[chain?.toLowerCase()];
   if (!config) throw new Error(`Unsupported sweep chain: ${chain}`);
@@ -74,6 +110,8 @@ export async function sweepStablecoinToTreasury({ chain, token, walletIndex }) {
   if (balance === 0n) {
     return { swept: 0, txHash: null, fromAddress: derived.address };
   }
+
+  await ensureGasForSweep({ chain, provider, config, derivedAddress: derived.address });
 
   const humanAmount = parseFloat(ethers.formatUnits(balance, decimals));
   console.log(`[SWEEP] ${humanAmount} ${token} on ${chain} from ${derived.address} -> treasury ${treasuryAddress}`);
