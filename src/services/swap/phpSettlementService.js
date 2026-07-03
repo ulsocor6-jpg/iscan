@@ -1,5 +1,6 @@
 import { sendStablecoinToUser } from './../treasury/treasurySendService.js';
 import { sweepStablecoinToTreasury } from '../treasury/stablecoinSweepService.js';
+import { getTokenBalance } from '../onchainBalanceService.js';
 import PhpLiquidityPool from '../../models/phpLiquidityPool.js';
 import { getUSDPHPRate, getPHPUSDRate } from '../fx/phpRateOracle.js';
 import Wallet from '../../models/walletModel.js';
@@ -34,6 +35,27 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
   const stableBal = await walletService.getBalance(userId, currency);
   if (stableBal < stablecoinAmount)
     throw new Error(`Insufficient ${currency} balance`);
+
+  // On-chain ground-truth check: the ledger balance above is internal
+  // bookkeeping, not proof the stablecoin is actually in the user's wallet.
+  // Verify against the live chain before crediting PHP.
+  const wallet = await Wallet.findOne({ userId });
+  if (!wallet) throw new Error(`No wallet found for user ${userId}`);
+  const chainEntry = wallet.chainAddresses?.find(
+    c => c.chain?.toLowerCase() === chain.toLowerCase()
+  );
+  if (!chainEntry?.address) {
+    throw new Error(`No ${chain} address on file for user ${userId}`);
+  }
+  const onChainBalance = await getTokenBalance(chain.toUpperCase(), chainEntry.address, currency);
+  if (onChainBalance === null) {
+    throw new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
+  }
+  if (onChainBalance < stablecoinAmount) {
+    throw new Error(
+      `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency} on-chain, claims ${stablecoinAmount}. Refusing to credit PHP against unbacked balance.`
+    );
+  }
 
   await walletService.debit(userId, currency, stablecoinAmount);
 
