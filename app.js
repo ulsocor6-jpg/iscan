@@ -7,6 +7,8 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import helmet from "helmet";
+import { generalApiLimiter } from "./middleware/rateLimiters.js";
 
 dotenv.config();
 
@@ -19,6 +21,9 @@ app.use((req, res, next) => { console.log(`[REQ] ${req.method} ${req.originalUrl
 /* ===========================
    Middleware
 =========================== */
+
+app.use(helmet());
+app.use("/api", generalApiLimiter);
 
 app.use("/api/v1/didit/webhook", express.raw({ type: "application/json" }));
 
@@ -58,6 +63,7 @@ import paymentRoutes from "./src/routes/paymentRoutes.js";
 import payoutRoutes from "./src/routes/payoutRoutes.js";
 import directDepositRoutes from "./src/routes/directDepositRoutes.js";
 import adminDepositRoutes from "./src/routes/adminDepositRoutes.js";
+import adminUserRoutes from "./src/routes/adminUserRoutes.js";
 import cryptoWithdrawalRoutes from "./src/routes/cryptoWithdrawalRoutes.js";
 import withdrawalRoutes from "./src/routes/withdrawalRoutes.js";
 import adminWithdrawalRoutes from "./src/routes/adminWithdrawalRoutes.js";
@@ -123,6 +129,7 @@ app.use("/api/v1/withdrawals", withdrawalRoutes);
 app.use("/api/v1/admin/withdrawals", adminWithdrawalRoutes);
 
 app.use("/api/v1/admin/deposits", adminDepositRoutes);
+app.use("/api/v1/admin/users", adminUserRoutes);
 
 app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
 

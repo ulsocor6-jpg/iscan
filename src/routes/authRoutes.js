@@ -10,6 +10,7 @@ import {
   resendVerification
 } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import { loginLimiter, authActionLimiter } from '../../middleware/rateLimiters.js';
 
 const router = express.Router();
 
@@ -19,14 +20,14 @@ router.use((req,res,next)=>{
 });
 
 
-router.post('/register', register);
-router.post('/login', login);
+router.post('/register', authActionLimiter, register);
+router.post('/login', loginLimiter, login);
 router.post('/logout', logout);
 router.get('/verify', requireAuth, verify);
 router.get('/me', requireAuth, verify);  // alias — dashboard calls both
 router.get('/verify-email', verifyEmail);
-router.post('/forgot-password', forgotPassword);
+router.post('/forgot-password', authActionLimiter, forgotPassword);
 router.post('/reset-password', resetPassword);
-router.post('/resend-verification', resendVerification);
+router.post('/resend-verification', authActionLimiter, resendVerification);
 
 export default router;

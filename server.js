@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
 import app from './app.js';
 import { startSettlementWorker } from './src/services/settlement/index.js';

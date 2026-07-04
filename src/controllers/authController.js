@@ -184,16 +184,19 @@ export const login = async (req, res) => {
     res.cookie('iscan_token', token, {
       httpOnly: true,
       sameSite: 'Lax',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 86400000
     });
 
     res.cookie('iscan_email', user.email, {
       sameSite: 'Lax',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 86400000
     });
 
     res.cookie('iscan_name', `${user.firstName} ${user.lastName}`, {
       sameSite: 'Lax',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 86400000
     });
 

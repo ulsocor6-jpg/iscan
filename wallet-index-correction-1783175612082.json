@@ -1,0 +1,68 @@
+[
+  {
+    "userId": "6a2b5182887d8751c2b05cab",
+    "storedIndex": 0,
+    "storedAddress": "0x1e6ef957609e9625fa934818c7f6e98c38d3b233",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2b546bad9ae11f2f193a7f",
+    "storedIndex": 1,
+    "storedAddress": "0xe16d41d3d1c26e0e9fa4e9b6914f19b0d1298ea4",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2b5c07d0e930e95f86f289",
+    "storedIndex": 2,
+    "storedAddress": "0x903a353ada744c12a39191fc3ea9553c38966d53",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2b5d30455845ef23fe825f",
+    "storedIndex": 3,
+    "storedAddress": "0x6402fb1f7a3ad283a39224e252604b74b2d06d49",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2f83ef1fb3ecdb8ec6a029",
+    "storedIndex": 4,
+    "storedAddress": "0x09a7bfbc2c36b371b939c33db77c36346ff0bc2f",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2f8a659a66bd974c47180e",
+    "storedIndex": 5,
+    "storedAddress": "0x121e3c56de986ec2857722f00d8abffc8f76ddb9",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a2fa5b3c06200d2340be69e",
+    "storedIndex": 6,
+    "storedAddress": "0x819d7d52b74ad6b808a1669b1ccb75001ce012c9",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a316381f20bc2b2e311d4a5",
+    "storedIndex": 7,
+    "storedAddress": "0x1234d9d9a0fd91b5d35cee3d42885feaa161685c",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a316417f20bc2b2e311d4a7",
+    "storedIndex": 8,
+    "storedAddress": "0x2559e5a3003b471d375e364f5f896771bf659c07",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a33131e5a6f2e5396495ce4",
+    "storedIndex": 9,
+    "storedAddress": "0x50d6be0a9e9595bea8aaecdb187471d0adccbd60",
+    "trueIndex": null
+  },
+  {
+    "userId": "6a38f40a0bc5eecbd89dba4b",
+    "storedIndex": 15,
+    "storedAddress": "0xf6facb47eeea7cd68b6d2edb13a771354bc941dc",
+    "trueIndex": null
+  }
+]

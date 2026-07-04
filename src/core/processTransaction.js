@@ -63,11 +63,19 @@ export default async function processTransaction(raw) {
     const query = { accountNumber: { $regex: new RegExp(escapeRegex(recipientLastFour) + "$") }, status: "active" };
     const bankAccount = await BankAccount.findOne(query).lean();
     if (bankAccount) user = await User.findById(bankAccount.userId).lean();
-    await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
-      query,
-      result: bankAccount ? { accountId: bankAccount._id, userId: bankAccount.userId } : null,
-      decision: { matched: !!user, reason: user ? "MATCHED_BY_RECIPIENT_LAST_FOUR" : "NO_MATCHING_USER" },
-    });
+
+    if (user) {
+      await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
+        query,
+        result: { accountId: bankAccount._id, userId: bankAccount.userId },
+        decision: { matched: true, reason: "MATCHED_BY_RECIPIENT_LAST_FOUR" },
+      });
+    } else {
+      await inspectorService.failStage(flowId, InspectorStage.USER_LOOKUP, "No BankAccount matches this recipient", {
+        query,
+        decision: { matched: false, reason: "NO_MATCHING_USER" },
+      });
+    }
 
   } else if (source === "MAYA") {
     let matchMethod = null;
@@ -85,10 +93,45 @@ export default async function processTransaction(raw) {
       const bankAccount = await BankAccount.findOne(query).lean();
       if (bankAccount) { user = await User.findById(bankAccount.userId).lean(); matchMethod = "SENDER_NAME_LAST_FOUR"; }
     }
-    await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
-      result: user ? { userId: user._id, email: user.email } : null,
-      decision: { matched: !!user, method: matchMethod, reason: user ? "MATCHED" : "NO_MATCHING_USER" },
-    });
+
+    let ambiguousAnonymous = false;
+    if (!user && !senderPhone && !senderName) {
+      // Anonymous Maya deposit — fall back to amount matching against
+      // currently open MAYA deposit requests. Only ambiguous when two
+      // different users have an open request for the identical amount
+      // within the same ~3-minute window (requests are capped at one
+      // PENDING per user per channel by POST /deposit/request).
+      const candidates = await DirectDeposit.find({
+        status: "PENDING", channel: "MAYA", amount, expiresAt: { $gt: new Date() },
+      }).lean();
+
+      if (candidates.length === 1) {
+        user = await User.findById(candidates[0].userId).lean();
+        matchMethod = "ANONYMOUS_AMOUNT_MATCH";
+      } else if (candidates.length > 1) {
+        ambiguousAnonymous = true;
+        matchMethod = "AMBIGUOUS_ANONYMOUS_MATCH";
+      }
+    }
+
+    if (user) {
+      await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
+        result: { userId: user._id, email: user.email },
+        decision: { matched: true, method: matchMethod, reason: "MATCHED" },
+      });
+    } else if (ambiguousAnonymous) {
+      await inspectorService.failStage(flowId, InspectorStage.USER_LOOKUP,
+        "Multiple open MAYA deposits match this amount — cannot safely auto-credit an anonymous transfer", {
+          decision: { matched: false, method: matchMethod, reason: "AMBIGUOUS_ANONYMOUS_MATCH" },
+      });
+      await flagForReview(raw, "AMBIGUOUS_ANONYMOUS_MATCH");
+      return null;
+    } else {
+      await inspectorService.failStage(flowId, InspectorStage.USER_LOOKUP, "No BankAccount or open deposit matches this sender", {
+        decision: { matched: false, method: matchMethod, reason: "NO_MATCHING_USER" },
+      });
+    }
+
   } else {
     await inspectorService.failStage(flowId, InspectorStage.USER_LOOKUP, `Unknown source: ${source}`);
     await flagForReview(raw, "UNKNOWN_SOURCE");
@@ -131,6 +174,36 @@ export default async function processTransaction(raw) {
   });
 
   const deposit = pendingDeposits[0];
+
+  // ── Reconnect the original request-flow, if this one is an orphan ──────
+  // Android notifications almost never carry a referenceId (that's only
+  // ever present in the full email format), so the webhook/listener that
+  // received this event had nothing to match findRunningByReference()
+  // against up front and had to start a brand-new flow. Now that
+  // DEPOSIT_MATCH has told us the real deposit.referenceId, check whether
+  // a separate, still-RUNNING flow exists for it — the one created back
+  // when the user hit "Generate Deposit Reference" in the UI — and close
+  // it out too. Without this, that original flow sits stuck at RUNNING
+  // forever in the Inspector even though the deposit was actually
+  // credited correctly through this other flow, which reads as "nothing
+  // happened" when in fact everything worked.
+  if (deposit.referenceId) {
+    try {
+      const originalFlow = await inspectorService.findRunningByReference(deposit.referenceId);
+      if (originalFlow && originalFlow.flowId !== flowId) {
+        await inspectorService.startStage(originalFlow.flowId, "RECONCILED", { via: source, linkedFlowId: flowId });
+        await inspectorService.finishStage(originalFlow.flowId, "RECONCILED", {
+          result: { creditedViaFlowId: flowId, source },
+          decision: { reason: "COMPLETED_BY_SEPARATE_INGESTION_FLOW" },
+        });
+        await inspectorService.finishFlow(originalFlow.flowId);
+      }
+    } catch (reconcileErr) {
+      // Purely cosmetic/observability — never let a failure here block
+      // the actual credit that's about to happen below.
+      console.error("[processTransaction] Failed to reconcile original flow:", reconcileErr.message);
+    }
+  }
 
   // ── Step 3: VERIFIER ────────────────────────────────────────────────────
   // Re-checks the specific deposit record right before we commit to it.
