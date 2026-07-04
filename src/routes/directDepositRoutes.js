@@ -203,6 +203,47 @@ router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// ── POST /deposit/cancel ───────────────────────────────────────────────────
+// User cancels their own PENDING deposit request. Unlike admin/cancel, this
+// only allows a user to cancel a deposit that belongs to them and is still
+// PENDING — prevents cancelling deposits that already got credited, and
+// prevents cancelling someone else's request by referenceId guessing.
+router.post('/cancel', requireAuth, async (req, res) => {
+  try {
+    const { referenceId } = req.body;
+    if (!referenceId) return res.status(400).json({ error: 'referenceId is required' });
+
+    const deposit = await DirectDeposit.findOneAndUpdate(
+      { referenceId, userId: req.user.id, status: 'PENDING' },
+      { status: 'CANCELLED', cancelledAt: new Date() },
+      { new: true }
+    );
+
+    if (!deposit) {
+      return res.status(404).json({ error: 'No cancellable PENDING deposit found with that reference' });
+    }
+
+    // Close out the Inspector flow so it doesn't sit at RUNNING forever
+    try {
+      const flow = await inspectorService.findRunningByReference(referenceId);
+      if (flow) {
+        await inspectorService.startStage(flow.flowId, "CANCELLED", { by: req.user.id });
+        await inspectorService.finishStage(flow.flowId, "CANCELLED", {
+          decision: { reason: "USER_CANCELLED" },
+        });
+        await inspectorService.finishFlow(flow.flowId);
+      }
+    } catch (inspectorErr) {
+      console.error("[deposit/cancel] Failed to close inspector flow:", inspectorErr.message);
+    }
+
+    console.log(`[DEPOSIT] User ${req.user.id} cancelled deposit ref:${referenceId}`);
+    res.json({ success: true, deposit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /deposit/admin/logs ────────────────────────────────────────────────
 // FIX #11: Moved above export default — these were previously unreachable
 // because they were defined after the export statement.
