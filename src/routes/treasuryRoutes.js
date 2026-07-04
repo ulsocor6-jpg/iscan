@@ -5,6 +5,7 @@ import FeeRecord from '../models/feeModel.js';
 import Wallet from '../models/walletModel.js';
 import PhpLiquidityPool from '../models/phpLiquidityPool.js';
 import { getPoolHealth } from '../services/treasury/treasuryBalancer.js';
+import { getAllBalancesForAddress } from '../services/onchainBalanceService.js';
 
 const router = express.Router();
 
@@ -39,13 +40,52 @@ router.get('/wallets', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── GET /treasury/pools ────────────────────────────────────────────────────
-// Returns live health of all liquidity pools (PHP, USDT, USDC)
+// Live on-chain USDC/USDT totals across configured treasury wallets.
+// PHP has no on-chain equivalent, so it's excluded here.
+async function getOnChainTreasuryBalances() {
+  const totals = { USDC: 0, USDT: 0 };
+  const wallets = [
+    { chainKey: 'BASE',  address: process.env.BASE_TREASURY_WALLET },
+    { chainKey: 'RONIN', address: process.env.RONIN_TREASURY_WALLET || process.env.TREASURY_WALLET },
+  ].filter(w => w.address);
+
+  await Promise.all(wallets.map(async (w) => {
+    try {
+      const balances = await getAllBalancesForAddress(w.chainKey, w.address);
+      for (const sym of ['USDC', 'USDT']) {
+        if (typeof balances[sym] === 'number') totals[sym] += balances[sym];
+      }
+    } catch (err) {
+      console.error(`[treasury] on-chain balance fetch failed for ${w.chainKey}:`, err.message);
+    }
+  }));
+
+  return totals;
+}
+
+// ── GET /treasury/pools ───────────────────────────────────────────────────
+// Returns live health of all liquidity pools (PHP, USDT, USDC), enriched
+// with real on-chain treasury balances for USDC/USDT so ledger drift is
+// visible instead of silently trusted.
 router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
   try {
     const pools = await PhpLiquidityPool.find();
     const health = pools.map(getPoolHealth);
-    res.json({ success: true, pools: health });
+    const onChainTotals = await getOnChainTreasuryBalances();
+
+    const enriched = health.map(h => {
+      if (h.currency === 'USDC' || h.currency === 'USDT') {
+        const onChainBalance = onChainTotals[h.currency] ?? null;
+        return {
+          ...h,
+          onChainBalance,
+          onChainDiff: onChainBalance !== null ? +(onChainBalance - h.balance).toFixed(6) : null,
+        };
+      }
+      return { ...h, onChainBalance: null, onChainDiff: null };
+    });
+
+    res.json({ success: true, pools: enriched });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
