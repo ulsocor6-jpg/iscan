@@ -16,7 +16,7 @@
  * 3. Sender pays via Maya app (Maya-to-Maya or InstaPay)
  *    → Maya push notification appears on the ISCAN Android device
  *    → MayaIngestor app (Android) captures the notification
- *    → forwards it via POST to /api/maya/notify (mayaNotifyRoute.js)
+ *    → forwards it via POST to /api/v1/maya/notify (mayaNotifyRoute.js)
  *
  * 4. Backend processes the notification:
  *    → mayaNotificationParser.js extracts: amount + senderPhone OR senderName+lastFour
