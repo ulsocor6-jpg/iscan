@@ -80,6 +80,27 @@ function PoolCard({ pool, onTopup }: { pool: any; onTopup: (currency: string, am
         ))}
       </div>
 
+      {/* On-chain balance (live) — only for USDC/USDT, PHP has no chain equivalent */}
+      {pool.onChainBalance !== null && pool.onChainBalance !== undefined && (
+        <div style={{ background:"#121b2f", borderRadius:10, padding:"10px 12px", marginBottom:14,
+          display:"flex", justifyContent:"space-between", alignItems:"center",
+          border: Math.abs(pool.onChainDiff ?? 0) > 0.01 ? "1px solid #f59e0b60" : "1px solid transparent" }}>
+          <div>
+            <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase" as const, letterSpacing:"0.06em" }}>
+              On-Chain Balance (live)
+            </div>
+            <div style={{ fontSize:15, fontWeight:700, color:"#60a5fa", fontFamily:"monospace" }}>
+              {pool.onChainBalance?.toFixed(6)}
+            </div>
+          </div>
+          {Math.abs(pool.onChainDiff ?? 0) > 0.01 && (
+            <div style={{ fontSize:11, color:"#f59e0b", fontWeight:700 }}>
+              ⚠️ Δ {pool.onChainDiff > 0 ? "+" : ""}{pool.onChainDiff.toFixed(6)}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Progress bar */}
       <div style={{ marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
