@@ -203,6 +203,25 @@ router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// ── GET /deposit/pending ───────────────────────────────────────────────────
+// Restores the current user's in-flight PENDING deposit (if any) after a
+// page refresh. Without this, the frontend has no way to know a deposit
+// is still open server-side, and just shows a fresh Cash In form instead
+// of the QR code / reference / Cancel button for the existing request.
+router.get('/pending', requireAuth, async (req, res) => {
+  try {
+    const deposit = await DirectDeposit.findOne({
+      userId: req.user.id,
+      status: 'PENDING',
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 }).lean();
+
+    res.json({ deposit: deposit || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /deposit/cancel ───────────────────────────────────────────────────
 // User cancels their own PENDING deposit request. Unlike admin/cancel, this
 // only allows a user to cancel a deposit that belongs to them and is still
