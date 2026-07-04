@@ -59,8 +59,13 @@ export function parseMayaNotification({ title, text, subText, timestamp }) {
     if (lastFourMatch) senderLastFour = lastFourMatch[1].trim();
   }
 
-  // If we can't identify the sender at all, flag it — don't guess
-  if (!senderPhone && !senderName) return null;
+  // If we can't identify the sender at all, DO NOT discard — this is a
+  // real incoming deposit (e.g. "You received 1.00 in your wallet via
+  // InstaPay" carries no sender info at all). Let it flow through with
+  // senderPhone/senderName both null; processTransaction.js already
+  // handles this case via ANONYMOUS_AMOUNT_MATCH / AMBIGUOUS_ANONYMOUS_MATCH,
+  // matching against open PENDING deposits by amount and flagging for
+  // manual admin review if the amount is ambiguous.
 
   return {
     source: "MAYA",
