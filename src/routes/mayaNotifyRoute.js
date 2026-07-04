@@ -4,7 +4,14 @@ import processTransaction from "../core/processTransaction.js";
 import deduplicationService from "../services/ingestion/deduplicationService.js";
 
 const router = express.Router();
-const MAYA_SECRET = process.env.MAYA_SECRET || "iscan-maya-secret-2024";
+
+if (!process.env.MAYA_SECRET) {
+  throw new Error(
+    "MAYA_SECRET is not set. Refusing to start with an insecure default — " +
+    "set MAYA_SECRET in your environment (Railway variables / .env)."
+  );
+}
+const MAYA_SECRET = process.env.MAYA_SECRET;
 
 router.post("/notify", async (req, res) => {
   const secret = req.headers["x-maya-secret"];

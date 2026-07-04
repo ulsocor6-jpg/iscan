@@ -4,11 +4,12 @@ import {
   approveWithdrawal,
   verifyCashout
 } from "../controllers/adminWithdrawalController.js";
+import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/pending", listPendingWithdrawals);
-router.post("/:id/approve", approveWithdrawal);
-router.get("/:id/verify", verifyCashout);
+router.get("/pending", requireAuth, requireAdmin, listPendingWithdrawals);
+router.post("/:id/approve", requireAuth, requireAdmin, approveWithdrawal);
+router.get("/:id/verify", requireAuth, requireAdmin, verifyCashout);
 
 export default router;

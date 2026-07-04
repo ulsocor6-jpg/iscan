@@ -1,7 +1,18 @@
 import { ethers } from 'ethers';
 import crypto from 'crypto';
 
-const MASTER_MNEMONIC = process.env.HD_WALLET_MNEMONIC;
+// Read at call-time, not import-time. Do NOT cache this into a
+// module-level constant: in ESM, all `import` statements execute before
+// any of the importing file's own top-level code, so a script that does
+//   import { deriveUserWallets } from './hdWalletService.js';
+//   dotenv.config();
+// would run this module (and capture the mnemonic) *before* dotenv.config()
+// ever populates process.env — silently locking in `undefined` for the
+// entire script run, even though the mnemonic is genuinely present in
+// .env. A function call always re-reads the live value.
+function getMasterMnemonic() {
+  return process.env.HD_WALLET_MNEMONIC;
+}
 
 export const SUPPORTED_CHAINS = {
   ETHEREUM: { name:'Ethereum', symbol:'ETH',  chainId:'0x1',    color:'#627EEA' },
@@ -18,21 +29,22 @@ const CHAIN_PATHS = {
 };
 
 export async function deriveUserWallets(userIndex) {
-  if (!MASTER_MNEMONIC) {
-    const seed = process.env.HD_WALLET_SEED || 'iscan-default-seed';
-    return Object.fromEntries(
-      Object.entries(SUPPORTED_CHAINS).map(([chain, info]) => {
-        const hash = crypto.createHash('sha256').update(seed + '-' + chain + '-' + userIndex).digest('hex');
-        const mockAddr = '0x' + hash.slice(0, 40);
-        return [chain, { address: mockAddr, index: userIndex, mock: true, chain, chainId: info.chainId }];
-      })
+  const mnemonic = getMasterMnemonic();
+  if (!mnemonic) {
+    // Previously this silently fell back to fake, non-derivable addresses
+    // generated from a SHA-256 hash with no corresponding private key.
+    // At least 3 wallets were created this way and now hold permanently
+    // unreachable USDC. Fail loudly instead of ever doing that again.
+    throw new Error(
+      'HD_WALLET_MNEMONIC is not set \u2014 refusing to generate a wallet address. ' +
+      'A missing mnemonic must never silently produce a fake address.'
     );
   }
   const results = {};
 
   for (const [chain, info] of Object.entries(SUPPORTED_CHAINS)) {
     const hdNode = ethers.HDNodeWallet.fromPhrase(
-      MASTER_MNEMONIC,
+      mnemonic,
       undefined,
       CHAIN_PATHS[chain]
     );
@@ -63,12 +75,13 @@ export async function getNextWalletIndex() {
 }
 
 export async function deriveRoninAddress(index) {
-  if (!MASTER_MNEMONIC) {
+  const mnemonic = getMasterMnemonic();
+  if (!mnemonic) {
     throw new Error("HD_WALLET_MNEMONIC missing");
   }
 
   const hdNode = ethers.HDNodeWallet.fromPhrase(
-    MASTER_MNEMONIC,
+    mnemonic,
     undefined,
     CHAIN_PATHS.RONIN
   );
@@ -83,12 +96,13 @@ export async function deriveRoninAddress(index) {
 }
 
 export async function deriveBaseAddress(index) {
-  if (!MASTER_MNEMONIC) {
+  const mnemonic = getMasterMnemonic();
+  if (!mnemonic) {
     throw new Error("HD_WALLET_MNEMONIC missing");
   }
 
   const hdNode = ethers.HDNodeWallet.fromPhrase(
-    MASTER_MNEMONIC,
+    mnemonic,
     undefined,
     CHAIN_PATHS.BASE
   );
@@ -101,3 +115,4 @@ export async function deriveBaseAddress(index) {
     index
   };
 }
+
