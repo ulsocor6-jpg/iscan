@@ -131,23 +131,36 @@ export class EvmV2DexAdapter extends ChainAdapter {
     return await this.config.deriveAddress(index);
   }
 
-  async sweepToTreasury({ depositAddress, privateKey }) {
+  // NOTE: sweeps exactly `expectedAmount`, never the address's full current
+  // balance. Deposit addresses here are reused per-user across orders, so a
+  // full-balance sweep would silently attribute someone else's leftover
+  // balance (a different pending order, unswept dust, etc.) to whichever
+  // order happens to trigger the sweep first. Callers must pass the amount
+  // that was actually matched to this specific order/deposit.
+  async sweepToTreasury({ depositAddress, privateKey, expectedAmount }) {
+    if (!expectedAmount || expectedAmount <= 0) {
+      throw new Error(`[${this.chainLabel}] sweepToTreasury requires a positive expectedAmount`);
+    }
+
     const provider = this.getProvider();
     const signer = new ethers.Wallet(privateKey, provider);
     const token = this.getDepositTokenContract(signer);
 
+    const decimals = await this._depositTokenDecimals();
     const balance = await token.balanceOf(depositAddress);
-    if (balance === 0n) {
-      throw new Error(`[${this.chainLabel}] No ${this.depositTokenSymbol} balance at ${depositAddress}`);
+    const amountWei = ethers.parseUnits(expectedAmount.toString(), decimals);
+
+    if (balance < amountWei) {
+      throw new Error(
+        `[${this.chainLabel}] balance at ${depositAddress} ` +
+        `(${ethers.formatUnits(balance, decimals)}) is less than expected ${expectedAmount} — refusing to sweep short`
+      );
     }
 
-    const decimals = await this._depositTokenDecimals();
-    const humanAmount = parseFloat(ethers.formatUnits(balance, decimals));
-
-    const tx = await token.transfer(this.config.treasuryWallet, balance);
+    const tx = await token.transfer(this.config.treasuryWallet, amountWei);
     const receipt = await tx.wait();
 
-    return { txHash: receipt.hash, amount: humanAmount };
+    return { txHash: receipt.hash, amount: expectedAmount };
   }
 
   async findIncomingTransfer({ depositAddress, fromBlock, toBlock }) {

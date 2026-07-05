@@ -7,7 +7,9 @@
 import { ethers }     from "ethers";
 import { v4 as uuid } from "uuid";
 import FlowerOrder    from "../../models/flower/flowerOrderModel.js";
-import { processSwap } from "../flowerSwapServiceBase.js";
+import { processSwap }               from "../flowerSwapServiceBase.js";
+import { sweepFlowerToTreasuryBase } from "./flowerSweepServiceBase.js";
+import { assertAddressAvailable }    from "./flowerOrderGuard.js";
 
 const RATE_TTL = 15 * 1000;
 let _rateCache = { value: null, fetchedAt: 0 }; // cache cleared
@@ -67,7 +69,17 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   const { getOrCreateBaseDepositAddress } = await import("./baseWalletService.js");
   const { address: depositAddress } = await getOrCreateBaseDepositAddress(userId);
 
-  // Create order — pipeline will credit ledger after on-chain confirms
+  // Deposit addresses are reused across every order this user creates —
+  // refuse a second concurrent order on the same address.
+  await assertAddressAvailable(depositAddress);
+
+  // Create order — status starts at WAITING_DEPOSIT, not DEPOSIT_RECEIVED.
+  // Previously this jumped straight to DEPOSIT_RECEIVED using the caller's
+  // claimed `amount` with no on-chain check, and fired processSwap()
+  // immediately — meaning a swap could be marked COMPLETED, backed by a
+  // real tx, having verified nothing about whether this user's address
+  // actually received any FLOWER at all. The sweep below is what actually
+  // confirms the deposit exists before anything is swapped or credited.
   const orderId = txRef;
   const order = await FlowerOrder.create({
     orderId,
@@ -77,15 +89,24 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     depositAddress: depositAddress.toLowerCase(),
     expectedAmount: amount,
     receivedAmount: amount,
-    status:         "DEPOSIT_RECEIVED"
+    status:         "WAITING_DEPOSIT"
   });
 
-  console.log(`[FlowerUsdt] Created order ${orderId} — routing ${amount} FLOWER through on-chain pipeline`);
+  console.log(`[FlowerUsdt] Created order ${orderId} — verifying deposit before routing ${amount} FLOWER through on-chain pipeline`);
 
-  // Trigger on-chain swap (non-blocking — settle() will credit ledger on success)
-  processSwap(orderId).catch(err => {
-    console.error(`[FlowerUsdt] processSwap failed for ${orderId}:`, err.message);
-  });
+  // Move to DEPOSIT_RECEIVED only for the sweep's own idempotency guard to
+  // consume; the sweep itself is what verifies the on-chain balance covers
+  // `amount` — it throws (leaving the order stuck, not silently succeeding)
+  // if the address doesn't actually hold it.
+  await FlowerOrder.updateOne({ orderId }, { status: "DEPOSIT_RECEIVED" });
+
+  // Non-blocking from the caller's perspective, but sweep MUST complete
+  // (and therefore verify the real balance) before processSwap ever runs.
+  sweepFlowerToTreasuryBase(orderId)
+    .then(() => processSwap(orderId))
+    .catch(err => {
+      console.error(`[FlowerUsdt] sweep/swap failed for ${orderId}:`, err.message);
+    });
 
   return {
     txRef:        orderId,
