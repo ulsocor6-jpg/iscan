@@ -5,6 +5,7 @@ import FlowerOrder                         from "../../models/flower/flowerOrder
 import { confirmByTxHash }                 from "../../services/flower/flowerWatcherService.js";
 import { getOrCreateRoninDepositAddress }  from "../../services/flower/flowerWalletService.js";
 import { getOrCreateBaseDepositAddress }   from "../../services/flower/baseWalletService.js";
+import { assertAddressAvailable }          from "../../services/flower/flowerOrderGuard.js";
 
 const CHAIN_CONFIG = {
   ronin: { chainId: "0x7e4",  label: "Ronin Mainnet", getAddress: getOrCreateRoninDepositAddress },
@@ -61,6 +62,11 @@ export const createOrder = async (req, res) => {
     }
 
     const { address: depositAddress } = await getAddress(req.user.id);
+
+    // Deposit addresses are reused across every order this user creates —
+    // refuse a second concurrent order on the same address rather than let
+    // two orders race to claim the same incoming deposit.
+    await assertAddressAvailable(depositAddress);
 
     const orderId = "FLW-" + crypto.randomBytes(6).toString("hex");
 

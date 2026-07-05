@@ -43,6 +43,10 @@ const flowerOrderSchema = new mongoose.Schema(
         type:String
     },
 
+    sweepTxHash:{
+        type:String
+    },
+
     swapTxHash:{
         type:String
     },
