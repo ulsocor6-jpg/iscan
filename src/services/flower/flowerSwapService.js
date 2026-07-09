@@ -100,8 +100,18 @@ export async function processSwap(orderId) {
 
     console.log(`[FlowerSwap] ${orderId} — swap complete: ${usdcReceived} USDC (tx: ${receipt.hash})`);
 
-    // 10. Hand off to settlement
-    await settle(orderId);
+    // 10. Hand off to settlement. Separate try/catch: the on-chain swap
+    // has ALREADY succeeded at this point (real tx, real usdcReceived).
+    // A settlement failure must never flow into the outer catch below,
+    // which would relabel this genuinely successful swap as FAILED.
+    try {
+      await settle(orderId);
+    } catch (settleErr) {
+      console.error(
+        `[FlowerSwap] ${orderId} — swap succeeded (tx: ${receipt.hash}) but settlement failed: ${settleErr.message}. ` +
+        `Order left at SETTLING for retry — do not treat as a failed swap.`
+      );
+    }
 
   } catch (err) {
     console.error(`[FlowerSwap] ${orderId} — swap FAILED:`, err.message);

@@ -89,6 +89,7 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     depositAddress: depositAddress.toLowerCase(),
     expectedAmount: amount,
     receivedAmount: amount,
+    source:         "USDT_WIDGET",
     status:         "WAITING_DEPOSIT"
   });
 
@@ -104,8 +105,35 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   // (and therefore verify the real balance) before processSwap ever runs.
   sweepFlowerToTreasuryBase(orderId)
     .then(() => processSwap(orderId))
-    .catch(err => {
+    .catch(async err => {
       console.error(`[FlowerUsdt] sweep/swap failed for ${orderId}:`, err.message);
+
+      if (err.stage === "post-transfer") {
+        // A transfer may already be broadcast/pending — do NOT touch the
+        // order automatically. Leave it for manual review:
+        //   node scripts/inspect-flower-order.js <orderId>
+        //   node scripts/fail-flower-order.js <orderId> "<reason>" --confirm
+        console.error(
+          `[FlowerUsdt] ${orderId} left in place for manual review — failure happened after ` +
+          `an on-chain transfer may have been sent. Run scripts/inspect-flower-order.js before failing it.`
+        );
+        return;
+      }
+
+      // Nothing was ever sent on-chain (bad balance, missing HD index, etc.) —
+      // safe to auto-fail so the deposit address is released immediately
+      // instead of blocking the user until an admin runs a script by hand.
+      try {
+        const result = await FlowerOrder.updateOne(
+          { orderId, status: "DEPOSIT_RECEIVED" },
+          { status: "FAILED", failureReason: err.message }
+        );
+        if (result.modifiedCount > 0) {
+          console.log(`[FlowerUsdt] ${orderId} auto-failed — deposit address released: ${err.message}`);
+        }
+      } catch (updateErr) {
+        console.error(`[FlowerUsdt] ${orderId} — failed to auto-fail order:`, updateErr.message);
+      }
     });
 
   return {

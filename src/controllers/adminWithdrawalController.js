@@ -1,5 +1,6 @@
 import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "../services/walletService.js";
+import { settleCryptoWithdrawal } from "../services/withdrawalProcessor.js";
 
 export async function listPendingWithdrawals(req, res) {
   try {
@@ -32,7 +33,9 @@ export async function approveWithdrawal(req, res) {
       });
     }
 
-    if (withdrawal.status !== "pending_review") {
+    const isRetry = withdrawal.status === "failed" && withdrawal.type === "crypto";
+
+    if (withdrawal.status !== "pending_review" && !isRetry) {
       return res.status(400).json({
         error: "Already processed"
       });
@@ -50,17 +53,31 @@ export async function approveWithdrawal(req, res) {
       });
     }
 
-    await walletService.debit(
-      withdrawal.userId,
-      withdrawal.asset,
-      withdrawal.amount,
-      {
-        referenceId: `WD-${withdrawal._id}`,
-        description: "Withdrawal approved"
+    // Crypto withdrawals reaching this manual path are ones that either
+    // exceeded an AUTO_WITHDRAW_LIMIT_<ASSET> cap at request time, or are
+    // being manually retried after a previous failed attempt — either way,
+    // settle through the same shared logic the automatic flow uses.
+    if (withdrawal.type === "crypto") {
+      const result = await settleCryptoWithdrawal(withdrawal);
+      if (!result.success) {
+        return res.status(502).json({
+          error: `On-chain send failed and was reversed: ${result.error}`,
+          withdrawal: result.withdrawal
+        });
       }
-    );
+    } else {
+      await walletService.debit(
+        withdrawal.userId,
+        withdrawal.asset,
+        withdrawal.amount,
+        {
+          referenceId: `WD-${withdrawal._id}`,
+          description: "Withdrawal approved"
+        }
+      );
+      withdrawal.status = "approved";
+    }
 
-    withdrawal.status = "approved";
     withdrawal.approvedBy = req.user?.id || null;
     withdrawal.approvedAt = new Date();
 

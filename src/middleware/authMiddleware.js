@@ -23,7 +23,10 @@ export const requireAuth = async (req, res, next) => {
       id: decoded.id,
       email: decoded.email,
       firstName: decoded.firstName,
-      role: decoded.role || 'user'
+      role: decoded.role || 'user',
+      impersonating: decoded.impersonating || false,
+      adminId: decoded.adminId || null,
+      adminEmail: decoded.adminEmail || null
     };
 
     next();

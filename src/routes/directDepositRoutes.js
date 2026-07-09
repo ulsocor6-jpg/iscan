@@ -7,6 +7,7 @@ import BankAccount from '../models/BankAccount.js';
 import walletService from '../services/walletService.js';
 import inspectorService from '../services/inspectorService.js';
 import { InspectorStage } from '../inspector/inspectorConstants.js';
+import BlockchainInbox from '../models/blockchain/blockchainInboxModel.js';
 
 const router = express.Router();
 
@@ -300,6 +301,37 @@ router.get('/admin/ingress', requireAuth, requireAdmin, async (req, res) => {
       .sort({ receivedAt: -1 })
       .limit(100);
     res.json({ success: true, events });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /deposit/crypto/processing ─────────────────────────────────────────
+// Returns the current user's in-flight crypto deposits — detected on-chain
+// but not yet fully credited to Ledger. Powers the Confirmation Zone view.
+router.get('/crypto/processing', requireAuth, async (req, res) => {
+  try {
+    const jobs = await BlockchainInbox.find({
+      'watch.userId': req.user.id,
+      status: { $ne: 'FAILED' },
+      'workers.ledger.done': false,
+    })
+      .sort({ blockNumber: 1 })
+      .lean();
+
+    const processing = jobs.map((j) => ({
+      txHash: j.txHash,
+      chain: j.chain,
+      token: j.token,
+      amount: j.value,
+      confirmations: j.confirmations,
+      requiredConfirmations: j.requiredConfirmations,
+      currentStage: j.currentStage,
+      status: j.status,
+      detectedAt: j.createdAt,
+    }));
+
+    res.json({ success: true, processing });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

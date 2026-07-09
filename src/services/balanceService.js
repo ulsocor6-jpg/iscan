@@ -4,36 +4,40 @@ import Wallet from '../models/walletModel.js';
 /**
  * SOURCE OF TRUTH BALANCE CALCULATOR
  *
- * Calculates balance by summing all ledger credit/debit entries for a user,
- * then syncs the result back to the wallet document for fast cached reads.
+ * Returns a per-currency balance object (e.g. { PHP: 142.85, USDC: 0.0009 }),
+ * computed fresh from the ledger every call — never mixes currencies into
+ * a single number, since 1 PHP and 1 USDC are not the same unit.
  *
  * IMPORTANT: Add a compound index on your Ledger model for performance:
  *   LedgerSchema.index({ userId: 1, createdAt: -1 });
  * Without it, this query does a full collection scan on every balance check.
  */
 export const getUserBalance = async (userId) => {
-  // Aggregate in MongoDB — far more efficient than loading all rows into JS
   const result = await Ledger.aggregate([
     { $match: { userId } },
     {
       $group: {
-        _id: null,
+        _id: '$currency',
         totalCredit: { $sum: { $ifNull: ['$credit', 0] } },
         totalDebit:  { $sum: { $ifNull: ['$debit',  0] } }
       }
     }
   ]);
 
-  const balance = result.length > 0
-    ? result[0].totalCredit - result[0].totalDebit
-    : 0;
+  const balances = {};
+  for (const row of result) {
+    const currency = row._id || 'PHP';
+    balances[currency] = row.totalCredit - row.totalDebit;
+  }
 
-  // Sync calculated balance back to wallet document so walletModel stays current
+  // Sync per-currency balances back to the wallet document's `balances` map
+  // (the object the rest of the app actually reads), not the old mixed
+  // singular `balance` field, which is now considered legacy/unused.
   await Wallet.findOneAndUpdate(
     { userId },
-    { balance, lastSyncedAt: new Date() },
-    { upsert: true } // creates wallet record if somehow missing
+    { balances, lastSyncedAt: new Date() },
+    { upsert: true }
   );
 
-  return balance;
+  return balances;
 };

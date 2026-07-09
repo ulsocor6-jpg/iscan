@@ -7,6 +7,9 @@ interface User {
   firstName: string;
   lastName: string;
   role?: string;
+  impersonating?: boolean;
+  adminId?: string | null;
+  adminEmail?: string | null;
 }
 
 interface AuthState {

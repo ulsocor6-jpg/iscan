@@ -18,6 +18,7 @@ import FlowerOrder          from "../../models/flower/flowerOrderModel.js";
 import DepositAddress       from "../../models/depositAddressModel.js";
 import { deriveBaseAddress } from "../hdWalletService.js";
 import { ERC20_ABI }        from "../../../config/katana.js"; // generic ERC20 ABI (transfer/balanceOf/decimals) — not Ronin-specific
+import inspector            from "../blockchain/inspector/blockchainInspector.js";
 
 const BASE_RPC      = process.env.BASE_RPC || "https://mainnet.base.org";
 const FLOWER_TOKEN  = process.env.BASE_DEPOSIT_TOKEN;
@@ -37,9 +38,20 @@ export async function sweepFlowerToTreasuryBase(orderId) {
   const order = await FlowerOrder.findOne({ orderId });
   if (!order) throw new Error(`Order not found: ${orderId}`);
 
+  inspector.info("swap", `Sweep starting for ${orderId}`, {
+    orderId, userId: String(order.userId), chain: "BASE", step: "sweep_start"
+  });
+
+  const logAndThrow = (msg) => {
+    inspector.error("swap", msg, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "sweep_pre_transfer_failure"
+    });
+    throw new Error(msg);
+  };
+
   const expected = order.receivedAmount;
   if (!expected || expected <= 0) {
-    throw new Error(`Order ${orderId} has no receivedAmount to sweep`);
+    return logAndThrow(`Order ${orderId} has no receivedAmount to sweep`);
   }
 
   const depositRecord = await DepositAddress.findOne({
@@ -47,12 +59,12 @@ export async function sweepFlowerToTreasuryBase(orderId) {
     chain:   "base"
   });
   if (!depositRecord || depositRecord.hdIndex == null) {
-    throw new Error(`No HD index found for address ${order.depositAddress}`);
+    return logAndThrow(`No HD index found for address ${order.depositAddress}`);
   }
 
   const derived = await deriveBaseAddress(depositRecord.hdIndex);
   if (!derived?.privateKey) {
-    throw new Error(`Could not derive private key for index ${depositRecord.hdIndex}`);
+    return logAndThrow(`Could not derive private key for index ${depositRecord.hdIndex}`);
   }
 
   if (derived.address.toLowerCase() !== order.depositAddress.toLowerCase()) {
@@ -65,6 +77,40 @@ export async function sweepFlowerToTreasuryBase(orderId) {
   const provider    = new ethers.JsonRpcProvider(BASE_RPC);
   const signer      = new ethers.Wallet(derived.privateKey, provider);
   const flowerToken = new ethers.Contract(FLOWER_TOKEN, ERC20_ABI, signer);
+
+  // Deposit addresses are freshly derived and only ever receive FLOWER —
+  // they hold zero native ETH, so the sweep transaction itself can't pay
+  // gas. Top up just enough ETH from treasury before attempting the sweep.
+  const GAS_LIMIT_ESTIMATE = 65000n; // ERC20 transfer, generous margin
+  const gasPrice = (await provider.getFeeData()).gasPrice ?? ethers.parseUnits("0.01", "gwei");
+  const requiredGasWei = GAS_LIMIT_ESTIMATE * gasPrice * 2n; // 2x buffer for price fluctuation
+
+  const currentEthBalance = await provider.getBalance(order.depositAddress);
+  if (currentEthBalance < requiredGasWei) {
+    if (!process.env.BASE_TREASURY_PRIVATE_KEY) {
+      throw new Error("BASE_TREASURY_PRIVATE_KEY not set — cannot fund gas for sweep");
+    }
+    const topUpAmount = requiredGasWei - currentEthBalance;
+    const treasurySigner = new ethers.Wallet(process.env.BASE_TREASURY_PRIVATE_KEY, provider);
+
+    inspector.info("swap", `Funding gas for sweep of ${orderId}`, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "gas_funding_start",
+      amount: ethers.formatEther(topUpAmount)
+    });
+
+    console.log(`[FlowerSweepBase] ${orderId} — funding ${ethers.formatEther(topUpAmount)} ETH gas to ${order.depositAddress}`);
+    const fundTx = await treasurySigner.sendTransaction({
+      to: order.depositAddress,
+      value: topUpAmount
+    });
+    await fundTx.wait();
+    console.log(`[FlowerSweepBase] ${orderId} — gas funded (tx: ${fundTx.hash})`);
+
+    inspector.success("swap", `Gas funded for ${orderId}`, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "gas_funding_complete",
+      txHash: fundTx.hash
+    });
+  }
 
   const decimals  = await flowerToken.decimals();
   const balance   = await flowerToken.balanceOf(order.depositAddress);
@@ -85,8 +131,20 @@ export async function sweepFlowerToTreasuryBase(orderId) {
     `available) from ${order.depositAddress} → treasury`
   );
 
-  const tx      = await flowerToken.transfer(treasuryAddress, amountWei);
-  const receipt = await tx.wait();
+  let tx, receipt;
+  try {
+    tx      = await flowerToken.transfer(treasuryAddress, amountWei);
+    receipt = await tx.wait();
+  } catch (err) {
+    // A transfer may already be broadcast/pending at this point — this is NOT
+    // safe to auto-fail (see flowerUsdtSwapService.js's catch handler), unlike
+    // the validation errors above where nothing was ever sent on-chain.
+    err.stage = "post-transfer";
+    inspector.error("swap", `Sweep transfer failed for ${orderId}: ${err.message}`, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "sweep_post_transfer_failure"
+    });
+    throw err;
+  }
 
   console.log(`[FlowerSweepBase] ${orderId} — sweep complete (tx: ${receipt.hash})`);
 
@@ -94,6 +152,11 @@ export async function sweepFlowerToTreasuryBase(orderId) {
     { orderId },
     { status: "VERIFIED", sweepTxHash: receipt.hash }
   );
+
+  inspector.success("swap", `Sweep complete for ${orderId}`, {
+    orderId, userId: String(order.userId), chain: "BASE", step: "sweep_complete",
+    txHash: receipt.hash, amount: expected
+  });
 
   return { txHash: receipt.hash, amount: expected };
 }

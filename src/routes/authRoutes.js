@@ -7,7 +7,8 @@ import {
   verifyEmail,
   forgotPassword,
   resetPassword,
-  resendVerification
+  resendVerification,
+  exitImpersonation
 } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { loginLimiter, authActionLimiter } from '../../middleware/rateLimiters.js';
@@ -29,5 +30,6 @@ router.get('/verify-email', verifyEmail);
 router.post('/forgot-password', authActionLimiter, forgotPassword);
 router.post('/reset-password', resetPassword);
 router.post('/resend-verification', authActionLimiter, resendVerification);
+router.post('/exit-impersonation', requireAuth, exitImpersonation);
 
 export default router;

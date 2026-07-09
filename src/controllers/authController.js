@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer';
 
 import User from '../models/userModel.js';
 import WalletService from '../services/walletService.js';
+import eventStreamService from '../services/eventStreamService.js';
 
 /* =========================
    REGISTER
@@ -200,6 +201,12 @@ export const login = async (req, res) => {
       maxAge: 86400000
     });
 
+    await eventStreamService.emit('auth.login', {
+      userId: String(user._id),
+      email: user.email,
+      role: user.role
+    });
+
     return res.json({
       success: true,
       token,
@@ -224,6 +231,48 @@ export const logout = (req, res) => {
   res.clearCookie('iscan_token');
   res.clearCookie('iscan_email');
   res.clearCookie('iscan_name');
+
+  return res.json({ success: true });
+};
+
+/* =========================
+   EXIT IMPERSONATION
+   Restores the admin's own session from the stashed iscan_admin_token
+   cookie. Requires that cookie to hold a still-valid admin JWT — if it's
+   missing or expired, the admin simply has to log back in normally.
+========================= */
+export const exitImpersonation = (req, res) => {
+  const adminToken = req.cookies?.iscan_admin_token;
+
+  if (!adminToken) {
+    return res.status(400).json({ success: false, message: 'Not currently impersonating.' });
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(adminToken, process.env.JWT_SECRET);
+  } catch (err) {
+    res.clearCookie('iscan_admin_token');
+    return res.status(401).json({ success: false, message: 'Admin session expired. Please log in again.' });
+  }
+
+  const cookieOpts = {
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 86400000
+  };
+
+  res.cookie('iscan_token', adminToken, cookieOpts);
+  res.cookie('iscan_email', decoded.email, { sameSite: 'Lax', secure: cookieOpts.secure, maxAge: cookieOpts.maxAge });
+  res.cookie('iscan_name', decoded.firstName || '', { sameSite: 'Lax', secure: cookieOpts.secure, maxAge: cookieOpts.maxAge });
+  res.clearCookie('iscan_admin_token');
+
+  eventStreamService.emit('admin.impersonation_end', {
+    userId: String(req.user?.id || ''),
+    adminId: decoded.id,
+    adminEmail: decoded.email
+  }).catch(() => {});
 
   return res.json({ success: true });
 };

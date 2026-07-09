@@ -6,6 +6,7 @@ import { ethers }  from "ethers";
 import FlowerOrder from "../models/flower/flowerOrderModel.js";
 import FlowerSwap  from "../models/flower/flowerSwapModel.js";
 import { settle }  from "./flower/flowerSettlementService.js";
+import inspector  from "./blockchain/inspector/blockchainInspector.js";
 
 // env loaded lazily inside processSwap()
 // const USDC_TOKEN   = process.env.BASE_USDC_TOKEN || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -38,6 +39,10 @@ export async function processSwap(orderId) {
 
   const order = await FlowerOrder.findOne({ orderId });
   if (!order) throw new Error(`Order not found: ${orderId}`);
+
+  inspector.info("swap", `Swap starting for ${orderId}`, {
+    orderId, userId: String(order.userId), chain: "BASE", step: "swap_start"
+  });
 
   if (!['DEPOSIT_RECEIVED', 'VERIFIED'].includes(order.status)) {
     console.warn(`[FlowerSwapBase] ${orderId} status=${order.status} — skipping`);
@@ -119,13 +124,27 @@ export async function processSwap(orderId) {
     await FlowerOrder.updateOne({ orderId },
       { status: 'SWAPPED', swapTxHash: receipt.hash, usdcReceived });
 
+    inspector.success("swap", `Swap complete for ${orderId}`, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "swap_complete",
+      txHash: receipt.hash, usdcReceived
+    });
+
     // 5. Settle: USDC → PHP → ledger credit
-    await settle(orderId);
+    try {
+      await settle(orderId);
+      inspector.success("swap", `Settlement complete for ${orderId}`, { orderId, userId: String(order.userId), chain: "BASE", step: "settle_complete" });
+    } catch (settleErr) {
+      console.error(`[FlowerSwapBase] ${orderId} — swap succeeded but settlement failed: ${settleErr.message}. Order left at SWAPPED for retry.`);
+      inspector.error("swap", `Settlement failed for ${orderId} (swap succeeded): ${settleErr.message}`, { orderId, userId: String(order.userId), chain: "BASE", step: "settle_failure" });
+    }
 
   } catch (err) {
     console.error(`[FlowerSwapBase] ${orderId} — FAILED:`, err.message);
+    inspector.error("swap", `Swap failed for ${orderId}: ${err.message}`, {
+      orderId, userId: String(order.userId), chain: "BASE", step: "swap_failure"
+    });
     await FlowerSwap.updateOne({ _id: swapRecord._id }, { status: 'FAILED' });
-    await FlowerOrder.updateOne({ orderId }, { status: 'FAILED' });
+    await FlowerOrder.updateOne({ orderId }, { status: 'FAILED', failureReason: err.message });
     throw err;
   }
 }

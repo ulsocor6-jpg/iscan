@@ -13,6 +13,9 @@ import Compliance   from "./pages/Compliance";
 import AdminCashouts from './pages/AdminCashouts';
 import AdminDeposits from './pages/AdminDeposits';
 import AdminUsers from './pages/AdminUsers';
+import SystemInspector from './pages/SystemInspector';
+import BlockchainInspector from './pages/BlockchainInspector';
+import SwapInspector from './pages/SwapInspector';
 import Treasury     from "./pages/Treasury";
 import Profile        from "./pages/Profile";
 import WalletManager from "./pages/WalletManager";
@@ -57,6 +60,9 @@ export default function App() {
         <Route path="/admin/cashouts" element={<RequireAdmin><AdminCashouts /></RequireAdmin>} />
         <Route path="/admin/deposits" element={<RequireAdmin><AdminDeposits /></RequireAdmin>} />
         <Route path="/admin/users" element={<RequireAdmin><AdminUsers /></RequireAdmin>} />
+        <Route path="/admin/system-inspector" element={<RequireAdmin><SystemInspector /></RequireAdmin>} />
+        <Route path="/admin/blockchain-inspector" element={<RequireAdmin><BlockchainInspector /></RequireAdmin>} />
+        <Route path="/admin/swap-inspector" element={<RequireAdmin><SwapInspector /></RequireAdmin>} />
         <Route path="/admin/inspector" element={<RequireAdmin><InternalInspector /></RequireAdmin>} />
         <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />
         <Route path="/wallets"       element={<RequireAuth><WalletManager /></RequireAuth>} />

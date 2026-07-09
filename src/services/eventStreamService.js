@@ -64,6 +64,32 @@ class EventStreamService {
       type: { $in: ['deposit.credited', 'deposit.flagged', 'withdrawal.processed'] }
     }).sort({ timestamp: -1 }).limit(limit).lean();
   }
+
+  /**
+   * General-purpose query for the System Inspector page.
+   * @param {object} opts
+   * @param {string} [opts.type] - exact type match, or a prefix ending in "*" e.g. "admin.*"
+   * @param {string} [opts.userId]
+   * @param {number} [opts.limit=100]
+   * @param {string|Date} [opts.before] - only events strictly before this timestamp (for pagination)
+   */
+  async getEvents({ type, userId, limit = 100, before } = {}) {
+    const filter = {};
+    if (type) {
+      if (type.endsWith('*')) {
+        filter.type = { $regex: '^' + type.slice(0, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') };
+      } else {
+        filter.type = type;
+      }
+    }
+    if (userId) filter.userId = userId;
+    if (before) filter.timestamp = { $lt: new Date(before) };
+
+    return await Event.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(Math.min(limit, 500))
+      .lean();
+  }
 }
 
 export default new EventStreamService();
