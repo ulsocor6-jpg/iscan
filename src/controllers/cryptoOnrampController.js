@@ -1,18 +1,15 @@
-import DepositAddress from '../models/depositAddressModel.js';
-import crypto from 'crypto';
+import Wallet from "../models/walletModel.js";
 
 /**
  * GET QUOTE
  */
 export const getQuote = async (req, res) => {
   try {
-    const rate = 56; // PHP rate placeholder
-
     return res.json({
       success: true,
       data: {
-        rate,
-        symbol: 'USDT/PHP'
+        rate: 56,
+        symbol: "USDT/PHP"
       }
     });
   } catch (err) {
@@ -24,7 +21,7 @@ export const getQuote = async (req, res) => {
 };
 
 /**
- * INITIATE CONVERSION (placeholder safe version)
+ * INITIATE CONVERSION
  */
 export const initiateConversion = async (req, res) => {
   try {
@@ -37,28 +34,28 @@ export const initiateConversion = async (req, res) => {
     } = req.body;
 
     const missing = [];
-    if (!token) missing.push('token');
-    if (!usdAmount) missing.push('usdAmount');
-    if (!channel) missing.push('channel');
-    if (!mobileNumber) missing.push('mobileNumber');
-    if (!depositId) missing.push('depositId');
 
-    if (missing.length > 0) {
+    if (!token) missing.push("token");
+    if (!usdAmount) missing.push("usdAmount");
+    if (!channel) missing.push("channel");
+    if (!mobileNumber) missing.push("mobileNumber");
+    if (!depositId) missing.push("depositId");
+
+    if (missing.length) {
       return res.status(400).json({
         success: false,
-        message: `Missing required fields: ${missing.join(', ')}`
+        message: `Missing required fields: ${missing.join(", ")}`
       });
     }
 
     const rate = 56;
-    const phpAmount = Number(usdAmount) * rate;
 
     return res.json({
       success: true,
       data: {
         depositId,
         usdAmount,
-        phpAmount,
+        phpAmount: Number(usdAmount) * rate,
         rate
       }
     });
@@ -72,96 +69,88 @@ export const initiateConversion = async (req, res) => {
 };
 
 /**
- * GET ONRAMP HISTORY (placeholder)
+ * HISTORY
  */
 export const getOnrampHistory = async (req, res) => {
-  try {
-    return res.json({
-      success: true,
-      data: []
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
+  return res.json({
+    success: true,
+    data: []
+  });
 };
 
 /**
- * GET DEPOSIT STATUS (placeholder)
+ * STATUS
  */
 export const getDepositStatus = async (req, res) => {
-  try {
-    const { depositId } = req.params;
-
-    return res.json({
-      success: true,
-      data: {
-        depositId,
-        status: 'pending'
-      }
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
+  return res.json({
+    success: true,
+    data: {
+      depositId: req.params.depositId,
+      status: "pending"
+    }
+  });
 };
 
 /**
- * CREATE DEPOSIT ADDRESS (REAL IMPLEMENTATION)
+ * DEPOSIT ADDRESS
+ *
+ * Base and Ronin now return the address already assigned
+ * inside wallet.chainAddresses.
+ *
+ * TRON remains on the legacy deposit-address flow.
  */
 export const createDepositAddress = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { chain = 'ethereum', token = 'USDT' } = req.body;
+    const { chain } = req.body;
 
     if (!userId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing user authentication'
+        message: "Missing user authentication"
       });
     }
 
-    // Check if user already has active deposit address
-    const existing = await DepositAddress.findOne({
-      userId,
-      chain,
-      token,
-      status: 'active'
-    });
-
-    if (existing) {
-      return res.json({
-        success: true,
-        message: 'Existing deposit address returned',
-        data: existing
+    if (!chain || chain.toLowerCase() === "tron") {
+      return res.status(400).json({
+        success: false,
+        message: "TRON still uses the legacy deposit system."
       });
     }
 
-    // Generate HD wallet address for user
-    const { deriveUserAddress, getNextWalletIndex } = await import('../services/hdWalletService.js');
-    const index = await getNextWalletIndex();
-    const chainKey = chain.toUpperCase();
-    const derived = await deriveUserAddress(index, chainKey);
-    const address = derived.address;
+    const wallet = await Wallet.findOne({ userId });
 
-    const newAddress = await DepositAddress.create({
-      userId,
-      chain,
-      token,
-      address
-    });
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        message: "Wallet not found."
+      });
+    }
+
+    const chainAddress = wallet.chainAddresses.find(
+      c => c.chain === chain.toUpperCase()
+    );
+
+    if (!chainAddress) {
+      return res.status(404).json({
+        success: false,
+        message: `${chain.toUpperCase()} address not found.`
+      });
+    }
 
     return res.json({
       success: true,
-      message: 'Deposit address created',
-      data: newAddress
+      message: "Wallet address returned.",
+      data: {
+        address: chainAddress.address,
+        chain: chainAddress.chain,
+        chainId: chainAddress.chainId
+      }
     });
 
   } catch (err) {
+    console.error("[CREATE DEPOSIT ADDRESS]", err);
+
     return res.status(500).json({
       success: false,
       message: err.message

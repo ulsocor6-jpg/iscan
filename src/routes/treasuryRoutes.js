@@ -67,11 +67,32 @@ async function getOnChainTreasuryBalances() {
 // Returns live health of all liquidity pools (PHP, USDT, USDC), enriched
 // with real on-chain treasury balances for USDC/USDT so ledger drift is
 // visible instead of silently trusted.
+const EXPECTED_CURRENCIES = ['PHP', 'USDT', 'USDC'];
+
 router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const pools = await PhpLiquidityPool.find();
-    const health = pools.map(getPoolHealth);
     const onChainTotals = await getOnChainTreasuryBalances();
+
+    let pools = await PhpLiquidityPool.find();
+    const existingCurrencies = new Set(pools.map(p => p.currency));
+    const missing = EXPECTED_CURRENCIES.filter(c => !existingCurrencies.has(c));
+
+    if (missing.length > 0) {
+      // Auto-heal missing pool records using REAL on-chain balances, never
+      // a fabricated starting number. PHP has no on-chain equivalent — it
+      // starts honestly at 0 instead of a guessed figure.
+      const toCreate = missing.map(currency => ({
+        currency,
+        balance: (currency === 'USDC' || currency === 'USDT')
+          ? (onChainTotals[currency] ?? 0)
+          : 0,
+        reserved: 0,
+      }));
+      await PhpLiquidityPool.insertMany(toCreate);
+      pools = await PhpLiquidityPool.find();
+    }
+
+    const health = pools.map(getPoolHealth);
 
     const enriched = health.map(h => {
       if (h.currency === 'USDC' || h.currency === 'USDT') {

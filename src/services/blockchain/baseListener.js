@@ -12,6 +12,11 @@ const provider = new ethers.JsonRpcProvider(
 
 const FLOWER_TOKEN_ADDRESS = process.env.BASE_DEPOSIT_TOKEN;
 
+const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
+const TRANSFER_IFACE = new ethers.Interface([
+  "event Transfer(address indexed from, address indexed to, uint256 value)"
+]);
+
 const FLOWER = new ethers.Contract(
   FLOWER_TOKEN_ADDRESS,
   [
@@ -28,59 +33,128 @@ async function getDecimals() {
   return _decimals;
 }
 
-async function checkFlowerBalance(address) {
-  const [bal, decimals] = await Promise.all([FLOWER.balanceOf(address), getDecimals()]);
-  return parseFloat(ethers.formatUnits(bal, decimals));
-}
+// How many blocks back to look each cycle. Keep this >= (poll interval / block time)
+// with margin, so back-to-back cycles always overlap and nothing falls in a gap.
+const LOOKBACK_BLOCKS = 150;
 
-// Sweeps the deposit to treasury, THEN swaps. Previously this went straight
-// to processSwap(), which executes the on-chain swap using the TREASURY's
-// own existing FLOWER balance — completely decoupled from whether this
-// user's deposit had ever moved anywhere. An order could show
-// SWAPPED/COMPLETED with a real tx hash while the deposit that was supposed
-// to back it sat stranded, unswept, at the user's address. This makes the
-// sweep a hard prerequisite: if it fails, we stop — we do not fall through
-// to a swap that isn't actually backed by this specific deposit.
+// Resume-point tracking so a missed cycle (RPC error, restart) doesn't lose deposits
+// that fall outside LOOKBACK_BLOCKS. Mirrors the pattern used on the Ronin watcher.
+let lastScannedBlock = null;
+
+// After a deposit is recorded, the FLOWER sitting at the user's address must
+// be swept to treasury BEFORE processSwap runs — otherwise processSwap uses
+// the treasury's own pre-existing FLOWER balance, decoupled from whether this
+// user's deposit ever moved (the bug fixed in commit b359a3f, 2026-07-05).
 async function sweepThenSwap(orderId) {
-  await sweepFlowerToTreasuryBase(orderId);
-  return processSwap(orderId);
+  try {
+    await sweepFlowerToTreasuryBase(orderId);
+  } catch (err) {
+    if (err.stage === "post-transfer") {
+      // A transfer may already be broadcast/pending on-chain. Do NOT retry
+      // automatically — that risks a double-send. This needs manual/admin
+      // review before anything touches this order again.
+      console.error(
+        `[BASE LISTENER] CRITICAL — sweep for ${orderId} failed AFTER broadcast. ` +
+        `Do not auto-retry. Manual reconciliation required:`, err.message
+      );
+    } else {
+      // Nothing was sent on-chain (validation failure, insufficient balance,
+      // HD mismatch, etc.) — safe to leave at DEPOSIT_RECEIVED for a later
+      // retry, but processSwap must NOT run until sweep actually succeeds.
+      console.error(
+        `[BASE LISTENER] Sweep for ${orderId} failed before any transfer — ` +
+        `will remain unswept until retried:`, err.message
+      );
+    }
+    return; // processSwap intentionally NOT called
+  }
+
+  processSwap(orderId).catch(err =>
+    console.error(`[BASE LISTENER] processSwap failed for ${orderId}:`, err.message)
+  );
 }
 
-async function handleNewDeposit({ addr, newAmount }) {
+async function handleNewDeposit({ addr, newAmount, txHash }) {
   const existing = await FlowerOrder.findOne({
     depositAddress: addr.address.toLowerCase(),
     chain:          "BASE",
     status:         { $in: ["WAITING_DEPOSIT", "DEPOSIT_RECEIVED", "VERIFIED", "SWAPPING"] }
   });
 
-  let orderId;
   if (existing) {
     existing.receivedAmount = newAmount;
     existing.status         = "DEPOSIT_RECEIVED";
+    existing.txHash         = txHash;
     await existing.save();
-    orderId = existing.orderId;
-    console.log(`[BASE LISTENER] Updated order ${orderId} — ${newAmount} FLOWER`);
-  } else {
-    orderId = "FLW-BASE-" + crypto.randomBytes(6).toString("hex");
-    await FlowerOrder.create({
-      orderId,
-      userId:         addr.userId,
-      token:          "FLOWER",
-      chain:          "BASE",
-      depositAddress: addr.address.toLowerCase(),
-      expectedAmount: newAmount,
-      receivedAmount: newAmount,
-      status:         "DEPOSIT_RECEIVED"
-    });
-    console.log(`[BASE LISTENER] Created order ${orderId} — ${newAmount} FLOWER from ${addr.address}`);
+    console.log(`[BASE LISTENER] Updated order ${existing.orderId} — ${newAmount} FLOWER tx=${txHash}`);
+    await sweepThenSwap(existing.orderId);
+    return;
   }
 
-  // Awaited (not fire-and-forget) so the caller knows whether the sweep
-  // actually succeeded before deciding it's safe to advance addr.lastAmount.
-  await sweepThenSwap(orderId).catch(err => {
-    console.error(`[BASE LISTENER] sweep/swap failed for ${orderId}:`, err.message);
-    throw err;
+  const orderId = "FLW-BASE-" + crypto.randomBytes(6).toString("hex");
+  await FlowerOrder.create({
+    orderId,
+    userId:         addr.userId,
+    token:          "FLOWER",
+    chain:          "BASE",
+    depositAddress: addr.address.toLowerCase(),
+    expectedAmount: newAmount,
+    receivedAmount: newAmount,
+    status:         "DEPOSIT_RECEIVED",
+    txHash
   });
+
+  console.log(`[BASE LISTENER] Created order ${orderId} — ${newAmount} FLOWER from ${addr.address} tx=${txHash}`);
+  await sweepThenSwap(orderId);
+}
+
+async function scanForDeposits() {
+  const addresses = await DepositAddress.find({ chain: "base", token: "FLOWER", status: "active" });
+  if (addresses.length === 0) return;
+
+  const addrByLower = new Map(addresses.map(a => [a.address.toLowerCase(), a]));
+  const paddedAddresses = addresses.map(a => ethers.zeroPadValue(a.address, 32));
+
+  const latest = await provider.getBlockNumber();
+  const fromBlock = lastScannedBlock !== null
+    ? Math.min(lastScannedBlock + 1, latest - LOOKBACK_BLOCKS) // never skip a gap
+    : Math.max(latest - LOOKBACK_BLOCKS, 0);
+
+  // Single request covers every watched address — this replaces the old
+  // one-balanceOf-call-per-address loop.
+  const logs = await provider.getLogs({
+    address: FLOWER_TOKEN_ADDRESS,
+    topics: [TRANSFER_TOPIC, null, paddedAddresses],
+    fromBlock,
+    toBlock: latest
+  });
+
+  lastScannedBlock = latest;
+
+  if (logs.length === 0) {
+    console.log(`[BASE SCAN] blocks ${fromBlock}-${latest}, ${addresses.length} addresses watched, 0 hits`);
+    return;
+  }
+
+  const decimals = await getDecimals();
+
+  for (const log of logs) {
+    const parsed = TRANSFER_IFACE.parseLog(log);
+    const toAddr = parsed.args.to.toLowerCase();
+    const addr = addrByLower.get(toAddr);
+    if (!addr) continue; // shouldn't happen given the topic filter, but stay safe
+
+    // Idempotency: a deposit is recorded once, even if this tx shows up in an
+    // overlapping scan window on the next cycle.
+    const dup = await FlowerOrder.findOne({ txHash: log.transactionHash });
+    if (dup) continue;
+
+    const newAmount = parseFloat(ethers.formatUnits(parsed.args.value, decimals));
+    if (newAmount <= 0.001) continue;
+
+    console.log(`[BASE SCAN] hit ${addr.address} +${newAmount} FLOWER tx=${log.transactionHash}`);
+    await handleNewDeposit({ addr, newAmount, txHash: log.transactionHash });
+  }
 }
 
 export async function startBaseListener() {
@@ -91,38 +165,11 @@ export async function startBaseListener() {
     console.error("[BASE LISTENER] BASE_TREASURY_PRIVATE_KEY not set — not started"); return;
   }
 
-  console.log("[BASE LISTENER] starting — polling every 15s");
+  console.log("[BASE LISTENER] starting — batched log scan every 15s");
 
   setInterval(async () => {
     try {
-      // FIX: DepositAddress records are created with token:"*" (generic,
-      // one address per chain per user — see walletAddressService.js), never
-      // token:"FLOWER". This filter matched zero documents, meaning this
-      // poller has been running every 15s and finding nothing, ever.
-      const addresses = await DepositAddress.find({ chain: "base", status: "active" });
-      for (const addr of addresses) {
-        try {
-          const balance = await checkFlowerBalance(addr.address);
-          console.log(`[BASE SCAN] ${addr.address} balance=${balance}`);
-          if (balance <= 0)                 continue;
-          if (balance === addr.lastAmount)  continue;
-          const newAmount = balance - (addr.lastAmount || 0);
-          if (newAmount <= 0.001)           continue;
-
-          await handleNewDeposit({ addr, newAmount, balance });
-
-          // The sweep just emptied this address back to (near) zero, so the
-          // baseline for the next delta check must reset to the address's
-          // actual current balance — NOT the pre-sweep peak. Using the old
-          // peak here would make every future deposit compute as a negative
-          // delta and be silently ignored forever. Re-read on-chain rather
-          // than assume 0, in case a further deposit landed mid-sweep.
-          addr.lastAmount = await checkFlowerBalance(addr.address);
-          await addr.save();
-        } catch (err) {
-          console.error(`[BASE LISTENER] error checking ${addr.address}:`, err.message);
-        }
-      }
+      await scanForDeposits();
     } catch (err) {
       console.error("[BASE LISTENER ERROR]", err.message);
     }

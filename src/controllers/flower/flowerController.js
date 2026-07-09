@@ -76,6 +76,7 @@ export const createOrder = async (req, res) => {
       expectedAmount,
       depositAddress,
       chain,
+      source:         "GENERIC",
       status:         "WAITING_DEPOSIT"
     });
 
@@ -124,6 +125,7 @@ export const getOrderStatus = async (req, res) => {
         feeAmount:      order.feeAmount,
         txHash:         order.txHash,
         swapTxHash:     order.swapTxHash,
+        failureReason:  order.failureReason,
         createdAt:      order.createdAt,
         updatedAt:      order.updatedAt
       }

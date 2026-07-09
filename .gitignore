@@ -8,3 +8,9 @@ required-env.txt
 src/banking/components/dashboard/creative tech
 *.bak*
 .env
+cookies.txt
+wallet_check*.json
+dump-deposits.js
+flower-test.js
+debug_ronin.mjs
+patch_*.mjs

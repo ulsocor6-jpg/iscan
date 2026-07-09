@@ -14,7 +14,7 @@ export default function Sidebar() {
     {label:"Swaps",path:"/swaps"},
     {label:"Wallets",path:"/wallets"},
     {label:"Remittance",path:"/remittance"},
-    ...(user?.role === "admin" ? [{label:"⚙ Cashouts",path:"/admin/cashouts"},{label:"Treasury",path:"/treasury"},{label:"📥 Deposits",path:"/admin/deposits"},{label:"👥 Users",path:"/admin/users"},{label:"🔬 Inspector",path:"/inspector"}] : []),
+    ...(user?.role === "admin" ? [{label:"⚙ Cashouts",path:"/admin/cashouts"},{label:"Treasury",path:"/treasury"},{label:"📥 Deposits",path:"/admin/deposits"},{label:"👥 Users",path:"/admin/users"},{label:"🎥 System Inspector",path:"/admin/system-inspector"},{label:"⛓️ Blockchain Inspector",path:"/admin/blockchain-inspector"},{label:"🔁 Swap Inspector",path:"/admin/swap-inspector"},{label:"🔬 Inspector",path:"/inspector"}] : []),
     {label:"Compliance",path:"/compliance"},
     {label:"Activity",path:"/activity"},
   ];

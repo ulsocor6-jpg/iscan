@@ -2,14 +2,16 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import app from './app.js';
 import { startSettlementWorker } from './src/services/settlement/index.js';
-import { startRoninListener } from './src/services/blockchain/roninListener.js';
-import { startBaseListener } from './src/services/blockchain/baseListener.js';
+// import { startRoninListener } from './src/services/blockchain/roninListener.js';
+// import { startBaseListener } from './src/services/blockchain/baseListener.js';
 import { startStatusWorker } from './src/workers/statusWorker.js';
 import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.js';
+// import { startFlowerWatcher } from './src/services/flower/flowerWatcherService.js';
 // DISABLED (superseded by Android watcher — see maribankNotifyRoute.js)
 // import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
 import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
+import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 
 async function startServer() {
   try {
@@ -23,6 +25,8 @@ async function startServer() {
     await mongoose.connect(mongoUrl);
     console.log("MongoDB connected");
 
+    await blockchainBootstrap.start();
+
     // FIX #9: Each worker/listener is independently wrapped so a failure in one
     // does not prevent the others from starting. Previously startBaseListener,
     // startTreasuryBalancer and startStatusWorker were nested inside the
@@ -33,17 +37,17 @@ async function startServer() {
       console.error("Settlement worker failed to start (continuing anyway):", err.message);
     }
 
-    try {
-      startRoninListener();
-    } catch (err) {
-      console.error("Ronin listener failed to start (continuing anyway):", err.message);
-    }
+    // try {
+    // startRoninListener();
+    // } catch (err) {
+    // console.error("Ronin listener failed to start (continuing anyway):", err.message);
+    // }
 
-    try {
-      startBaseListener();
-    } catch (err) {
-      console.error("Base listener failed to start (continuing anyway):", err.message);
-    }
+    // try {
+    // startBaseListener();
+    // } catch (err) {
+    // console.error("Base listener failed to start (continuing anyway):", err.message);
+    // }
 
     try {
       startTreasuryBalancer();
@@ -56,6 +60,11 @@ async function startServer() {
     } catch (err) {
       console.error("Status worker failed to start (continuing anyway):", err.message);
     }
+    // try {
+    // startFlowerWatcher();
+    // } catch (err) {
+    // console.error("Flower watcher failed to start (continuing anyway):", err.message);
+    // }
 
     // DISABLED 2026-07-01: IMAP listener replaced by Android notification
     // watcher (maribankNotifyRoute.js). Left commented rather than removed

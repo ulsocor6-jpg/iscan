@@ -24,7 +24,6 @@ const walletSchema = new mongoose.Schema({
   walletIndex:    { type:Number, unique:true, sparse:true },
   balances:       { type:Map, of:Number, default:{} },
   chainAddresses: { type:[chainAddressSchema], default:[] },
-  activeChain:    { type:String, default:'ETHEREUM' },
   linkedWallets:  { type:[linkedWalletSchema], default:[] },
   status:         { type:String, enum:['active','suspended'], default:'active' },
 }, { timestamps:true });

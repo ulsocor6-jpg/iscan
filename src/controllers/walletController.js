@@ -1,70 +1,128 @@
-import crypto from 'crypto';
-import Wallet from '../models/walletModel.js';
-import { deriveUserWallets, SUPPORTED_CHAINS } from '../services/hdWalletService.js';
-import DepositAddress from '../models/depositAddressModel.js';
-import walletService from '../services/walletService.js';
+import crypto from "crypto";
+import Wallet from "../models/walletModel.js";
+import {
+  deriveUserWallets,
+  SUPPORTED_CHAINS,
+} from "../services/hdWalletService.js";
+import walletService from "../services/walletService.js";
+import {
+  getTokenBalance,
+} from "../services/onchainBalanceService.js";
 
 const CHAIN_MAP = {
-  '0x1':    { name:'Ethereum', token:'ETH'   },
-  '0x89':   { name:'Polygon',  token:'MATIC' },
-  '0x38':   { name:'BNB Chain',token:'BNB'   },
-  '0x7e4':  { name:'Ronin',    token:'RON'   },
-  '0x2105': { name:'Base',     token:'ETH'   },
-  '0xa4b1': { name:'Arbitrum', token:'ETH'   },
-  '0xa':    { name:'Optimism', token:'ETH'   },
+  "0x1": { name: "Ethereum", token: "ETH" },
+  "0x89": { name: "Polygon", token: "MATIC" },
+  "0x38": { name: "BNB Chain", token: "BNB" },
+  "0x7e4": { name: "Ronin", token: "RON" },
+  "0x2105": { name: "Base", token: "ETH" },
+  "0xa4b1": { name: "Arbitrum", token: "ETH" },
+  "0xa": { name: "Optimism", token: "ETH" },
 };
 
-function formatBalances(wallet) {
-  if (!wallet || !wallet.balances) return {};
-  return wallet.balances instanceof Map ? Object.fromEntries(wallet.balances) : wallet.balances;
-}
+const CHAIN_ASSETS = {
+  BASE: ["ETH", "USDC", "FLOWER"],
+  RONIN: ["RON", "FLOWER", "AXS", "SLP"],
+  ETHEREUM: ["ETH", "USDT", "USDC"],
+  POLYGON: ["MATIC", "USDT", "USDC"],
+};
 
 async function getOrCreateWallet(userId) {
   let wallet = await Wallet.findOne({ userId });
+
   if (!wallet) {
     const walletIndex = await Wallet.countDocuments();
-    const ws    = await deriveUserWallets(walletIndex);
-    const chainAddresses = Object.entries(ws).map(([chain, data]) => ({
-      chain, address: data.address, chainId: SUPPORTED_CHAINS[chain]?.chainId || '0x1',
-      usdtBalance:0, usdcBalance:0,
-    }));
+
+    const derived = await deriveUserWallets(walletIndex);
+
+    const chainAddresses = Object.entries(derived).map(
+      ([chain, data]) => ({
+        chain,
+        address: data.address,
+        chainId: SUPPORTED_CHAINS[chain]?.chainId,
+      })
+    );
+
     wallet = await Wallet.create({
       userId,
-      iscanAddress: 'ISCAN-' + crypto.randomBytes(8).toString('hex').toUpperCase(),
+      iscanAddress:
+        "ISCAN-" +
+        crypto.randomBytes(8).toString("hex").toUpperCase(),
       balances: new Map(),
       chainAddresses,
-      activeChain: 'ETHEREUM',
+      activeChain: "BASE",
       linkedWallets: [],
     });
   }
+
   return wallet;
 }
 
+async function buildChains(userId, wallet) {
+  const chains = [];
+
+  for (const chain of wallet.chainAddresses) {
+    const symbols = CHAIN_ASSETS[chain.chain] || [];
+
+    const assets = [];
+
+    for (const symbol of symbols) {
+      let balance = 0;
+
+      try {
+        balance = await getTokenBalance(
+          chain.chain,
+          chain.address,
+          symbol
+        );
+
+        if (balance === null) {
+          balance = await walletService.getBalance(
+            userId,
+            symbol
+          );
+        }
+      } catch (err) {
+        balance = await walletService.getBalance(
+          userId,
+          symbol
+        );
+      }
+
+      assets.push({
+        symbol,
+        balance,
+      });
+    }
+
+    chains.push({
+      chain: chain.chain,
+      chainId: chain.chainId,
+      address: chain.address,
+      assets,
+    });
+  }
+
+  return chains;
+}
 export const getWallets = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
 
-    const balances = {
-      PHP: await walletService.getBalance(req.user.id,'PHP'),
-      USDT: await walletService.getBalance(req.user.id,'USDT'),
-      USDC: await walletService.getBalance(req.user.id,'USDC'),
-      FLOWER: await walletService.getBalance(req.user.id,'FLOWER'),
-      RON: await walletService.getBalance(req.user.id,'RON'),
-      ETH: await walletService.getBalance(req.user.id,'ETH')
-    };
+    const chains = await buildChains(req.user.id, wallet);
 
     return res.json({
-      success:true,
-      iscanAddress:wallet.iscanAddress,
-      balances,
-      chainAddresses:wallet.chainAddresses,
-      activeChain:wallet.activeChain,
-      chains:SUPPORTED_CHAINS,
-      wallets:wallet.linkedWallets
+      success: true,
+      iscanAddress: wallet.iscanAddress,
+      activeChain: wallet.activeChain,
+      chains,
+      wallets: wallet.linkedWallets,
     });
-  } catch(err) {
+  } catch (err) {
     console.error(err);
-    res.status(500).json({ error:'Failed to fetch wallets' });
+
+    return res.status(500).json({
+      error: "Failed to fetch wallets",
+    });
   }
 };
 
@@ -72,99 +130,169 @@ export const getWalletMe = async (req, res) => {
   try {
     const wallet = await getOrCreateWallet(req.user.id);
 
-    const balances = {
-      PHP: await walletService.getBalance(req.user.id,'PHP'),
-      USDT: await walletService.getBalance(req.user.id,'USDT'),
-      USDC: await walletService.getBalance(req.user.id,'USDC'),
-      FLOWER: await walletService.getBalance(req.user.id,'FLOWER'),
-      RON: await walletService.getBalance(req.user.id,'RON'),
-      ETH: await walletService.getBalance(req.user.id,'ETH')
-    };
+    const chains = await buildChains(req.user.id, wallet);
 
     return res.json({
-      success:true,
-      iscanAddress:wallet.iscanAddress,
-      id:wallet.iscanAddress,
-      _id:wallet.iscanAddress,
-      balances,
-      activeChain:wallet.activeChain,
-      chainAddresses:wallet.chainAddresses
+      success: true,
+      id: wallet.iscanAddress,
+      _id: wallet.iscanAddress,
+      iscanAddress: wallet.iscanAddress,
+      activeChain: wallet.activeChain,
+      chains,
     });
-  } catch(err) {
-    res.status(500).json({ error:'Failed to load wallet' });
-  }
-};
+  } catch (err) {
+    console.error(err);
 
-export const getWalletBalance = async (req, res) => {
-  try {
-    const asset = req.query.asset || 'USDT';
-    const balance = await walletService.getBalance(req.user.id, asset);
-
-    return res.json({
-      success:true,
-      asset,
-      balance
+    return res.status(500).json({
+      error: "Failed to load wallet",
     });
-  } catch(err) {
-    res.status(500).json({ error:'Failed to load balance' });
   }
 };
 
 export const switchChain = async (req, res) => {
   try {
     const { chain } = req.body;
-    if (!SUPPORTED_CHAINS[chain]) return res.status(400).json({ error:'Unsupported chain' });
-    const wallet = await Wallet.findOne({ userId: req.user.id });
-    if (!wallet) return res.status(404).json({ error:'Wallet not found' });
-    wallet.activeChain = chain;
-    await wallet.save();
-    const chainAddr = wallet.chainAddresses.find(c => c.chain === chain);
-    return res.json({ success:true, activeChain:chain, address:chainAddr?.address });
-  } catch(err) { res.status(500).json({ error:'Switch failed' }); }
-};
 
+    if (!SUPPORTED_CHAINS[chain]) {
+      return res.status(400).json({
+        error: "Unsupported chain",
+      });
+    }
+
+    const wallet = await Wallet.findOne({
+      userId: req.user.id,
+    });
+
+    if (!wallet) {
+      return res.status(404).json({
+        error: "Wallet not found",
+      });
+    }
+
+    wallet.activeChain = chain;
+
+    await wallet.save();
+
+    return res.json({
+      success: true,
+      activeChain: chain,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Switch failed",
+    });
+  }
+};
 export const linkWallet = async (req, res) => {
   try {
-    const { address, provider, chainId, nativeBalance, nativeToken, usdcBalance } = req.body;
-    if (!address) return res.status(400).json({ error:'Wallet address required' });
-    const wallet    = await getOrCreateWallet(req.user.id);
-    const chainInfo = CHAIN_MAP[chainId] || { name:'Unknown', token: nativeToken||'ETH' };
-    const walletData = { address, provider:provider||'wallet', chainId:chainId||'0x1', network:chainInfo.name, nativeToken:chainInfo.token, nativeBalance:nativeBalance||0, usdcBalance:usdcBalance||0, addedAt:new Date() };
-    const idx = wallet.linkedWallets.findIndex(w => w.address?.toLowerCase() === address.toLowerCase());
-    if (idx >= 0) wallet.linkedWallets[idx] = { ...wallet.linkedWallets[idx], ...walletData };
-    else wallet.linkedWallets.push(walletData);
-    wallet.markModified('linkedWallets');
+    const {
+      address,
+      provider,
+      chainId,
+      nativeBalance,
+      nativeToken,
+      usdcBalance,
+    } = req.body;
+
+    const wallet = await getOrCreateWallet(req.user.id);
+
+    const chainInfo =
+      CHAIN_MAP[chainId] || {
+        name: "Unknown",
+        token: nativeToken || "ETH",
+      };
+
+    const record = {
+      address,
+      provider,
+      chainId,
+      network: chainInfo.name,
+      nativeToken: chainInfo.token,
+      nativeBalance: nativeBalance || 0,
+      usdcBalance: usdcBalance || 0,
+      addedAt: new Date(),
+    };
+
+    const existing = wallet.linkedWallets.findIndex(
+      (w) =>
+        w.address.toLowerCase() === address.toLowerCase()
+    );
+
+    if (existing >= 0) {
+      wallet.linkedWallets[existing] = record;
+    } else {
+      wallet.linkedWallets.push(record);
+    }
+
+    wallet.markModified("linkedWallets");
+
     await wallet.save();
-    return res.json({ success:true, iscanAddress:wallet.iscanAddress, wallets:wallet.linkedWallets });
-  } catch(err) { console.error(err); res.status(500).json({ error:'Wallet link failed' }); }
+
+    return res.json({
+      success: true,
+      wallets: wallet.linkedWallets,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Wallet link failed",
+    });
+  }
 };
 
 export const unlinkWallet = async (req, res) => {
   try {
     const { address } = req.body;
-    const wallet = await Wallet.findOne({ userId: req.user.id });
-    if (!wallet) return res.status(404).json({ error:'Wallet not found' });
-    wallet.linkedWallets = wallet.linkedWallets.filter(w => w.address.toLowerCase() !== address.toLowerCase());
+
+    const wallet = await Wallet.findOne({
+      userId: req.user.id,
+    });
+
+    if (!wallet) {
+      return res.status(404).json({
+        error: "Wallet not found",
+      });
+    }
+
+    wallet.linkedWallets = wallet.linkedWallets.filter(
+      (w) =>
+        w.address.toLowerCase() !==
+        address.toLowerCase()
+    );
+
     await wallet.save();
-    return res.json({ success:true, wallets:wallet.linkedWallets });
-  } catch(err) { res.status(500).json({ error:'Unlink failed' }); }
+
+    return res.json({
+      success: true,
+      wallets: wallet.linkedWallets,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Unlink failed",
+    });
+  }
 };
 
 export const getAllWalletsAdmin = async (req, res) => {
   try {
-    const wallets = await Wallet.find({}).select('iscanAddress status balances chainAddresses createdAt');
+    const wallets = await Wallet.find().select(
+      "iscanAddress chainAddresses createdAt status"
+    );
+
     return res.json({
       success: true,
-      wallets: wallets.map(w => ({
-        iscanAddress: w.iscanAddress,
-        status: w.status,
-        balances: formatBalances(w),
-        chainAddresses: w.chainAddresses,
-        createdAt: w.createdAt,
-      }))
+      wallets,
     });
   } catch (err) {
-    console.error('[ADMIN WALLET LIST ERROR]', err);
-    res.status(500).json({ error: 'Failed to fetch wallets' });
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Failed to fetch wallets",
+    });
   }
 };

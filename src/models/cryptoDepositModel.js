@@ -1,85 +1,69 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const cryptoDepositSchema = new mongoose.Schema(
-{
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
-  referenceId: {
-    type: String,
-    required: true,
-    unique: true
-  },
+    txHash: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
 
-  token: {
-    type: String,
-    enum: ['USDC', 'USDT'],
-    required: true
-  },
+    chain: {
+      type: String,
+      required: true,
+      enum: ["base", "ronin"],
+    },
 
-  usdAmount: {
-    type: Number,
-    required: true
-  },
+    token: {
+      type: String,
+      required: true,
+      enum: ["USDC", "USDT"],
+    },
 
-  expectedAddress: {
-    type: String,
-    required: true
-  },
+    amount: {
+      type: Number,
+      required: true,
+    },
 
-  chainId: {
-    type: String,
-    default: '0x1'
-  },
+    address: {
+      type: String,
+      required: true,
+      index: true,
+    },
 
-  channel: {
-    type: String,
-    enum: ['maya', 'gcash'],
-    required: true
-  },
+    status: {
+      type: String,
+      enum: [
+        "processing",
+        "completed",
+        "failed",
+      ],
+      default: "processing",
+      index: true,
+    },
 
-  mobileNumber: {
-    type: String,
-    required: true
-  },
+    creditedAt: {
+      type: Date,
+    },
 
-  detectedTxHash: {
-    type: String,
-    default: null
+    error: {
+      type: String,
+    },
   },
-
-  confirmations: {
-    type: Number,
-    default: 0
-  },
-
-  status: {
-    type: String,
-    enum: [
-      'waiting_deposit',
-      'deposit_detected',
-      'confirming',
-      'processing',
-      'completed',
-      'failed'
-    ],
-    default: 'waiting_deposit'
-  },
-
-  metadata: {
-    type: Object,
-    default: {}
+  {
+    timestamps: true,
   }
-},
-{
-  timestamps: true
-});
+);
 
 export default mongoose.model(
-  'CryptoDeposit',
+  "CryptoDeposit",
   cryptoDepositSchema
 );

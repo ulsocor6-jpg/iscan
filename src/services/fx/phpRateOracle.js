@@ -9,9 +9,20 @@ async function getMarketRate() {
   if (cache.market && Date.now() - cache.ts < TTL)
     return cache.market;
 
-  const { data } = await axios.get(
-    'https://api.exchangerate-api.com/v4/latest/USD'
-  );
+  let data;
+  try {
+    ({ data } = await axios.get(
+      'https://open.er-api.com/v6/latest/USD'
+    ));
+  } catch (err) {
+    console.error('[oracle] FX rate fetch failed:', err.message);
+    throw new Error('FX rate provider unavailable');
+  }
+
+  if (!data?.rates?.PHP) {
+    console.error('[oracle] FX rate response missing rates.PHP:', JSON.stringify(data).slice(0, 200));
+    throw new Error('FX rate provider returned unexpected response');
+  }
 
   cache = {
     market: data.rates.PHP,

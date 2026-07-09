@@ -30,6 +30,40 @@ app.use("/api/v1/didit/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(cookieParser());
 
+import eventStreamService from "./src/services/eventStreamService.js";
+
+/**
+ * System-wide request logger ("CCTV camera" for the codebase).
+ * Persists every state-changing API call (POST/PUT/PATCH/DELETE) and every
+ * admin GET (viewing sensitive data) to the same Event log the deposit
+ * pipeline already uses, and broadcasts it live to any connected admin
+ * dashboard via SSE. Plain GETs outside /admin are skipped to avoid
+ * flooding the log with routine dashboard polling.
+ */
+function shouldLogRequest(req) {
+  if (!req.originalUrl.startsWith("/api")) return false;
+  if (req.method !== "GET") return true;
+  return req.originalUrl.startsWith("/api/v1/admin");
+}
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    if (!shouldLogRequest(req)) return;
+    eventStreamService
+      .emit("http_request", {
+        method: req.method,
+        path: req.originalUrl,
+        status: res.statusCode,
+        durationMs: Date.now() - start,
+        userId: req.user?.id || null,
+        userEmail: req.user?.email || null,
+      })
+      .catch(() => {});
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.static(path.join(__dirname, "dist")));
 
@@ -42,6 +76,7 @@ import walletRoutes from "./src/routes/walletRoutes.js";
 import treasuryRoutes from "./src/routes/treasuryRoutes.js";
 import feeRoutes from "./src/routes/feeRoutes.js";
 import flowerRoutes from "./src/routes/flower/flowerRoutes.js";
+import swapInspectorRoutes from "./src/routes/admin/swapInspector.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import mayaNotifyRoute from "./src/routes/mayaNotifyRoute.js";
 import ledgerRoutes from "./src/routes/ledgerRoutes.js";
@@ -64,10 +99,12 @@ import payoutRoutes from "./src/routes/payoutRoutes.js";
 import directDepositRoutes from "./src/routes/directDepositRoutes.js";
 import adminDepositRoutes from "./src/routes/adminDepositRoutes.js";
 import adminUserRoutes from "./src/routes/adminUserRoutes.js";
+import adminEventRoutes from "./src/routes/adminEventRoutes.js";
 import cryptoWithdrawalRoutes from "./src/routes/cryptoWithdrawalRoutes.js";
 import withdrawalRoutes from "./src/routes/withdrawalRoutes.js";
 import adminWithdrawalRoutes from "./src/routes/adminWithdrawalRoutes.js";
 import maribankNotifyRoute from "./src/routes/maribankNotifyRoute.js";
+import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js";
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 
@@ -99,6 +136,7 @@ app.use("/api/v1/bank", bankRoutes);
 app.use("/api/v1/beneficiaries", beneficiaryRoutes);
 
 app.use("/api/v1/flower", flowerRoutes);
+app.use("/api/v1/admin", swapInspectorRoutes);
 
 app.use("/api/v1/kyc", kycRoutes);
 app.use("/api/v1/didit", diditRoutes);
@@ -130,6 +168,8 @@ app.use("/api/v1/admin/withdrawals", adminWithdrawalRoutes);
 
 app.use("/api/v1/admin/deposits", adminDepositRoutes);
 app.use("/api/v1/admin/users", adminUserRoutes);
+app.use("/api/v1/admin/events", adminEventRoutes);
+app.use("/api/v1/admin/reconciliation", adminReconciliationRoutes);
 
 app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
 
@@ -142,6 +182,19 @@ app.use("/api/admin/inspector", inspectorRoutes);
 /* ===========================
    React Frontend
 =========================== */
+
+
+app.get("/reset-password", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "reset-password.html"));
+});
+
+app.get("/forgot-password", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "forgot-password.html"));
+});
+
+app.get("/login", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "login.html"));
+});
 
 const distIndex = path.join(__dirname, "dist", "index.html");
 

@@ -2,13 +2,14 @@
 // Deposit addresses are reused across every FLOWER order a user creates
 // (getOrCreateChainAddress issues one persistent address per user per
 // chain). Without this guard, a user (or a retried/duplicate request) can
-// have two orders pointing at the same address at once. Whichever order's
-// sweep runs first collects the deposit; the other is left matching against
-// an address that now reads as empty, or — before the sweep fix — could get
-// silently credited with funds that belonged to the first order.
+// have two orders pointing at the same address at once.
 //
-// This closes that off at creation time instead of relying on the sweep's
-// balance check to catch it after the fact.
+// FAILED_SWEEP / FAILED_SWAP / FAILED_SETTLE stay in the active set
+// deliberately: those are retryable states, not terminal ones, so the
+// address must stay locked to that order until it either completes or
+// exhausts retries into terminal FAILED — otherwise a new order could be
+// created against an address whose stuck order later gets manually retried
+// and sweeps funds meant for the new order.
 
 import FlowerOrder from "../../models/flower/flowerOrderModel.js";
 
@@ -18,7 +19,10 @@ const ACTIVE_STATUSES = [
   "VERIFIED",
   "SWAPPING",
   "SWAPPED",
-  "SETTLING"
+  "SETTLING",
+  "FAILED_SWEEP",
+  "FAILED_SWAP",
+  "FAILED_SETTLE"
 ];
 
 export async function assertAddressAvailable(depositAddress) {

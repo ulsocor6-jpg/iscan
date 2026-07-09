@@ -31,6 +31,7 @@ export default function Swaps() {
   const [quote, setQuote]                 = useState<any>(null);
   const [quoting, setQuoting]             = useState(false);
   const [balances, setBalances]           = useState<any>({});
+  const [onchain, setOnchain]             = useState<any>({});
   const [connectedWallet, setConnectedWallet] = useState<string|null>(null);
   const [walletAddress, setWalletAddress]     = useState<string|null>(null);
 
@@ -42,6 +43,7 @@ export default function Swaps() {
   const [flowerChain, setFlowerChain] = useState("RONIN");
   const [fuResult, setFuResult]       = useState<any>(null);
   const [fuError, setFuError]         = useState("");
+  const [fuPolling, setFuPolling]     = useState<any>(null); // { orderId, status, estimatedOut } while we wait for the real on-chain result
 
   const phpBal    = balances?.PHP    || balances?.php    || 0;
   const usdtBal   = balances?.USDT   || balances?.usdt   || 0;
@@ -72,7 +74,11 @@ export default function Swaps() {
   useEffect(() => {
     function fetchBal() {
       fetch("/api/v1/wallet/balances", { credentials:"include" })
-        .then(r => r.json()).then(d => setBalances(d.balances || d || {}))
+        .then(r => r.json())
+        .then(d => {
+          setBalances(d.balances || d || {});
+          setOnchain(d.onchain || {});
+        })
         .catch(() => {});
     }
     fetchBal();
@@ -118,8 +124,44 @@ export default function Swaps() {
     return () => clearTimeout(timer);
   }, [fuAmount, fuDirection]);
 
+  async function pollFlowerOrderStatus(orderId: string, estimatedOut: number) {
+    const POLL_INTERVAL_MS = 4000;
+    const MAX_ATTEMPTS     = 30; // ~2 minutes
+
+    setFuPolling({ orderId, status: "WAITING", estimatedOut });
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      try {
+        const res  = await fetch(`/api/v1/flower/status/${orderId}`, { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok || !data.order) continue; // transient error - keep polling
+
+        const status = data.order.status;
+
+        if (status === "SWAPPED" || status === "COMPLETED") {
+          setFuPolling(null);
+          setFuResult({ ...data.order, succeeded: true });
+          return;
+        }
+        if (status === "FAILED") {
+          setFuPolling(null);
+          setFuResult({ ...data.order, succeeded: false });
+          return;
+        }
+        // still WAITING_DEPOSIT / DEPOSIT_RECEIVED / SWAPPING - keep polling
+        setFuPolling({ orderId, status, estimatedOut });
+      } catch {
+        // transient network error - keep polling, don't give up on one miss
+      }
+    }
+
+    // Timed out without a terminal status - tell the truth: we don't know yet.
+    setFuPolling({ orderId, status: "UNKNOWN", estimatedOut });
+  }
+
   async function handleFlowerUsdtSwap() {
-    setFuLoading(true); setFuError(""); setFuResult(null);
+    setFuLoading(true); setFuError(""); setFuResult(null); setFuPolling(null);
     try {
       const from = fuDirection === "flower-to-usdt" ? "FLOWER" : "USDC";
       const to   = fuDirection === "flower-to-usdt" ? "USDC"   : "FLOWER";
@@ -130,9 +172,16 @@ export default function Swaps() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
-      setFuResult(data);
       setFuAmount("");
       setFuQuote(null);
+      // The backend response here means "submitted", not "completed" - the
+      // actual sweep + on-chain swap happen after this returns. Poll the
+      // real order status instead of showing usdtOut as if it were received.
+      if (data.txRef) {
+        pollFlowerOrderStatus(data.txRef, data.usdtOut ?? data.flowerOut);
+      } else {
+        setFuResult(data);
+      }
     } catch(err:any) { setFuError(err.message); }
     finally { setFuLoading(false); }
   }
@@ -323,14 +372,37 @@ export default function Swaps() {
             ["USDT",   "$",  usdtBal],
             ["USDC",   "$",  usdcBal],
             ["FLOWER", "🌸", flowerBal],
-          ].map(([cur,sym,bal])=>(
-            <div key={cur as string} style={{background:"#0d1526",borderRadius:10,padding:"12px 20px",minWidth:140}}>
-              <div style={{color:"#94a3b8",fontSize:11,marginBottom:2}}>{cur as string} Balance</div>
-              <div style={{color:"white",fontSize:20,fontWeight:700}}>
-                {sym as string}{(+bal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+          ].map(([cur,sym,bal])=>{
+            // Per-chain breakdown for the on-chain assets (PHP is fiat-only,
+            // so it has no chain rows). Only shows a chain row if that chain
+            // actually reports a numeric value for this token — Ronin has
+            // no USDT, so USDT never shows a Ronin row.
+            const chainRows = (cur === "PHP" ? [] : ["BASE","RONIN"])
+              .map(chain => {
+                const val = onchain?.[chain]?.[cur as string];
+                return typeof val === "number" ? { chain, val } : null;
+              })
+              .filter(Boolean) as { chain:string, val:number }[];
+
+            return (
+              <div key={cur as string} style={{background:"#0d1526",borderRadius:10,padding:"12px 20px",minWidth:140}}>
+                <div style={{color:"#94a3b8",fontSize:11,marginBottom:2}}>{cur as string} Balance</div>
+                <div style={{color:"white",fontSize:20,fontWeight:700}}>
+                  {sym as string}{(+bal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </div>
+                {chainRows.length > 0 && (
+                  <div style={{marginTop:6,display:"flex",flexDirection:"column" as const,gap:2}}>
+                    {chainRows.map(({chain,val}) => (
+                      <div key={chain} style={{fontSize:10,color:"#64748b",display:"flex",justifyContent:"space-between",gap:10}}>
+                        <span>{chain === "BASE" ? "Base" : "Ronin"}</span>
+                        <span style={{color:"#94a3b8"}}>{val.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4})}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div style={{...card,marginBottom:24}}>
@@ -777,22 +849,47 @@ export default function Swaps() {
 
               {fuError && <p style={{color:"#ef4444",marginTop:8,fontSize:13}}>{fuError}</p>}
 
-              {fuResult && (
+              {fuPolling && (
+                <div style={{marginTop:12,padding:12,background:"#1a1a0a",borderRadius:8}}>
+                  <p style={{color:"#f59e0b",margin:0}}>
+                    {fuPolling.status === "UNKNOWN"
+                      ? "⏳ Still processing — taking longer than expected"
+                      : "⏳ Swap submitted — confirming on-chain..."}
+                  </p>
+                  <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
+                    Ref: {fuPolling.orderId} · status: {fuPolling.status}
+                  </p>
+                  <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
+                    Nothing has been credited yet — this updates automatically once the on-chain swap confirms.
+                    {fuPolling.status === "UNKNOWN" && " Check back in a bit, or ask an admin to look up this order."}
+                  </p>
+                </div>
+              )}
+
+              {fuResult && fuResult.succeeded && (
                 <div style={{marginTop:12,padding:12,background:"#0a1f0a",borderRadius:8}}>
                   <p style={{color:"#22c55e",margin:0}}>✓ Swap successful!</p>
-                  {fuResult.txRef && (
-                    <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>Ref: {fuResult.txRef}</p>
-                  )}
-                  {fuResult.usdtOut && (
+                  <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>Ref: {fuResult.orderId}</p>
+                  {typeof fuResult.usdcReceived === "number" && (
                     <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
-                      Received: ${fuResult.usdtOut.toFixed(4)} USDC
+                      Received: ${fuResult.usdcReceived.toFixed(4)} USDC
                     </p>
                   )}
-                  {fuResult.flowerOut && (
+                </div>
+              )}
+
+              {fuResult && fuResult.succeeded === false && (
+                <div style={{marginTop:12,padding:12,background:"#1f0a0a",borderRadius:8}}>
+                  <p style={{color:"#ef4444",margin:0}}>✗ Swap failed</p>
+                  <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>Ref: {fuResult.orderId}</p>
+                  {fuResult.failureReason && (
                     <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
-                      Received: 🌸 {fuResult.flowerOut.toFixed(4)} FLOWER
+                      Reason: {fuResult.failureReason}
                     </p>
                   )}
+                  <p style={{color:"#94a3b8",fontSize:12,margin:"4px 0"}}>
+                    Nothing was deducted or credited. You can try again once the underlying issue is resolved.
+                  </p>
                 </div>
               )}
             </div>
