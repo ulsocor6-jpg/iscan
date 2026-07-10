@@ -2,21 +2,42 @@ import Wallet from "../models/walletModel.js";
 import DepositAddress from "../models/depositAddressModel.js";
 import {
   deriveBaseAddress,
-  deriveRoninAddress
+  deriveRoninAddress,
+  computeForwarderAddress
 } from "./hdWalletService.js";
+
+// Feature flag: when true, new deposit addresses are computed as
+// forwarder-contract addresses (no private key) instead of derived EOAs.
+// Existing addresses already issued are untouched either way \u2014 this
+// only affects what nextHdIndex's derive() produces for BRAND NEW
+// addresses going forward.
+const USE_FORWARDER_ADDRESSES = process.env.USE_FORWARDER_ADDRESSES === "true";
 import watchLoader from "./blockchain/watch/watchLoader.js";
+
+// Wraps the legacy EOA deriver and the new forwarder-address computer
+// behind one signature, so nextHdIndex/getOrCreateChainAddress below
+// never need to know which one is active. Forwarder addresses have no
+// privateKey field, on purpose \u2014 there is no key to have.
+function deriveForChain(chain, legacyDerive) {
+  return async (index) => {
+    if (USE_FORWARDER_ADDRESSES) {
+      return computeForwarderAddress(chain, index);
+    }
+    return legacyDerive(index);
+  };
+}
 
 const CHAINS = {
   BASE: {
     dbChain: "base",
     chainId: "0x2105",
-    derive: deriveBaseAddress
+    derive: deriveForChain("BASE", deriveBaseAddress)
   },
 
   RONIN: {
     dbChain: "ronin",
     chainId: "0x7e4",
-    derive: deriveRoninAddress
+    derive: deriveForChain("RONIN", deriveRoninAddress)
   }
 };
 

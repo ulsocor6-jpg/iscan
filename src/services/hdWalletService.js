@@ -95,6 +95,55 @@ export async function deriveRoninAddress(index) {
   };
 }
 
+// --- Forwarder-contract deposit addresses (no private key) ---
+// FORWARDER_INIT_CODE_HASH is keccak256(type(DepositForwarder).creationCode)
+// — fixed the moment the contract is compiled, identical on every chain
+// since the bytecode never changes. Computed once after compiling and
+// stored as an env var; never re-derived at runtime.
+const FORWARDER_FACTORY_ADDRESSES = {
+  RONIN: process.env.RONIN_FORWARDER_FACTORY,
+  BASE: process.env.BASE_FORWARDER_FACTORY
+};
+
+function getForwarderInitCodeHash() {
+  const hash = process.env.FORWARDER_INIT_CODE_HASH;
+  if (!hash) {
+    throw new Error(
+      "FORWARDER_INIT_CODE_HASH is not set \u2014 compile DepositForwarder.sol " +
+      "first and set this env var before deriving forwarder addresses."
+    );
+  }
+  return hash;
+}
+
+// salt is derived from the same hdIndex used today, so existing
+// DepositAddress.hdIndex bookkeeping and admin tooling keep working
+// unchanged \u2014 only what the index maps TO changes (a contract
+// address instead of an EOA address).
+function indexToSalt(index) {
+  return ethers.zeroPadValue(ethers.toBeHex(index), 32);
+}
+
+export function computeForwarderAddress(chain, index) {
+  const factory = FORWARDER_FACTORY_ADDRESSES[chain.toUpperCase()];
+  if (!factory) {
+    throw new Error(`No forwarder factory address configured for chain: ${chain}`);
+  }
+  const salt = indexToSalt(index);
+  const initCodeHash = getForwarderInitCodeHash();
+  const address = ethers.getCreate2Address(factory, salt, initCodeHash);
+  return {
+    address: address.toLowerCase(),
+    index,
+    salt,
+    factory,
+    // No privateKey field \u2014 this address has none. Any caller that
+    // still expects .privateKey from the old EOA-based functions must be
+    // updated; it will be undefined here, on purpose.
+    mock: false
+  };
+}
+
 export async function deriveBaseAddress(index) {
   const mnemonic = getMasterMnemonic();
   if (!mnemonic) {
