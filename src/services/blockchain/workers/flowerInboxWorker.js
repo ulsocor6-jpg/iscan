@@ -47,6 +47,13 @@ class FlowerInboxWorker {
     // interface against a real contract instead of failing cleanly.
     if (chain === "BASE") {
       console.warn(`[FlowerInboxWorker] ${job.txHash} — BASE chain not supported by this worker yet (V2/V3 router mismatch), skipping`);
+      await BlockchainInbox.findByIdAndUpdate(job._id, {
+        $set: {
+          "workers.flower.done": true,
+          "workers.flower.blockedReason": "BASE_V3_UNSUPPORTED",
+          "workers.flower.updatedAt": new Date()
+        }
+      });
       return;
     }
 
