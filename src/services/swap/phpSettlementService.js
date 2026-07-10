@@ -7,9 +7,55 @@ import Wallet from '../../models/walletModel.js';
 import walletService from '../walletService.js';
 import Transaction from '../../models/transactionModel.js';
 
+// Treasury wallets checked for real-time on-chain reconciliation. PHP has
+// no on-chain equivalent and is intentionally excluded — its pool is
+// ledger-only, same as before.
+const CHAIN_WALLETS = [
+  { chainKey: "BASE",  address: process.env.BASE_TREASURY_WALLET },
+  { chainKey: "RONIN", address: process.env.RONIN_TREASURY_WALLET || process.env.TREASURY_WALLET },
+].filter(w => w.address);
+
+async function getOnChainPoolTotal(currency) {
+  if (currency === "PHP") return null;
+
+  const results = await Promise.all(
+    CHAIN_WALLETS.map(async (w) => {
+      try {
+        const bal = await getTokenBalance(w.chainKey, w.address, currency);
+        return typeof bal === "number" ? bal : 0;
+      } catch (err) {
+        console.error(
+          `[phpSettlementService] on-chain balance fetch failed for ${w.chainKey} ${currency}:`,
+          err.message
+        );
+        return 0;
+      }
+    })
+  );
+
+  return results.reduce((sum, bal) => sum + bal, 0);
+}
+
 async function getPool(currency) {
   const pool = await PhpLiquidityPool.findOne({ currency });
   if (!pool) throw new Error(`${currency} liquidity pool not found`);
+
+  // Real-time reconciliation: sync the pool's balance to the live
+  // on-chain total before any caller uses it for a liquidity check. This
+  // closes the exact gap that caused "Insufficient liquidity" errors
+  // despite real funds sitting in treasury \u2014 the ledger balance only
+  // ever changed via explicit credit/debit calls, never re-synced to
+  // on-chain reality on its own.
+  const onChainTotal = await getOnChainPoolTotal(currency);
+  if (onChainTotal !== null && onChainTotal !== pool.balance) {
+    console.log(
+      `[phpSettlementService] reconciling ${currency} pool: ledger=${pool.balance} -> onChain=${onChainTotal}`
+    );
+    pool.balance = onChainTotal;
+    pool.updatedAt = new Date();
+    await pool.save();
+  }
+
   return pool;
 }
 

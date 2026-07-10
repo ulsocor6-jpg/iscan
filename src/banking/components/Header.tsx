@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { logout } from "../../services/authService";
 import { useAuth } from "../../hooks/useAuth";
 import FlowerTicker from "./dashboard/FlowerTicker";
-import { useAdminAlerts, AdminAlert } from "../../hooks/useAdminAlerts";
+import { useAdminAlerts } from "../../hooks/useAdminAlerts";
+import type { AdminAlert } from "../../hooks/useAdminAlerts";
 
 // ── Toast stack ──────────────────────────────────────────────────────────────
 function ToastStack({

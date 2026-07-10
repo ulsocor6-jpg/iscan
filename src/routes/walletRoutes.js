@@ -8,6 +8,8 @@ import {
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
 import { getUserBalance } from '../services/balanceService.js';
 import Wallet from '../models/walletModel.js';
+import Ledger from '../models/ledgerModel.js';
+import mongoose from 'mongoose';
 import { getOrCreateChainAddress } from '../services/walletAddressService.js';
 import { getLiveBalancesForWallet } from '../services/onchainBalanceService.js';
 
@@ -35,14 +37,19 @@ router.get('/balances', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // PHP has no on-chain representation — it's a fiat ledger balance,
-    // so it still comes from the Wallet document's cached balance field.
-    const walletBefore = await Wallet.findOne({ userId });
-    const phpBalance = Number(
-      (walletBefore?.balances?.get
-        ? walletBefore.balances.get('PHP')
-        : walletBefore?.balances?.PHP) || 0
-    );
+    // PHP has no on-chain representation, so it's computed live from the
+    // Ledger (credit - debit) — the same approach dashboardController.js
+    // uses, so this endpoint and the Dashboard can never disagree about a
+    // user's PHP balance again. The old approach read Wallet.balances.PHP
+    // directly, a cached field that can drift from the Ledger's own
+    // history (this is exactly what caused the ₱170 vs ₱68.97 mismatch).
+    const phpLedgerResult = await Ledger.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), currency: 'PHP' } },
+      { $group: { _id: null, credit: { $sum: { $ifNull: ['$credit', 0] } }, debit: { $sum: { $ifNull: ['$debit', 0] } } } }
+    ]);
+    const phpBalance = phpLedgerResult.length
+      ? Math.max(0, phpLedgerResult[0].credit - phpLedgerResult[0].debit)
+      : 0;
 
     // Make sure the user actually has HD addresses provisioned on every
     // chain we read balances from — a first-time user otherwise has no
