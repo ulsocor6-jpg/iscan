@@ -43,7 +43,7 @@ router.get('/wallets', requireAuth, async (req, res) => {
 // Live on-chain USDC/USDT totals across configured treasury wallets.
 // PHP has no on-chain equivalent, so it's excluded here.
 async function getOnChainTreasuryBalances() {
-  const totals = { USDC: 0, USDT: 0 };
+  const totals = { USDC: 0, USDT: 0, FLOWER: 0 };
   const wallets = [
     { chainKey: 'BASE',  address: process.env.BASE_TREASURY_WALLET },
     { chainKey: 'RONIN', address: process.env.RONIN_TREASURY_WALLET || process.env.TREASURY_WALLET },
@@ -52,7 +52,7 @@ async function getOnChainTreasuryBalances() {
   await Promise.all(wallets.map(async (w) => {
     try {
       const balances = await getAllBalancesForAddress(w.chainKey, w.address);
-      for (const sym of ['USDC', 'USDT']) {
+      for (const sym of ['USDC', 'USDT', 'FLOWER']) {
         if (typeof balances[sym] === 'number') totals[sym] += balances[sym];
       }
     } catch (err) {
@@ -67,7 +67,13 @@ async function getOnChainTreasuryBalances() {
 // Returns live health of all liquidity pools (PHP, USDT, USDC), enriched
 // with real on-chain treasury balances for USDC/USDT so ledger drift is
 // visible instead of silently trusted.
-const EXPECTED_CURRENCIES = ['PHP', 'USDT', 'USDC'];
+const EXPECTED_CURRENCIES = ['PHP', 'USDT', 'USDC', 'FLOWER'];
+
+// FLOWER trades at a much smaller per-unit USD value than USDC/USDT, so it
+// gets its own minThreshold instead of inheriting the schema's 50000
+// default (which would represent ~$3,250 at ~$0.065/FLOWER, not the
+// intended ~$20 floor).
+const POOL_MIN_THRESHOLDS = { FLOWER: 300 };
 
 router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -83,10 +89,13 @@ router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
       // starts honestly at 0 instead of a guessed figure.
       const toCreate = missing.map(currency => ({
         currency,
-        balance: (currency === 'USDC' || currency === 'USDT')
+        balance: (currency === 'USDC' || currency === 'USDT' || currency === 'FLOWER')
           ? (onChainTotals[currency] ?? 0)
           : 0,
         reserved: 0,
+        ...(POOL_MIN_THRESHOLDS[currency] !== undefined
+          ? { minThreshold: POOL_MIN_THRESHOLDS[currency] }
+          : {}),
       }));
       await PhpLiquidityPool.insertMany(toCreate);
       pools = await PhpLiquidityPool.find();
@@ -95,7 +104,7 @@ router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
     const health = pools.map(getPoolHealth);
 
     const enriched = health.map(h => {
-      if (h.currency === 'USDC' || h.currency === 'USDT') {
+      if (h.currency === 'USDC' || h.currency === 'USDT' || h.currency === 'FLOWER') {
         const onChainBalance = onChainTotals[h.currency] ?? null;
         return {
           ...h,
