@@ -34,7 +34,8 @@ export async function alertCashoutAwaitingRelease(cashout) {
   const text =
     `🔔 <b>Cashout awaiting release</b>\n` +
     `Amount: ₱${amount}\n` +
-    `Channel: ${cashout.destinationType || "—"}\n` +
+    `Channel: ${cashout.destinationType || cashout.type || "—"}\n` +
+    `Name: ${cashout.accountName || "—"}\n` +
     `Account: ${cashout.destinationAccount || "—"}\n` +
     `Ref: <code>${cashout.referenceId || cashout._id}</code>\n` +
     `Requested: ${new Date(cashout.createdAt || Date.now()).toLocaleString("en-PH")}`;
