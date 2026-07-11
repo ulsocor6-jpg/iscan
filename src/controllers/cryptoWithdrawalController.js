@@ -1,52 +1,53 @@
 import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "../services/walletService.js";
+import { settleCryptoWithdrawal, exceedsAutoApproveLimit } from "../services/withdrawalProcessor.js";
+import { estimateNetworkFee } from "../services/treasury/gasEstimationService.js";
 
-const SUPPORTED_ASSETS = ["BTC", "ETH", "USDT", "USDC", "SOL", "BNB", "FLOWER"];
+// Only assets/chains we actually have treasury infrastructure for right
+// now (real private keys + contract addresses in treasurySendService.js).
+// Everything else in the UI is shown as "SOON" and not accepted here yet.
+const SUPPORTED_ASSETS = ["USDC", "USDT", "FLOWER"];
 
 const NETWORK_MAP = {
-  BTC:    ["Bitcoin", "Lightning"],
-  ETH:    ["ERC-20", "Base", "Arbitrum", "Optimism"],
-  USDT:   ["ERC-20", "TRC-20", "BEP-20", "Solana"],
-  USDC:   ["ERC-20", "Base", "Arbitrum", "Solana"],
-  SOL:    ["Solana"],
-  BNB:    ["BEP-20", "BEP-2"],
-  FLOWER: ["Base"],
+  USDC:   ["BASE", "RONIN"],
+  // No RONIN_USDT_TOKEN configured yet — BASE only until that's set up.
+  USDT:   ["BASE"],
+  FLOWER: ["BASE", "RONIN"],
 };
 
 const MINIMUMS = {
-  "Bitcoin": 0.0001, "Lightning": 0.000001,
-  "ERC-20": 0.01, "TRC-20": 1, "BEP-20": 0.5, "BEP-2": 0.001,
-  "Base": 0.01, "Arbitrum": 0.01, "Optimism": 0.01, "Solana": 0.01,
+  BASE:  0.01,
+  RONIN: 0.01,
 };
 
+// Static values kept only as a last-resort fallback — actual fee is now
+// computed live per request via gasEstimationService (real gas price +
+// real gas units + live native-token price, converted into the asset
+// being withdrawn).
 const NETWORK_FEES = {
-  "Bitcoin": 0.00005, "Lightning": 0.000001,
-  "ERC-20": 0.0008, "TRC-20": 1, "BEP-20": 0.0005, "BEP-2": 0.00037,
-  "Base": 0.00002, "Arbitrum": 0.00004, "Optimism": 0.00003, "Solana": 0.00025,
+  BASE:  0.02,
+  RONIN: 1.0,
 };
 
-function isValidAddress(address, network) {
-  if (!address || typeof address !== "string") return false;
-  const a = address.trim();
-  switch (network) {
-    case "Bitcoin":
-      return /^(1|3)[a-zA-HJ-NP-Z0-9]{25,34}$/.test(a) || /^bc1[a-zA-HJ-NP-Z0-9]{6,87}$/.test(a);
-    case "Lightning":
-      return /^ln(bc|tb)[0-9a-zA-Z]+$/.test(a);
-    case "TRC-20": case "BEP-2":
-      return /^T[a-zA-Z0-9]{33}$/.test(a) || /^bnb[a-zA-Z0-9]{39}$/.test(a);
-    case "Solana":
-      return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
-    case "ERC-20": case "Base": case "Arbitrum": case "Optimism": case "BEP-20":
-      return /^0x[a-fA-F0-9]{40}$/.test(a);
-    default:
-      return a.length >= 20;
+// Ronin addresses are sometimes displayed with a "ronin:" prefix instead
+// of "0x" — same underlying hex, just a different convention. Normalize
+// to 0x since that is what ethers/treasurySendService expects.
+function normalizeAddress(address, network) {
+  if (network === "RONIN" && address?.toLowerCase().startsWith("ronin:")) {
+    return "0x" + address.slice(6);
   }
+  return address;
+}
+
+function isValidAddress(address) {
+  // Both BASE and RONIN are EVM-compatible — same 0x + 40 hex char format.
+  return typeof address === "string" && /^0x[a-fA-F0-9]{40}$/.test(address.trim());
 }
 
 export async function createCryptoWithdrawal(req, res) {
   try {
-    const { asset, network, amount, destinationAddress } = req.body;
+    const { asset, amount, destinationAddress } = req.body;
+    const network = (req.body.network || "").toUpperCase();
 
     if (!SUPPORTED_ASSETS.includes(asset))
       return res.status(400).json({ error: `Unsupported asset: ${asset}` });
@@ -63,11 +64,23 @@ export async function createCryptoWithdrawal(req, res) {
     if (parsedAmount < minimum)
       return res.status(400).json({ error: `Minimum withdrawal on ${network} is ${minimum} ${asset}` });
 
-    if (!isValidAddress(destinationAddress, network))
+    const normalizedAddress = normalizeAddress(destinationAddress, network);
+    if (!isValidAddress(normalizedAddress))
       return res.status(400).json({ error: `Invalid ${network} address format` });
 
     const balance = await walletService.getBalance(req.user.id, asset);
-    const fee = NETWORK_FEES[network] || 0;
+
+    const feeResult = await estimateNetworkFee({
+      chain: network,
+      asset,
+      toAddress: normalizedAddress,
+      amount: parsedAmount,
+    });
+    const fee = feeResult.fee || NETWORK_FEES[network] || 0;
+    if (!feeResult.estimated) {
+      console.warn(`[cryptoWithdrawal] live fee estimate failed, using fallback ${fee} ${asset} for ${network}`);
+    }
+
     const totalRequired = parsedAmount + fee;
 
     if (balance < totalRequired)
@@ -79,9 +92,25 @@ export async function createCryptoWithdrawal(req, res) {
       asset,
       network,
       amount: parsedAmount,
-      destinationAddress: destinationAddress.trim(),
+      destinationAddress: normalizedAddress.trim(),
       status: "pending_review",
     });
+
+    // Same auto-settle rule as the other withdrawal path: settle
+    // immediately unless it exceeds a configured AUTO_WITHDRAW_LIMIT_<ASSET>.
+    if (!exceedsAutoApproveLimit(withdrawal)) {
+      const result = await settleCryptoWithdrawal(withdrawal);
+      if (!result.success) {
+        const message = result.stage === "debit"
+          ? `Withdrawal request created, but could not be settled (insufficient balance at settle time): ${result.error}`
+          : `Withdrawal request created, but the on-chain send failed and was reversed: ${result.error}`;
+        return res.status(502).json({
+          success: false,
+          error: message,
+          withdrawal: result.withdrawal,
+        });
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -93,6 +122,7 @@ export async function createCryptoWithdrawal(req, res) {
         willReceive: parsedAmount - fee,
         destinationAddress: withdrawal.destinationAddress,
         status: withdrawal.status,
+        txHash: withdrawal.txHash || null,
         createdAt: withdrawal.createdAt,
       },
     });
