@@ -35,15 +35,48 @@ export function exceedsAutoApproveLimit(withdrawal) {
  * withdrawal isn't over any configured auto-approve limit.
  */
 export async function settleCryptoWithdrawal(withdrawal) {
-  await walletService.debit(
-    withdrawal.userId,
-    withdrawal.asset,
-    withdrawal.amount,
-    {
-      referenceId: `WD-${withdrawal._id}`,
-      description: "Withdrawal settled"
-    }
-  );
+  try {
+    await walletService.debit(
+      withdrawal.userId,
+      withdrawal.asset,
+      withdrawal.amount,
+      {
+        referenceId: `WD-${withdrawal._id}`,
+        description: "Withdrawal settled"
+      }
+    );
+  } catch (debitErr) {
+    // Nothing was ever moved here — no ledger reversal needed, unlike the
+    // send-failure path below. Most common cause: a race where two
+    // requests both passed the controller's balance pre-check, but only
+    // one debit can win the atomic $gte guard in walletService.debit.
+    withdrawal.status = "failed";
+    withdrawal.failReason = debitErr.message;
+    await withdrawal.save();
+
+    await eventStreamService.emit("withdrawal.failed", {
+      entityId: withdrawal._id.toString(),
+      userId: withdrawal.userId,
+      asset: withdrawal.asset,
+      amount: withdrawal.amount,
+      error: debitErr.message,
+      stage: "debit",
+    });
+
+    sendTelegramAlert(
+      `\u26a0\ufe0f <b>Crypto withdrawal FAILED (debit)</b>\n` +
+      `Asset: ${withdrawal.asset} (${withdrawal.network})\n` +
+      `Amount: ${withdrawal.amount}\n` +
+      `User: <code>${withdrawal.userId}</code>\n` +
+      `Ref: <code>WD-${withdrawal._id}</code>\n` +
+      `Error: ${debitErr.message}\n` +
+      `No funds were moved \u2014 balance check failed at settle time.`
+    ).catch(alertErr => {
+      console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message);
+    });
+
+    return { success: false, error: debitErr.message, withdrawal, stage: "debit" };
+  }
 
   try {
     const result = await sendCryptoToAddress({
@@ -106,6 +139,6 @@ export async function settleCryptoWithdrawal(withdrawal) {
     ).catch(alertErr => {
       console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message);
     });
-    return { success: false, error: sendErr.message, withdrawal };
+    return { success: false, error: sendErr.message, withdrawal, stage: "send" };
   }
 }
