@@ -66,16 +66,11 @@ export async function approveWithdrawal(req, res) {
         });
       }
     } else {
-      await walletService.debit(
-        withdrawal.userId,
-        withdrawal.asset,
-        withdrawal.amount,
-        {
-          referenceId: `WD-${withdrawal._id}`,
-          description: "Withdrawal approved"
-        }
-      );
-      withdrawal.status = "approved";
+      // PHP (maya/bank/gcash) withdrawals are already debited atomically at
+      // REQUEST time — see paymentRoutes.js /cashout. Approving here means
+      // "I have manually sent the money via Maya/GCash/Bank transfer" and
+      // must NOT debit again.
+      withdrawal.status = "completed";
     }
 
     withdrawal.approvedBy = req.user?.id || null;
@@ -92,6 +87,42 @@ export async function approveWithdrawal(req, res) {
     res.status(500).json({
       error: err.message
     });
+  }
+}
+
+export async function rejectWithdrawal(req, res) {
+  try {
+    const { reason } = req.body;
+    const withdrawal = await WithdrawalRequest.findById(req.params.id);
+
+    if (!withdrawal) {
+      return res.status(404).json({ error: "Withdrawal not found" });
+    }
+    if (withdrawal.status !== "pending_review") {
+      return res.status(400).json({ error: "Already processed" });
+    }
+
+    // PHP withdrawals were already debited at request time — refund before
+    // marking rejected, so the user isn't left short with no path forward.
+    // Crypto withdrawals that reach here were never debited (they only
+    // debit inside settleCryptoWithdrawal on approval), so no refund needed.
+    if (withdrawal.type !== "crypto") {
+      await walletService.credit(withdrawal.userId, withdrawal.asset, withdrawal.amount + (withdrawal.fee || 0), {
+        referenceId: `REFUND-${withdrawal.referenceId || withdrawal._id}`,
+        description: `Withdrawal rejected — refund${reason ? `: ${reason}` : ""}`,
+        transactionType: 'cashout_refund',
+      });
+    }
+
+    withdrawal.status = "rejected";
+    withdrawal.failReason = reason || "Rejected by admin";
+    withdrawal.approvedBy = req.user?.id || null;
+    withdrawal.approvedAt = new Date();
+    await withdrawal.save();
+
+    res.json({ success: true, withdrawal });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 }
 

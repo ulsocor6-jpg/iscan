@@ -7,9 +7,12 @@ import { requireAuth } from '../middleware/authMiddleware.js';
 import { cashIn, webhook } from '../controllers/paymentController.js';
 import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';
-import CashoutRequest from '../models/CashoutRequest.js';
 import FeeRecord from '../models/feeModel.js';
 import BankAccount from '../models/BankAccount.js';
+import WithdrawalRequest from '../models/withdrawalRequestModel.js';
+import walletService from '../services/walletService.js';
+import { alertCashoutAwaitingRelease } from '../services/telegramAlertService.js';
+import eventStreamService from '../services/eventStreamService.js';
 
 const router = express.Router();
 
@@ -65,34 +68,70 @@ router.post('/cashout', requireAuth, async (req, res) => {
     const receiverName   = linkedAccount.accountName;
     const accountNumber  = linkedAccount.accountNumber;
 
-    const bal = await getLedgerBalance(req.user.id);
     const fee = parseFloat((php * 0.015).toFixed(2));
     const total = php + fee;
+    const netAmount = php - fee;
 
+    const bal = await walletService.getBalance(req.user.id, 'PHP');
     if (bal < total) return res.status(400).json({ error: `Insufficient balance. Available: ₱${bal.toFixed(2)}, needed: ₱${total.toFixed(2)}` });
 
     const ref = 'CO-' + crypto.randomBytes(8).toString('hex').toUpperCase();
 
-    await Ledger.create({
+    // ── Debit atomically first (same transaction-safe pattern crypto uses) ──
+    // walletService.debit() uses a $gte guard + $inc as one indivisible
+    // MongoDB operation, so two concurrent requests can never both read
+    // "sufficient balance" and both succeed — closes the double-spend race
+    // the old getLedgerBalance()-then-write pattern was vulnerable to.
+    await walletService.debit(req.user.id, 'PHP', total, {
       referenceId: ref,
-      userId: new mongoose.Types.ObjectId(req.user.id),
-      transactionType: 'cashout',
-      debit: total,
-      credit: 0,
-      currency: 'PHP',
       description: `Cash out to ${receiverName} via ${normalizedChannel} (fee ₱${fee})`,
-      status: 'completed'
+      transactionType: 'cashout',
     });
 
-    const co = await CashoutRequest.create({
+    let withdrawal;
+    try {
+      withdrawal = await WithdrawalRequest.create({
+        userId: req.user.id,
+        type: linkedAccount.provider, // 'maya' | 'bank' | 'gcash'
+        asset: 'PHP',
+        amount: php,
+        fee,
+        netAmount,
+        referenceId: ref,
+        destinationAccount: accountNumber,
+        accountName: receiverName,
+        status: 'pending_review',
+      });
+    } catch (createErr) {
+      // WithdrawalRequest creation failed after the debit already went
+      // through — refund immediately so no debit is ever left orphaned.
+      await walletService.credit(req.user.id, 'PHP', total, {
+        referenceId: 'REFUND-' + ref,
+        description: `Refund — withdrawal request failed to record (${createErr.message})`,
+        transactionType: 'cashout_refund',
+      });
+      throw createErr;
+    }
+
+    // ── PHP withdrawals always need a human to actually send the money —
+    // alert admin immediately, same as crypto withdrawals that exceed the
+    // auto-approve threshold and land in manual review.
+    alertCashoutAwaitingRelease(withdrawal).catch(err => {
+      console.error('[CASHOUT] Telegram alert failed:', err.message);
+    });
+    eventStreamService.emit('withdrawal.verified', {
+      entityId: withdrawal.referenceId || withdrawal._id.toString(),
       userId: req.user.id,
-      amount: php,
-      fee: fee,
-      netAmount: php - fee,
-      referenceId: ref,
+      cashoutId: withdrawal._id.toString(),
+      referenceId: withdrawal.referenceId,
+      amount: withdrawal.amount,
+      fee: withdrawal.fee,
+      netAmount: withdrawal.netAmount,
       destinationType: normalizedChannel,
-      destinationAccount: accountNumber,
-      status: 'PENDING'
+      destinationAccount: withdrawal.destinationAccount,
+      message: `Cashout request verified and awaiting admin release — ₱${withdrawal.netAmount.toFixed(2)} to ${normalizedChannel} (${withdrawal.destinationAccount})`,
+    }).catch(err => {
+      console.error('[CASHOUT] System Inspector event emit failed:', err.message);
     });
 
     await FeeRecord.create({
@@ -103,12 +142,11 @@ router.post('/cashout', requireAuth, async (req, res) => {
       grossAmount: php,
       feePercent: 1.5,
       feeAmount: fee,
-      netAmount: php - fee,
+      netAmount,
       metadata: { channel: normalizedChannel, receiverName, accountNumber, linkedAccountId: linkedAccount._id }
     });
-    await Wallet.findOneAndUpdate({ userId: req.user.id }, { balance: await getLedgerBalance(req.user.id) });
 
-    res.json({ success: true, referenceId: ref, amount: php, fee, total, cashoutRequest: co });
+    res.json({ success: true, referenceId: ref, amount: php, fee, total, withdrawal });
   } catch (e) {
     console.error('[CASHOUT]', e);
     res.status(500).json({ error: e.message });
