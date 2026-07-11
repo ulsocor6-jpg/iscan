@@ -23,7 +23,7 @@ const schema = new mongoose.Schema({
   adminNote: { type: String, default: "" }
 }, { timestamps: true });
 
-schema.post("save", function (doc, next) {
+schema.post("save", function (doc) {
   if (doc.wasNew) {
     alertCashoutAwaitingRelease(doc).catch(err => {
       console.error("[CashoutRequest] Telegram alert failed:", err.message);
@@ -44,12 +44,10 @@ schema.post("save", function (doc, next) {
       console.error("[CashoutRequest] System Inspector event emit failed:", err.message);
     });
   }
-  next();
 });
 
-schema.pre("save", function (next) {
+schema.pre("save", function () {
   this.wasNew = this.isNew;
-  next();
 });
 
 export default mongoose.model("CashoutRequest", schema);
