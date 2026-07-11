@@ -153,7 +153,13 @@ router.post("/notify", async (req, res) => {
   } catch (err) {
     await deduplicationService.markFailed("MARIBANK", eventId, err.message);
     await inspectorService.failStage(flowId, "PROCESS_TRANSACTION", err.message).catch(() => {});
-    throw err;
+
+    // Respond with a clean error instead of rethrowing — an uncaught
+    // throw here would escape as an unhandled rejection with nothing
+    // above this route to catch it, risking a full process crash for
+    // what should be an isolated, single-request failure.
+    console.error(`[MariBank Webhook] processing failed for ${eventId}:`, err.message);
+    return res.status(500).json({ status: "error", error: err.message });
   }
 });
 
