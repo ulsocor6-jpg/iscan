@@ -10,7 +10,7 @@ const flowerOrderSchema = new mongoose.Schema(
     depositAddress:{ type:String, required:true },
     expectedAmount:{ type:Number, required:true },
     receivedAmount:{ type:Number, default:0 },
-    txHash:{ type:String },
+    txHash:{ type:String, unique:true, sparse:true, index:true },
     lastScannedBlock:{ type:Number },
     failureReason:{ type:String },
 
