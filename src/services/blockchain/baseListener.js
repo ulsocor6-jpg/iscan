@@ -6,9 +6,10 @@ import FlowerOrder                   from "../../models/flower/flowerOrderModel.
 import { processSwap }               from "../flowerSwapServiceBase.js";
 import { sweepFlowerToTreasuryBase } from "../flower/flowerSweepServiceBase.js";
 
-const provider = new ethers.JsonRpcProvider(
-  process.env.BASE_RPC || "https://mainnet.base.org"
-);
+const HTTP_RPC = process.env.BASE_RPC || "https://mainnet.base.org";
+const WS_RPC   = process.env.BASE_WS_RPC || null;
+
+const httpProvider = new ethers.JsonRpcProvider(HTTP_RPC);
 
 const FLOWER_TOKEN_ADDRESS = process.env.BASE_DEPOSIT_TOKEN;
 
@@ -23,7 +24,7 @@ const FLOWER = new ethers.Contract(
     "function balanceOf(address) view returns (uint256)",
     "function decimals() view returns (uint8)"
   ],
-  provider
+  httpProvider
 );
 
 let _decimals = null;
@@ -33,13 +34,14 @@ async function getDecimals() {
   return _decimals;
 }
 
-// How many blocks back to look each cycle. Keep this >= (poll interval / block time)
-// with margin, so back-to-back cycles always overlap and nothing falls in a gap.
-const LOOKBACK_BLOCKS = 150;
-
-// Resume-point tracking so a missed cycle (RPC error, restart) doesn't lose deposits
-// that fall outside LOOKBACK_BLOCKS. Mirrors the pattern used on the Ronin watcher.
-let lastScannedBlock = null;
+// In-memory cache of watched addresses, refreshed periodically from the DB
+// (cheap, no RPC cost) so newly created deposit addresses get picked up
+// without needing to tear down and rebuild the WebSocket subscription.
+let addrByLower = new Map();
+async function refreshWatchedAddresses() {
+  const addresses = await DepositAddress.find({ chain: "base", token: "FLOWER", status: "active" });
+  addrByLower = new Map(addresses.map(a => [a.address.toLowerCase(), a]));
+}
 
 // After a deposit is recorded, the FLOWER sitting at the user's address must
 // be swept to treasury BEFORE processSwap runs — otherwise processSwap uses
@@ -50,17 +52,11 @@ async function sweepThenSwap(orderId) {
     await sweepFlowerToTreasuryBase(orderId);
   } catch (err) {
     if (err.stage === "post-transfer") {
-      // A transfer may already be broadcast/pending on-chain. Do NOT retry
-      // automatically — that risks a double-send. This needs manual/admin
-      // review before anything touches this order again.
       console.error(
         `[BASE LISTENER] CRITICAL — sweep for ${orderId} failed AFTER broadcast. ` +
         `Do not auto-retry. Manual reconciliation required:`, err.message
       );
     } else {
-      // Nothing was sent on-chain (validation failure, insufficient balance,
-      // HD mismatch, etc.) — safe to leave at DEPOSIT_RECEIVED for a later
-      // retry, but processSwap must NOT run until sweep actually succeeds.
       console.error(
         `[BASE LISTENER] Sweep for ${orderId} failed before any transfer — ` +
         `will remain unswept until retried:`, err.message
@@ -108,21 +104,51 @@ async function handleNewDeposit({ addr, newAmount, txHash }) {
   await sweepThenSwap(orderId);
 }
 
-async function scanForDeposits() {
-  const addresses = await DepositAddress.find({ chain: "base", token: "FLOWER", status: "active" });
-  if (addresses.length === 0) return;
+async function handleTransferLog(log) {
+  try {
+    const parsed = TRANSFER_IFACE.parseLog(log);
+    const toAddr = parsed.args.to.toLowerCase();
+    const addr = addrByLower.get(toAddr);
+    if (!addr) return; // not one of our watched deposit addresses
 
-  const addrByLower = new Map(addresses.map(a => [a.address.toLowerCase(), a]));
-  const paddedAddresses = addresses.map(a => ethers.zeroPadValue(a.address, 32));
+    // Idempotency: a deposit is recorded once, even if this tx is seen twice
+    // (e.g. once via WebSocket, once via the backstop poll).
+    const dup = await FlowerOrder.findOne({ txHash: log.transactionHash });
+    if (dup) return;
 
-  const latest = await provider.getBlockNumber();
+    const decimals = await getDecimals();
+    const newAmount = parseFloat(ethers.formatUnits(parsed.args.value, decimals));
+    if (newAmount <= 0.001) return;
+
+    console.log(`[BASE LIVE] hit ${addr.address} +${newAmount} FLOWER tx=${log.transactionHash}`);
+    await handleNewDeposit({ addr, newAmount, txHash: log.transactionHash });
+  } catch (err) {
+    if (err.code === 11000) {
+      console.log(`[BASE LISTENER] duplicate txHash ${log.transactionHash} — already processed, skipping`);
+      return;
+    }
+    console.error("[BASE LISTENER] failed to handle transfer log:", err.message);
+  }
+}
+
+// ---- Backstop poll ---------------------------------------------------
+// The WebSocket subscription handles the real-time path. This poll exists
+// only to catch deposits missed during a WS disconnect/reconnect window —
+// it runs every 5 minutes instead of the old 15-second loop, since it is
+// no longer the primary detection path.
+const BACKSTOP_LOOKBACK_BLOCKS = 300;
+let lastScannedBlock = null;
+
+async function backstopScan() {
+  if (addrByLower.size === 0) return;
+
+  const paddedAddresses = [...addrByLower.keys()].map(a => ethers.zeroPadValue(a, 32));
+  const latest = await httpProvider.getBlockNumber();
   const fromBlock = lastScannedBlock !== null
-    ? Math.min(lastScannedBlock + 1, latest - LOOKBACK_BLOCKS) // never skip a gap
-    : Math.max(latest - LOOKBACK_BLOCKS, 0);
+    ? Math.min(lastScannedBlock + 1, latest - BACKSTOP_LOOKBACK_BLOCKS)
+    : Math.max(latest - BACKSTOP_LOOKBACK_BLOCKS, 0);
 
-  // Single request covers every watched address — this replaces the old
-  // one-balanceOf-call-per-address loop.
-  const logs = await provider.getLogs({
+  const logs = await httpProvider.getLogs({
     address: FLOWER_TOKEN_ADDRESS,
     topics: [TRANSFER_TOPIC, null, paddedAddresses],
     fromBlock,
@@ -130,31 +156,53 @@ async function scanForDeposits() {
   });
 
   lastScannedBlock = latest;
-
   if (logs.length === 0) {
-    console.log(`[BASE SCAN] blocks ${fromBlock}-${latest}, ${addresses.length} addresses watched, 0 hits`);
+    console.log(`[BASE BACKSTOP] blocks ${fromBlock}-${latest}, ${addrByLower.size} addresses watched, 0 hits`);
     return;
   }
 
-  const decimals = await getDecimals();
+  console.log(`[BASE BACKSTOP] blocks ${fromBlock}-${latest}, ${logs.length} hit(s)`);
+  for (const log of logs) await handleTransferLog(log);
+}
 
-  for (const log of logs) {
-    const parsed = TRANSFER_IFACE.parseLog(log);
-    const toAddr = parsed.args.to.toLowerCase();
-    const addr = addrByLower.get(toAddr);
-    if (!addr) continue; // shouldn't happen given the topic filter, but stay safe
+// ---- WebSocket subscription (reactive) --------------------------------
+let wsProvider = null;
+let wsReconnectAttempts = 0;
 
-    // Idempotency: a deposit is recorded once, even if this tx shows up in an
-    // overlapping scan window on the next cycle.
-    const dup = await FlowerOrder.findOne({ txHash: log.transactionHash });
-    if (dup) continue;
-
-    const newAmount = parseFloat(ethers.formatUnits(parsed.args.value, decimals));
-    if (newAmount <= 0.001) continue;
-
-    console.log(`[BASE SCAN] hit ${addr.address} +${newAmount} FLOWER tx=${log.transactionHash}`);
-    await handleNewDeposit({ addr, newAmount, txHash: log.transactionHash });
+function connectWebSocket() {
+  if (!WS_RPC) {
+    console.warn("[BASE LISTENER] BASE_WS_RPC not set — running on backstop polling only");
+    return;
   }
+
+  wsProvider = new ethers.WebSocketProvider(WS_RPC);
+
+  const filter = { address: FLOWER_TOKEN_ADDRESS, topics: [TRANSFER_TOPIC] };
+
+  wsProvider.on(filter, (log) => {
+    handleTransferLog(log);
+  });
+
+  wsProvider.websocket.on("open", () => {
+    wsReconnectAttempts = 0;
+    console.log("[BASE LISTENER] WebSocket connected — live subscription active");
+  });
+
+  wsProvider.websocket.on("close", () => {
+    console.warn("[BASE LISTENER] WebSocket closed — reconnecting...");
+    scheduleReconnect();
+  });
+
+  wsProvider.websocket.on("error", (err) => {
+    console.error("[BASE LISTENER] WebSocket error:", err.message);
+  });
+}
+
+function scheduleReconnect() {
+  wsReconnectAttempts++;
+  const delay = Math.min(30000, 1000 * 2 ** wsReconnectAttempts);
+  console.log(`[BASE LISTENER] reconnecting in ${delay}ms (attempt ${wsReconnectAttempts})`);
+  setTimeout(connectWebSocket, delay);
 }
 
 export async function startBaseListener() {
@@ -165,15 +213,18 @@ export async function startBaseListener() {
     console.error("[BASE LISTENER] BASE_TREASURY_PRIVATE_KEY not set — not started"); return;
   }
 
-  console.log("[BASE LISTENER] starting — batched log scan every 15s");
+  await refreshWatchedAddresses();
+  setInterval(refreshWatchedAddresses, 60000);
+
+  connectWebSocket();
 
   setInterval(async () => {
     try {
-      await scanForDeposits();
+      await backstopScan();
     } catch (err) {
       console.error("[BASE LISTENER ERROR]", err.message);
     }
-  }, 15000);
+  }, 5 * 60 * 1000);
 
-  console.log("[BASE LISTENER] running");
+  console.log("[BASE LISTENER] starting — reactive WebSocket + 5min backstop poll");
 }
