@@ -16,11 +16,13 @@
 // rather than pass the shortfall on as if it were a real, verified deposit.
 
 import { ethers }             from "ethers";
+import fs                     from "fs";
 import FlowerOrder            from "../../models/flower/flowerOrderModel.js";
 import DepositAddress         from "../../models/depositAddressModel.js";
-import { deriveRoninAddress } from "../hdWalletService.js";
+import { deriveRoninAddress, indexToSalt } from "../hdWalletService.js";
 import { ERC20_ABI }          from "../../../config/katana.js";
 import flowerConfig           from "../../../config/flower.js";
+import { withTreasuryLock } from "../treasury/treasurySendQueue.js";
 
 const { RONIN_RPC, FLOWER_TOKEN, TREASURY_WALLET } = flowerConfig;
 
@@ -41,6 +43,16 @@ export async function sweepFlowerToTreasury(orderId) {
 
   if (!depositRecord || depositRecord.hdIndex === null) {
     throw new Error(`No HD index found for address ${order.depositAddress}`);
+  }
+
+  // Forwarder-contract addresses have no private key \u2014 sweeping means
+  // calling the factory's deploy()/sweep(), not signing a transfer from
+  // the deposit address itself. Branch here and return early; the rest
+  // of this function (private key derivation, direct ERC20 transfer) is
+  // the legacy EOA path and applies only when addressType is 'EOA' or
+  // unset (all pre-migration addresses).
+  if (depositRecord.addressType === "FORWARDER") {
+    return sweepViaForwarderRonin({ order, depositRecord, orderId });
   }
 
   // Re-derive private key from mnemonic + index
@@ -99,6 +111,56 @@ export async function sweepFlowerToTreasury(orderId) {
   );
 
   return { txHash: receipt.hash, amount: expected };
+}
+
+async function sweepViaForwarderRonin({ order, depositRecord, orderId }) {
+  const provider = new ethers.JsonRpcProvider(RONIN_RPC);
+  const flowerTokenReadOnly = new ethers.Contract(FLOWER_TOKEN, ERC20_ABI, provider);
+
+  const decimals  = await flowerTokenReadOnly.decimals();
+  const balance   = await flowerTokenReadOnly.balanceOf(order.depositAddress);
+  const amountWei = ethers.parseUnits(order.receivedAmount.toString(), decimals);
+
+  if (balance < amountWei) {
+    throw new Error(
+      `Address ${order.depositAddress} balance ` +
+      `(${ethers.formatUnits(balance, decimals)} FLOWER) is less than order ${orderId}'s ` +
+      `expected ${order.receivedAmount} FLOWER \u2014 refusing to sweep a short amount`
+    );
+  }
+
+  if (!process.env.RONIN_FORWARDER_FACTORY) {
+    throw new Error("RONIN_FORWARDER_FACTORY is not set");
+  }
+  if (!process.env.RONIN_TREASURY_PRIVATE_KEY) {
+    throw new Error("RONIN_TREASURY_PRIVATE_KEY is not set \u2014 cannot pay gas for forwarder sweep");
+  }
+
+  const artifact = JSON.parse(
+    fs.readFileSync(
+      new URL("../../../artifacts/contracts/ForwarderFactory.sol/ForwarderFactory.json", import.meta.url)
+    )
+  );
+
+  const operator = new ethers.Wallet(process.env.RONIN_TREASURY_PRIVATE_KEY, provider);
+  const factory  = new ethers.Contract(process.env.RONIN_FORWARDER_FACTORY, artifact.abi, operator);
+  const salt     = indexToSalt(depositRecord.hdIndex);
+
+  console.log(`[FlowerSweep] ${orderId} \u2014 sweeping via forwarder factory.deploy() (hdIndex ${depositRecord.hdIndex})`);
+
+  const receipt = await withTreasuryLock("RONIN", async () => {
+    const tx = await factory.deploy(salt);
+    return tx.wait();
+  });
+
+  console.log(`[FlowerSweep] ${orderId} \u2014 forwarder sweep complete (tx: ${receipt.hash})`);
+
+  await FlowerOrder.updateOne(
+    { orderId },
+    { status: "VERIFIED", sweepTxHash: receipt.hash }
+  );
+
+  return { txHash: receipt.hash, amount: order.receivedAmount };
 }
 
 export default { sweepFlowerToTreasury };
