@@ -12,6 +12,7 @@
 import walletService from "./walletService.js";
 import { sendCryptoToAddress } from "./treasury/treasurySendService.js";
 import eventStreamService from "./eventStreamService.js";
+import { sendTelegramAlert } from "./telegramAlertService.js";
 
 // Optional safety valve: per-request cap above which a crypto withdrawal
 // is left as "pending_review" for manual approval instead of settling
@@ -94,6 +95,17 @@ export async function settleCryptoWithdrawal(withdrawal) {
       error: sendErr.message,
     });
 
+    sendTelegramAlert(
+      `🚨 <b>Crypto withdrawal FAILED</b>\n` +
+      `Asset: ${withdrawal.asset} (${withdrawal.network})\n` +
+      `Amount: ${withdrawal.amount}\n` +
+      `User: <code>${withdrawal.userId}</code>\n` +
+      `Ref: <code>WD-${withdrawal._id}</code>\n` +
+      `Error: ${sendErr.message}\n` +
+      `Ledger debit reversed — needs manual review.`
+    ).catch(alertErr => {
+      console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message);
+    });
     return { success: false, error: sendErr.message, withdrawal };
   }
 }
