@@ -9,6 +9,7 @@ import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';
 import CashoutRequest from '../models/CashoutRequest.js';
 import FeeRecord from '../models/feeModel.js';
+import BankAccount from '../models/BankAccount.js';
 
 const router = express.Router();
 
@@ -33,10 +34,36 @@ router.post('/cashin', requireAuth, cashIn);
 // POST /api/v1/payment/cashout
 router.post('/cashout', requireAuth, async (req, res) => {
   try {
-    const { amount, channel, receiverName, accountNumber, purpose } = req.body;
+    const { amount, channel, purpose } = req.body;
     const php = parseFloat(amount);
     if (!php || php <= 0) return res.status(400).json({ error: 'Invalid amount.' });
-    if (!receiverName) return res.status(400).json({ error: 'Receiver name required.' });
+
+    const validChannels = ['MAYA', 'GCASH', 'BANK'];
+    const normalizedChannel = String(channel || '').toUpperCase();
+    if (!validChannels.includes(normalizedChannel)) {
+      return res.status(400).json({ error: `Invalid channel. Must be one of: ${validChannels.join(', ')}` });
+    }
+
+    // ── Look up the user's verified linked account for this channel ───────
+    // Never trust receiverName/accountNumber from the request body directly:
+    // without this, any authenticated user could cash out to an arbitrary
+    // account they type in, not just their own linked one.
+    const providerByChannel = { MAYA: 'maya', GCASH: 'gcash', BANK: 'bank' };
+    const linkedAccount = await BankAccount.findOne({
+      userId: req.user.id,
+      provider: providerByChannel[normalizedChannel],
+      status: 'active',
+    }).lean();
+
+    if (!linkedAccount) {
+      return res.status(400).json({
+        error: `No linked ${normalizedChannel} account found. Please link one in your profile before withdrawing.`,
+        code: 'NO_LINKED_ACCOUNT',
+      });
+    }
+
+    const receiverName   = linkedAccount.accountName;
+    const accountNumber  = linkedAccount.accountNumber;
 
     const bal = await getLedgerBalance(req.user.id);
     const fee = parseFloat((php * 0.015).toFixed(2));
@@ -53,7 +80,7 @@ router.post('/cashout', requireAuth, async (req, res) => {
       debit: total,
       credit: 0,
       currency: 'PHP',
-      description: `Cash out to ${receiverName} via ${channel} (fee ₱${fee})`,
+      description: `Cash out to ${receiverName} via ${normalizedChannel} (fee ₱${fee})`,
       status: 'completed'
     });
 
@@ -63,7 +90,7 @@ router.post('/cashout', requireAuth, async (req, res) => {
       fee: fee,
       netAmount: php - fee,
       referenceId: ref,
-      destinationType: channel.toUpperCase(),
+      destinationType: normalizedChannel,
       destinationAccount: accountNumber,
       status: 'PENDING'
     });
@@ -77,7 +104,7 @@ router.post('/cashout', requireAuth, async (req, res) => {
       feePercent: 1.5,
       feeAmount: fee,
       netAmount: php - fee,
-      metadata: { channel, receiverName, accountNumber }
+      metadata: { channel: normalizedChannel, receiverName, accountNumber, linkedAccountId: linkedAccount._id }
     });
     await Wallet.findOneAndUpdate({ userId: req.user.id }, { balance: await getLedgerBalance(req.user.id) });
 

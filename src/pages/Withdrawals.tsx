@@ -101,14 +101,32 @@ async function estimateFee(network: string): Promise<{ gasUsd: number; gwei?: nu
 }
 
 // ── PHP Withdrawal ─────────────────────────────────────────────────────────────
+const CHANNEL_TO_PROVIDER: Record<string, string> = { MAYA: "maya", GCASH: "gcash", BANK: "bank" };
+
 function PhpWithdrawal() {
   const [channel, setChannel] = useState("MAYA");
   const [amount,  setAmount]  = useState("");
-  const [account, setAccount] = useState("");
-  const [name,    setName]    = useState("");
   const [result,  setResult]  = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+
+  // ── Linked accounts — fetched once, filtered per channel ────────────────
+  const [banks,        setBanks]        = useState<any[]>([]);
+  const [banksLoading,  setBanksLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/v1/bank/list", { credentials: "include" })
+      .then(res => res.json())
+      .then(data => setBanks(data.banks || []))
+      .catch(() => setBanks([]))
+      .finally(() => setBanksLoading(false));
+  }, []);
+
+  const linkedAccount = banks.find(
+    b => b.provider === CHANNEL_TO_PROVIDER[channel] && b.status === "active"
+  );
+  const account = linkedAccount?.accountNumber ?? "";
+  const name    = linkedAccount?.accountName ?? "";
 
   async function handleCashOut() {
     setLoading(true); setError(""); setResult(null);
@@ -118,7 +136,6 @@ function PhpWithdrawal() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: parseFloat(amount), channel,
-          accountNumber: account, receiverName: name,
         }),
       });
       const data = await res.json();
@@ -140,7 +157,7 @@ function PhpWithdrawal() {
         {" "}(Fee: ₱{result.fee})
       </p>
       <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{result.message}</p>
-      <button onClick={() => { setResult(null); setAmount(""); setAccount(""); setName(""); }}
+      <button onClick={() => { setResult(null); setAmount(""); }}
         style={{ marginTop: 16, background: "transparent", border: "1px solid #1d2942",
           borderRadius: 8, color: "#94a3b8", padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
         New Withdrawal
@@ -164,19 +181,35 @@ function PhpWithdrawal() {
       <label style={lbl}>Amount (PHP)</label>
       <input style={inp} type="number" placeholder="Min ₱100"
         value={amount} onChange={e => setAmount(e.target.value)} />
-      <label style={lbl}>{channel === "BANK" ? "Account Number" : "Mobile Number"}</label>
-      <input style={inp} type="text"
-        placeholder={channel === "BANK" ? "e.g. 1234567890" : "e.g. 09XXXXXXXXX"}
-        value={account} onChange={e => setAccount(e.target.value)} />
-      <label style={lbl}>Account Name</label>
-      <input style={inp} type="text" placeholder="Full name"
-        value={name} onChange={e => setName(e.target.value)} />
+
+      {banksLoading ? (
+        <p style={{ color: "#64748b", fontSize: 13, marginTop: 16 }}>Loading linked accounts…</p>
+      ) : linkedAccount ? (
+        <>
+          <label style={lbl}>{channel === "BANK" ? "Account Number" : "Mobile Number"}</label>
+          <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
+            value={account} disabled readOnly />
+          <label style={lbl}>Account Name</label>
+          <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
+            value={name} disabled readOnly />
+          <p style={{ color: "#64748b", fontSize: 11, marginTop: 6 }}>
+            🔒 Linked to your profile — withdrawals always go to this account.
+          </p>
+        </>
+      ) : (
+        <div style={{ background: "#1a1013", border: "1px solid #7f1d1d", borderRadius: 8,
+          padding: "10px 12px", marginTop: 16, color: "#fca5a5", fontSize: 12 }}>
+          ⚠️ No linked {channel === "BANK" ? "Bank" : channel === "MAYA" ? "Maya" : "GCash"} account found.
+          Please <a href="/profile" style={{ color: "#f87171", fontWeight: 600 }}>add one in your Profile</a> before withdrawing.
+        </div>
+      )}
+
       <div style={{ background: "#1a1a0a", border: "1px solid #854d0e", borderRadius: 8,
         padding: "10px 12px", marginTop: 16, marginBottom: 16, color: "#fbbf24", fontSize: 12 }}>
         ⚠️ Fee: 1.5% • Minimum ₱100 • Processed within 24 hours
       </div>
       <button className="auth-btn" onClick={handleCashOut}
-        disabled={loading || !amount || !account || !name}>
+        disabled={loading || !amount || !linkedAccount}>
         {loading ? "Submitting..." : "Request Withdrawal"}
       </button>
       {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
