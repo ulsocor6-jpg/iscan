@@ -139,6 +139,21 @@ async function handleTransferLog(log) {
 const BACKSTOP_LOOKBACK_BLOCKS = 300;
 let lastScannedBlock = null;
 
+// Quicknode's free tier limits eth_getLogs to a 5-block range per request.
+// Chunk any wider range into sequential 5-block windows and concatenate —
+// same approach already used for the Ronin listener.
+const GETLOGS_CHUNK_SIZE = 5;
+
+async function chunkedGetLogs(provider, { address, topics, fromBlock, toBlock }) {
+  const allLogs = [];
+  for (let start = fromBlock; start <= toBlock; start += GETLOGS_CHUNK_SIZE) {
+    const end = Math.min(start + GETLOGS_CHUNK_SIZE - 1, toBlock);
+    const chunk = await provider.getLogs({ address, topics, fromBlock: start, toBlock: end });
+    allLogs.push(...chunk);
+  }
+  return allLogs;
+}
+
 async function backstopScan() {
   if (addrByLower.size === 0) return;
 
@@ -148,7 +163,7 @@ async function backstopScan() {
     ? Math.min(lastScannedBlock + 1, latest - BACKSTOP_LOOKBACK_BLOCKS)
     : Math.max(latest - BACKSTOP_LOOKBACK_BLOCKS, 0);
 
-  const logs = await httpProvider.getLogs({
+  const logs = await chunkedGetLogs(httpProvider, {
     address: FLOWER_TOKEN_ADDRESS,
     topics: [TRANSFER_TOPIC, null, paddedAddresses],
     fromBlock,
