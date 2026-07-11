@@ -31,19 +31,25 @@ router.post('/request', requireAuth, async (req, res) => {
       return res.status(400).json({ error: `Invalid channel. Must be one of: ${validChannels.join(', ')}` });
     }
 
-    // ── Maya channel: verify the user has a linked Maya number ────────────
-    if (channel === 'MAYA') {
-      const linkedMaya = await BankAccount.findOne({
-        userId: req.user.id,
-        provider: 'maya'
-      }).lean();
+    // ── Verify the user has a linked cash-in account for this channel ─────
+    // Without this, auto-matching has nothing to reconcile against — the
+    // verifier/listener resolves incoming payments via the user's linked
+    // BankAccount, so a deposit request with no linked account is orphaned
+    // by construction.
+    const providerByChannel = { MAYA: 'maya', GCASH: 'gcash', BANK: 'bank' };
+    const requiredProvider = providerByChannel[channel];
 
-      if (!linkedMaya) {
-        return res.status(400).json({
-          error: 'No linked Maya account found. Please link your Maya number in your profile before depositing via Maya.',
-          code: 'NO_LINKED_MAYA_ACCOUNT',
-        });
-      }
+    const linkedAccount = await BankAccount.findOne({
+      userId: req.user.id,
+      provider: requiredProvider,
+      status: 'active',
+    }).lean();
+
+    if (!linkedAccount) {
+      return res.status(400).json({
+        error: `No linked ${channel} account found. Please link your ${channel} account in your profile before depositing via ${channel}.`,
+        code: 'NO_LINKED_ACCOUNT',
+      });
     }
 
     const existingDeposit = await DirectDeposit.findOne({
