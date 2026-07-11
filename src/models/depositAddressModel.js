@@ -32,6 +32,18 @@ const depositAddressSchema = new mongoose.Schema(
       default: null,
       index: true
     },
+    // 'EOA' = legacy HD-derived wallet with a private key (needs gas
+    // pre-funded before it can sweep itself). 'FORWARDER' = CREATE2
+    // smart-contract address with no private key (sweeps via the
+    // factory's deploy()/sweep() call, operator pays gas, no funding
+    // step needed). Existing records predate this field and are always
+    // treated as 'EOA' by application code even where this is undefined
+    // \u2014 the default here only affects newly created records.
+    addressType: {
+      type: String,
+      enum: ['EOA', 'FORWARDER'],
+      default: 'EOA'
+    },
 
     status: {
       type: String,

@@ -30,11 +30,9 @@ const CHAINS = {
   },
 
   BASE: {
-    rpcUrl: process.env.BASE_RPC || "https://mainnet.base.org",
+    rpcUrl: process.env.BASE_BALANCE_RPC || process.env.BASE_RPC || "https://base.llamarpc.com",
     chainIdHex: "0x2105",
     tokens: {
-      ETH: null,
-
       USDC:
         process.env.BASE_USDC_TOKEN ||
         "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -51,11 +49,9 @@ const CHAINS = {
   },
 
   RONIN: {
-    rpcUrl: process.env.RONIN_RPC || "https://api.roninchain.com/rpc",
+    rpcUrl: process.env.RONIN_BALANCE_RPC || process.env.RONIN_RPC || "https://api.roninchain.com/rpc",
     chainIdHex: "0x7e4",
     tokens: {
-      RON: null,
-
       FLOWER:
         process.env.RONIN_FLOWER_TOKEN ||
         process.env.FLOWER_TOKEN ||
@@ -69,14 +65,9 @@ const CHAINS = {
       // supported asset list is WETH/AXS/SLP/RON/USDC only. The key is
       // omitted entirely (not set to null — null means "native currency
       // alias", which USDT is not) so it's never queried and never shown.
-
-      AXS:
-        process.env.RONIN_AXS_TOKEN ||
-        "0x97a9107c1793bc407d6f527b77e7fff4d812bece",
-
-      SLP:
-        process.env.RONIN_SLP_TOKEN ||
-        "0xa8754b9fa15fc18bb59458815510e40a12cd2014",
+      //
+      // AXS/SLP dropped from live polling (2026-07-11) — not needed for
+      // treasury display, cuts 2 RPC calls per Ronin balance check.
     },
   },
 };
@@ -174,7 +165,7 @@ export async function getTokenBalance(
       contract.balanceOf(address),
       getDecimals(chainKey, tokenAddress),
     ]),
-    10000,
+    4000,
     `${chainKey} ${tokenSymbol} balanceOf`
   );
 
@@ -191,7 +182,7 @@ export async function getNativeBalance(
 
   const raw = await withTimeout(
     provider.getBalance(address),
-    10000,
+    4000,
     `${chainKey} native balance`
   );
 
@@ -212,25 +203,21 @@ export async function getAllBalancesForAddress(
 
   const tokenSymbols = Object.keys(chain.tokens);
 
-  // Small delay helper so we don't fire every call in this chain at once —
-  // public RPCs (Ronin's especially) rate-limit request bursts per IP.
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const STAGGER_MS = 150;
-
-  const native = await getNativeBalance(chainKey, address).catch((err) => {
-    console.error(`[DEBUG] ${chainKey} native balance failed:`, err.message);
-    return null;
-  });
-
-  const tokenBalances = [];
-  for (const sym of tokenSymbols) {
-    await wait(STAGGER_MS);
-    const balance = await getTokenBalance(chainKey, address, sym).catch((err) => {
-      console.error(`[DEBUG] ${chainKey} ${sym} balance failed:`, err.message);
+  // Run native + all token balance calls in parallel instead of
+  // sequentially — a single slow/dead RPC used to cascade into a
+  // 10s wait PER call. Now every call races the same timeout at once.
+  const [native, ...tokenBalances] = await Promise.all([
+    getNativeBalance(chainKey, address).catch((err) => {
+      console.error(`[DEBUG] ${chainKey} native balance failed:`, err.message);
       return null;
-    });
-    tokenBalances.push(balance);
-  }
+    }),
+    ...tokenSymbols.map((sym) =>
+      getTokenBalance(chainKey, address, sym).catch((err) => {
+        console.error(`[DEBUG] ${chainKey} ${sym} balance failed:`, err.message);
+        return null;
+      })
+    ),
+  ]);
 
   const result = {
     native,
