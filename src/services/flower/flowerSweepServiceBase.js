@@ -14,11 +14,13 @@
 // every order the user creates.
 
 import { ethers }           from "ethers";
+import fs                   from "fs";
 import FlowerOrder          from "../../models/flower/flowerOrderModel.js";
 import DepositAddress       from "../../models/depositAddressModel.js";
-import { deriveBaseAddress } from "../hdWalletService.js";
+import { deriveBaseAddress, indexToSalt } from "../hdWalletService.js";
 import { ERC20_ABI }        from "../../../config/katana.js"; // generic ERC20 ABI (transfer/balanceOf/decimals) — not Ronin-specific
 import inspector            from "../blockchain/inspector/blockchainInspector.js";
+import { withTreasuryLock } from "../treasury/treasurySendQueue.js";
 
 const BASE_RPC      = process.env.BASE_RPC || "https://mainnet.base.org";
 const FLOWER_TOKEN  = process.env.BASE_DEPOSIT_TOKEN;
@@ -62,6 +64,16 @@ export async function sweepFlowerToTreasuryBase(orderId) {
     return logAndThrow(`No HD index found for address ${order.depositAddress}`);
   }
 
+  // Forwarder-contract addresses have no private key \u2014 sweeping means
+  // calling the factory's deploy()/sweep(), not signing a transfer from
+  // the deposit address itself. Branch here and return early; the rest
+  // of this function (private key derivation, gas pre-funding, direct
+  // ERC20 transfer) is the legacy EOA path and applies only when
+  // addressType is 'EOA' or unset (all pre-migration addresses).
+  if (depositRecord.addressType === "FORWARDER") {
+    return sweepViaForwarderBase({ order, depositRecord, orderId });
+  }
+
   const derived = await deriveBaseAddress(depositRecord.hdIndex);
   if (!derived?.privateKey) {
     return logAndThrow(`Could not derive private key for index ${depositRecord.hdIndex}`);
@@ -99,11 +111,13 @@ export async function sweepFlowerToTreasuryBase(orderId) {
     });
 
     console.log(`[FlowerSweepBase] ${orderId} — funding ${ethers.formatEther(topUpAmount)} ETH gas to ${order.depositAddress}`);
-    const fundTx = await treasurySigner.sendTransaction({
-      to: order.depositAddress,
-      value: topUpAmount
+    const fundTx = await withTreasuryLock("BASE", async () => {
+      const sentTx = await treasurySigner.sendTransaction({
+        to: order.depositAddress,
+        value: topUpAmount
+      });
+      return sentTx.wait();
     });
-    await fundTx.wait();
     console.log(`[FlowerSweepBase] ${orderId} — gas funded (tx: ${fundTx.hash})`);
 
     inspector.success("swap", `Gas funded for ${orderId}`, {
@@ -159,6 +173,64 @@ export async function sweepFlowerToTreasuryBase(orderId) {
   });
 
   return { txHash: receipt.hash, amount: expected };
+}
+
+async function sweepViaForwarderBase({ order, depositRecord, orderId }) {
+  const provider = new ethers.JsonRpcProvider(BASE_RPC);
+  const flowerTokenReadOnly = new ethers.Contract(FLOWER_TOKEN, ERC20_ABI, provider);
+
+  const decimals  = await flowerTokenReadOnly.decimals();
+  const balance   = await flowerTokenReadOnly.balanceOf(order.depositAddress);
+  const amountWei = ethers.parseUnits(order.receivedAmount.toString(), decimals);
+
+  if (balance < amountWei) {
+    throw new Error(
+      `Address ${order.depositAddress} balance ` +
+      `(${ethers.formatUnits(balance, decimals)} FLOWER) is less than order ${orderId}'s ` +
+      `expected ${order.receivedAmount} FLOWER \u2014 refusing to sweep a short amount`
+    );
+  }
+
+  if (!process.env.BASE_FORWARDER_FACTORY) {
+    throw new Error("BASE_FORWARDER_FACTORY is not set");
+  }
+  if (!process.env.BASE_TREASURY_PRIVATE_KEY) {
+    throw new Error("BASE_TREASURY_PRIVATE_KEY is not set \u2014 cannot pay gas for forwarder sweep");
+  }
+
+  const artifact = JSON.parse(
+    fs.readFileSync(
+      new URL("../../../artifacts/contracts/ForwarderFactory.sol/ForwarderFactory.json", import.meta.url)
+    )
+  );
+
+  const operator = new ethers.Wallet(process.env.BASE_TREASURY_PRIVATE_KEY, provider);
+  const factory  = new ethers.Contract(process.env.BASE_FORWARDER_FACTORY, artifact.abi, operator);
+  const salt     = indexToSalt(depositRecord.hdIndex);
+
+  inspector.info("swap", `Forwarder sweep starting for ${orderId}`, {
+    orderId, userId: String(order.userId), chain: "BASE", step: "sweep_start", addressType: "FORWARDER"
+  });
+  console.log(`[FlowerSweepBase] ${orderId} \u2014 sweeping via forwarder factory.deploy() (hdIndex ${depositRecord.hdIndex})`);
+
+  const receipt = await withTreasuryLock("BASE", async () => {
+    const tx = await factory.deploy(salt);
+    return tx.wait();
+  });
+
+  console.log(`[FlowerSweepBase] ${orderId} \u2014 forwarder sweep complete (tx: ${receipt.hash})`);
+
+  await FlowerOrder.updateOne(
+    { orderId },
+    { status: "VERIFIED", sweepTxHash: receipt.hash }
+  );
+
+  inspector.success("swap", `Sweep complete for ${orderId} (forwarder)`, {
+    orderId, userId: String(order.userId), chain: "BASE", step: "sweep_complete",
+    txHash: receipt.hash, amount: order.receivedAmount
+  });
+
+  return { txHash: receipt.hash, amount: order.receivedAmount };
 }
 
 export default { sweepFlowerToTreasuryBase };
