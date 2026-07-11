@@ -5,9 +5,28 @@ const eventSchema = new mongoose.Schema({
   entityId: String,
   userId: String,
   data: Object,
-  timestamp: { type: Date, default: Date.now }
+  timestamp: { type: Date, default: Date.now },
+  // Auto-cleanup: set at write time based on event type (see emit()).
+  // A single TTL index on this field handles expiry — no manual
+  // deletion or cron job needed.
+  expiresAt: { type: Date, index: { expireAfterSeconds: 0 } },
 });
 const Event = mongoose.model('Event', eventSchema);
+
+// Only these event types get persisted to MongoDB's audit trail.
+// Everything else (routine http_request logging, dashboard polling, etc.)
+// still broadcasts live via SSE but is never written to disk — that's
+// what was flooding the collection (347k+ docs from http_request alone).
+const PERSIST_PATTERN = /(deposit|withdrawal)\.|error|failed|flagged/i;
+
+const ERROR_RETENTION_DAYS     = 7;
+const FINANCIAL_RETENTION_DAYS = 90;
+
+function computeExpiresAt(type) {
+  const isErrorLike = /error|failed|flagged/i.test(type);
+  const days = isErrorLike ? ERROR_RETENTION_DAYS : FINANCIAL_RETENTION_DAYS;
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
 
 // In-memory SSE admin clients
 const adminClients = new Set();
@@ -37,16 +56,24 @@ class EventStreamService {
   }
 
   async emit(type, data) {
-    // Save to MongoDB audit trail
+    // Push to all connected admin dashboards instantly — always, regardless
+    // of whether this event type gets persisted below.
+    this.broadcast(type, data);
+
+    // Only persist deposit/withdrawal/error-type events to the DB. This is
+    // what actually caps collection growth — routine events (http_request,
+    // admin GETs, etc.) are still visible live via SSE but never written.
+    if (!PERSIST_PATTERN.test(type)) {
+      return null;
+    }
+
     const event = await Event.create({
       type,
       entityId: data.entityId || null,
       userId: data.userId || null,
-      data
+      data,
+      expiresAt: computeExpiresAt(type),
     });
-
-    // Push to all connected admin dashboards instantly
-    this.broadcast(type, data);
 
     return event;
   }
