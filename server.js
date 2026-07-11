@@ -12,6 +12,44 @@ import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.
 import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
+import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
+
+// ── Process-level safety net ────────────────────────────────────────────
+// Node 15+ terminates the entire process on an unhandled promise rejection
+// by default. Without this, ANY route handler or background job that lets
+// a rejected promise escape uncaught (e.g. a webhook handler that
+// re-throws after logging) takes down the whole backend — every user,
+// every open connection, every other endpoint — not just the one request
+// that failed. This does not fix the underlying bug in any given handler;
+// it just prevents one bad request from being able to kill the server
+// while those are found and fixed one by one.
+process.on("unhandledRejection", (reason, promise) => {
+  const message = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  console.error("[FATAL] Unhandled promise rejection:", message);
+
+  sendTelegramAlert(
+    `\ud83d\udea8 <b>Unhandled promise rejection</b>\n` +
+    `The process would have crashed without this safety net.\n` +
+    `Error: <code>${String(reason?.message || reason).slice(0, 500)}</code>\n` +
+    `This MUST be fixed at the source \u2014 check logs immediately.`
+  ).catch(() => {});
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err.stack || err.message);
+
+  sendTelegramAlert(
+    `\ud83d\udea8 <b>Uncaught exception</b>\n` +
+    `Error: <code>${String(err?.message || err).slice(0, 500)}</code>\n` +
+    `This MUST be fixed at the source \u2014 check logs immediately.`
+  ).catch(() => {});
+
+  // Unlike unhandledRejection, an uncaughtException means the process is
+  // in a potentially corrupted state (Node's own docs recommend this) —
+  // log, alert, and exit so the process manager restarts us cleanly,
+  // rather than silently continuing in an unknown state.
+  process.exit(1);
+});
 
 async function startServer() {
   try {
