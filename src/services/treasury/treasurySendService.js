@@ -6,6 +6,7 @@ import { ethers } from "ethers";
 import Wallet from "../../models/walletModel.js";
 import { getOrCreateBaseDepositAddress } from "../flower/baseWalletService.js";
 import inspector from "../blockchain/inspector/blockchainInspector.js";
+import { withTreasuryLock } from "./treasurySendQueue.js";
 
 const BASE_RPC             = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 const TREASURY_PRIVATE_KEY = process.env.BASE_TREASURY_PRIVATE_KEY;
@@ -92,27 +93,31 @@ export async function sendStablecoinToUser({
     `[Treasury] Sending ${amount} ${currency} from treasury → ${toAddress} (ref: ${txRef})`
   );
 
-  // ── Set up provider + signer ─────────────────────────────────────────────
-  const provider = new ethers.JsonRpcProvider(BASE_RPC);
-  const signer   = new ethers.Wallet(TREASURY_PRIVATE_KEY, provider);
-  const token    = new ethers.Contract(contractAddress, ERC20_ABI, signer);
+  // Signing + sending must be serialized per chain — two concurrent
+  // sends from the same treasury wallet would otherwise race for the
+  // same "next nonce" from the network. Balance check is included inside
+  // the lock too, so it reflects the balance right before THIS send,
+  // not a stale read from before an earlier queued send completed.
+  const receipt = await withTreasuryLock("BASE", async () => {
+    const provider = new ethers.JsonRpcProvider(BASE_RPC);
+    const signer   = new ethers.Wallet(TREASURY_PRIVATE_KEY, provider);
+    const token    = new ethers.Contract(contractAddress, ERC20_ABI, signer);
 
-  // ── Check treasury balance before sending ────────────────────────────────
-  const decimals      = await token.decimals();
-  const amountWei     = ethers.parseUnits(amount.toFixed(Number(decimals)), decimals);
-  const treasuryBal   = await token.balanceOf(TREASURY_WALLET || signer.address);
+    const decimals      = await token.decimals();
+    const amountWei     = ethers.parseUnits(amount.toFixed(Number(decimals)), decimals);
+    const treasuryBal   = await token.balanceOf(TREASURY_WALLET || signer.address);
 
-  if (treasuryBal < amountWei) {
-    throw new Error(
-      `Treasury ${currency} balance insufficient. ` +
-      `Have: ${ethers.formatUnits(treasuryBal, decimals)}, ` +
-      `Need: ${amount}`
-    );
-  }
+    if (treasuryBal < amountWei) {
+      throw new Error(
+        `Treasury ${currency} balance insufficient. ` +
+        `Have: ${ethers.formatUnits(treasuryBal, decimals)}, ` +
+        `Need: ${amount}`
+      );
+    }
 
-  // ── Send ─────────────────────────────────────────────────────────────────
-  const tx      = await token.transfer(toAddress, amountWei);
-  const receipt = await tx.wait();
+    const tx = await token.transfer(toAddress, amountWei);
+    return tx.wait();
+  });
 
   console.log(
     `[Treasury] ✅ Sent ${amount} ${currency} → ${toAddress} | tx: ${receipt.hash} (ref: ${txRef})`
@@ -208,24 +213,29 @@ export async function sendCryptoToAddress({
   );
 
   try {
-    const provider = new ethers.JsonRpcProvider(config.rpc);
-    const signer   = new ethers.Wallet(config.treasuryPrivateKey, provider);
-    const token    = new ethers.Contract(contractAddress, ERC20_ABI, signer);
+    // Same per-chain serialization as sendStablecoinToUser — prevents
+    // this withdrawal payout from racing a concurrent sweep or another
+    // withdrawal for the same treasury wallet's nonce.
+    const receipt = await withTreasuryLock(chainKey, async () => {
+      const provider = new ethers.JsonRpcProvider(config.rpc);
+      const signer   = new ethers.Wallet(config.treasuryPrivateKey, provider);
+      const token    = new ethers.Contract(contractAddress, ERC20_ABI, signer);
 
-    const decimals     = await token.decimals();
-    const amountWei    = ethers.parseUnits(amount.toFixed(Number(decimals)), decimals);
-    const treasuryAddr = config.treasuryWallet || signer.address;
-    const treasuryBal  = await token.balanceOf(treasuryAddr);
+      const decimals     = await token.decimals();
+      const amountWei    = ethers.parseUnits(amount.toFixed(Number(decimals)), decimals);
+      const treasuryAddr = config.treasuryWallet || signer.address;
+      const treasuryBal  = await token.balanceOf(treasuryAddr);
 
-    if (treasuryBal < amountWei) {
-      throw new Error(
-        `Treasury ${currency} balance insufficient on ${chainKey}. ` +
-        `Have: ${ethers.formatUnits(treasuryBal, decimals)}, Need: ${amount}`
-      );
-    }
+      if (treasuryBal < amountWei) {
+        throw new Error(
+          `Treasury ${currency} balance insufficient on ${chainKey}. ` +
+          `Have: ${ethers.formatUnits(treasuryBal, decimals)}, Need: ${amount}`
+        );
+      }
 
-    const tx      = await token.transfer(toAddress, amountWei);
-    const receipt = await tx.wait();
+      const tx = await token.transfer(toAddress, amountWei);
+      return tx.wait();
+    });
 
     inspector.success(
       "TreasurySendService",
