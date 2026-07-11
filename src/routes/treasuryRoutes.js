@@ -138,4 +138,18 @@ router.post('/pools/:currency/topup', requireAuth, requireAdmin, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /treasury/withdrawal-cap ───────────────────────────────────────────
+// User-facing "how much can I withdraw right now" figure — deliberately
+// NOT labeled or framed as the treasury's actual balance.
+import { getWithdrawalCaps } from '../services/treasury/treasuryLiquidityService.js';
+
+router.get('/withdrawal-cap', requireAuth, async (req, res) => {
+  try {
+    const caps = await getWithdrawalCaps();
+    res.json({ success: true, withdrawalCap: caps });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

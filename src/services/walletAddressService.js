@@ -105,7 +105,8 @@ export async function getOrCreateChainAddress(userId, chain) {
     address: derived.address,
     hdIndex,
     token: "*",
-    status: "active"
+    status: "active",
+    addressType: USE_FORWARDER_ADDRESSES ? "FORWARDER" : "EOA"
   });
 
   // Immediately register the new address with the live in-memory

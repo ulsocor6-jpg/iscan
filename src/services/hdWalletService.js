@@ -120,7 +120,7 @@ function getForwarderInitCodeHash() {
 // DepositAddress.hdIndex bookkeeping and admin tooling keep working
 // unchanged \u2014 only what the index maps TO changes (a contract
 // address instead of an EOA address).
-function indexToSalt(index) {
+export function indexToSalt(index) {
   return ethers.zeroPadValue(ethers.toBeHex(index), 32);
 }
 
