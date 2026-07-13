@@ -96,6 +96,15 @@ class AddressFilter extends EventEmitter {
     }
 
     /**
+     * Get all currently watched addresses (normalized)
+     */
+    getWatchedAddresses() {
+
+        return [...this.watchMap.keys()];
+
+    }
+
+    /**
      * Count
      */
     size() {
