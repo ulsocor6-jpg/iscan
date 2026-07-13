@@ -4,16 +4,29 @@ import BlockchainCursor from "../../../models/blockchain/blockchainCursorModel.j
 
 import decoderRegistry from "../decoder/decoderRegistry.js";
 import addressFilter from "../filter/addressFilter.js";
+import activeDepositSessions from "../watch/activeDepositSessions.js";
 
 import { record } from "../journal/blockchainInbox.js";
 import inspector from "../inspector/blockchainInspector.js";
+import rpcUsageMonitor from "../monitor/rpcUsageMonitor.js";
+import { getProviderProfile } from "../config/providerRegistry.js";
 
-const POLL_INTERVAL = 1000;
+const POLL_INTERVAL = 15000; // was 1000ms — that meant a getBlockNumber() call every second per chain, forever, even when idle. 15s is still fast enough for deposit monitoring and cuts polling-overhead RPC usage by ~15x.              // base tick — cheap, just checks chain timers
 
-// Alchemy Free Tier
-const BLOCK_CHUNK = 10;
-const MAX_CHUNKS_PER_TICK = 20; // caps per-chain work per tick so no chain starves the others
-const CACHE_TTL_MS = 60000; // recorder cache: skip re-scanning a range already handled this session
+const DEFAULT_MIN_CHAIN_INTERVAL = 40000;    // fastest we'll hit a chain's RPC under real demand
+const DEFAULT_MAX_CHAIN_INTERVAL = 120000;   // slowest backoff when idle — 2 min max, per demand-based policy
+const BACKOFF_MULTIPLIER = 2;
+
+const MIN_ALLOWED_INTERVAL = 1000;       // safety floor — admin can't force sub-1s polling by accident
+
+const DEFAULT_BLOCK_CHUNK = 10;           // fallback if a provider profile doesn't specify maxLogRange
+const MAX_CHUNKS_PER_TICK = 8;           // caps how many getLogs calls can fire back-to-back on catch-up
+const CACHE_TTL_MS = 60000;
+
+const IDLE_CHAIN_INTERVAL = 12 * 60 * 60 * 1000; // 12h — no active deposit session on this chain
+const IDLE_BLOCK_CHUNK = 1;                        // minimal scan range while idle
+
+const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
 
 class BlockchainEngine {
 
@@ -25,48 +38,23 @@ class BlockchainEngine {
         this._polling = false;
         this._recentRanges = new Map();
 
+        this._chainState = new Map();
+
     }
 
-    /*
-    --------------------------------------------------------
-    Register Chain
-    --------------------------------------------------------
-    */
-
-    register({
-
-        chain,
-        network,
-        rpc,
-        contracts = []
-
-    }) {
+    register({ chain, network, rpc, contracts = [] }) {
 
         const validContracts = contracts
             .filter(Boolean)
             .map(c => c.trim().toLowerCase());
 
         if (!rpc) {
-            throw new Error(
-                `[BlockchainEngine] Missing RPC for ${chain}`
-            );
+            throw new Error(`[BlockchainEngine] Missing RPC for ${chain}`);
         }
 
         if (validContracts.length === 0) {
-            throw new Error(
-                `[BlockchainEngine] No contracts configured for ${chain}`
-            );
+            throw new Error(`[BlockchainEngine] No contracts configured for ${chain}`);
         }
-
-        console.log("");
-
-        console.log("[REGISTER]");
-        console.log({
-            chain,
-            network,
-            rpc,
-            contracts: validContracts
-        });
 
         inspector.info(
             "BlockchainEngine",
@@ -74,25 +62,108 @@ class BlockchainEngine {
             { chain, network, contracts: validContracts }
         );
 
+        rpcUsageMonitor.registerChain(chain, rpc);
+
+        const profile = getProviderProfile(rpc);
+        const blockChunk = profile.maxLogRange ?? DEFAULT_BLOCK_CHUNK;
+
         this.chains.push({
-
             chain,
-
             network,
-
             provider: new ethers.JsonRpcProvider(rpc),
+            contracts: validContracts,
+            blockChunk
+        });
 
-            contracts: validContracts
-
+        this._chainState.set(chain, {
+            nextPollAt: 0,
+            currentInterval: DEFAULT_MIN_CHAIN_INTERVAL,
+            minInterval: DEFAULT_MIN_CHAIN_INTERVAL,
+            maxInterval: DEFAULT_MAX_CHAIN_INTERVAL,
+            overrideInterval: null
         });
 
     }
 
-    /*
-    --------------------------------------------------------
-    Start
-    --------------------------------------------------------
-    */
+    setChainPollingOverride(chain, ms, { reason } = {}) {
+
+        const state = this._requireChainState(chain);
+
+        const clamped = Math.max(ms, MIN_ALLOWED_INTERVAL);
+        if (clamped !== ms) {
+            inspector.warn(
+                "BlockchainEngine",
+                `Admin override for ${chain} requested ${ms}ms, clamped to floor ${MIN_ALLOWED_INTERVAL}ms`,
+                { chain, requested: ms, applied: clamped }
+            );
+        }
+
+        state.overrideInterval = clamped;
+
+        inspector.warn(
+            "BlockchainEngine",
+            `Admin override active: ${chain} polling forced to ${clamped}ms`,
+            { chain, ms: clamped, reason: reason ?? null }
+        );
+
+    }
+
+    clearChainPollingOverride(chain) {
+
+        const state = this._requireChainState(chain);
+        state.overrideInterval = null;
+
+        inspector.info(
+            "BlockchainEngine",
+            `Admin override cleared for ${chain}, resuming adaptive polling`,
+            { chain, minInterval: state.minInterval, maxInterval: state.maxInterval }
+        );
+
+    }
+
+    setChainPollingBounds(chain, { min, max } = {}) {
+
+        const state = this._requireChainState(chain);
+
+        if (min != null) state.minInterval = Math.max(min, MIN_ALLOWED_INTERVAL);
+        if (max != null) state.maxInterval = Math.max(max, state.minInterval);
+
+        state.currentInterval = Math.min(Math.max(state.currentInterval, state.minInterval), state.maxInterval);
+
+        inspector.info(
+            "BlockchainEngine",
+            `Admin updated polling bounds for ${chain}`,
+            { chain, minInterval: state.minInterval, maxInterval: state.maxInterval }
+        );
+
+    }
+
+    getPollingState(chain) {
+
+        const state = this._chainState.get(chain);
+        if (!state) return null;
+
+        return {
+            chain,
+            currentInterval: state.currentInterval,
+            minInterval: state.minInterval,
+            maxInterval: state.maxInterval,
+            overrideInterval: state.overrideInterval,
+            nextPollAt: state.nextPollAt,
+            mode: state.overrideInterval != null ? "admin_override" : "adaptive"
+        };
+
+    }
+
+    getAllPollingState() {
+        return [...this._chainState.keys()].map(chain => this.getPollingState(chain));
+    }
+
+    _requireChainState(chain) {
+        const state = this._chainState.get(chain);
+        if (!state) throw new Error(`[BlockchainEngine] Unknown chain: ${chain}`);
+        return state;
+    }
 
     start() {
 
@@ -100,14 +171,10 @@ class BlockchainEngine {
 
         this.running = true;
 
-        console.log(
-            "[BlockchainEngine] Started."
-        );
-
         inspector.info(
             "BlockchainEngine",
             "Engine started",
-            { chains: this.chains.map(c => c.chain), pollIntervalMs: POLL_INTERVAL }
+            { chains: this.chains.map(c => c.chain), tickMs: POLL_INTERVAL }
         );
 
         setInterval(() => {
@@ -116,81 +183,79 @@ class BlockchainEngine {
             this.poll()
                 .catch((err) => {
                     console.error(err);
-                    inspector.error(
-                        "BlockchainEngine",
-                        err.message,
-                        { stack: err.stack }
-                    );
+                    inspector.error("BlockchainEngine", err.message, { stack: err.stack });
                 })
                 .finally(() => { this._polling = false; });
         }, POLL_INTERVAL);
 
-    }
+        setInterval(() => {
+            for (const snapshot of rpcUsageMonitor.snapshotAll()) {
+                inspector.info(
+                    "BlockchainEngine",
+                    snapshot.estimatedExhaustion
+                        ? `${snapshot.provider} ${snapshot.chain}: estimated quota exhaustion ${snapshot.estimatedExhaustion.toISOString()}`
+                        : `${snapshot.provider} ${snapshot.chain}: exhaustion estimate — insufficient data yet or no known monthly cap`,
+                    snapshot
+                );
+            }
+        }, 24 * 60 * 60 * 1000);
 
-    /*
-    --------------------------------------------------------
-    Poll Every Chain
-    --------------------------------------------------------
-    */
+    }
 
     async poll() {
 
+        const now = Date.now();
+
         for (const chain of this.chains) {
 
-            await this.pollChain(chain);
+            const state = this._chainState.get(chain.chain);
+
+            if (now < state.nextPollAt) continue;
+
+            await this.pollChain(chain, state);
 
         }
 
     }
 
-    /*
-    --------------------------------------------------------
-    Poll One Chain
-    --------------------------------------------------------
-    */
+    _scheduleNext(state) {
+        const interval = state.overrideInterval ?? state.currentInterval;
+        state.nextPollAt = Date.now() + interval;
+    }
 
-    async pollChain(chainConfig) {
+    async pollChain(chainConfig, state) {
 
-        const {
+        const { chain, network, provider, contracts, blockChunk } = chainConfig;
 
-            chain,
-            network,
-            provider,
-            contracts
+        const hasActiveSession = activeDepositSessions.isActive(chain);
+        const effectiveBlockChunk = hasActiveSession ? blockChunk : IDLE_BLOCK_CHUNK;
+        const effectiveMinInterval = hasActiveSession ? state.minInterval : IDLE_CHAIN_INTERVAL;
+        const effectiveMaxInterval = hasActiveSession ? state.maxInterval : IDLE_CHAIN_INTERVAL;
 
-        } = chainConfig;
+        const watchedAddresses = addressFilter.getWatchedAddresses();
 
-        let cursor =
-            await BlockchainCursor.findOne({
+        if (watchedAddresses.length === 0) {
+            this._scheduleNext(state);
+            return;
+        }
 
-                chain,
-                network
+        const watchedTopics = watchedAddresses.map(
+            addr => ethers.zeroPadValue(addr, 32)
+        );
 
-            });
+        let cursor = await BlockchainCursor.findOne({ chain, network });
 
         if (!cursor) {
 
-            const latest =
-                await provider.getBlockNumber();
+            const latest = await provider.getBlockNumber();
+            rpcUsageMonitor.record(chain, "eth_blockNumber");
 
-            cursor =
-                await BlockchainCursor.create({
-
-                    chain,
-
-                    network,
-
-                    collector:
-                        "BlockchainEngine",
-
-                    lastScannedBlock:
-                        latest
-
-                });
-
-            console.log(
-                `[${chain}] Cursor initialized at ${latest}`
-            );
+            cursor = await BlockchainCursor.create({
+                chain,
+                network,
+                collector: "BlockchainEngine",
+                lastScannedBlock: latest
+            });
 
             inspector.info(
                 "BlockchainEngine",
@@ -202,67 +267,46 @@ class BlockchainEngine {
 
         }
 
-        const latest =
-            await provider.getBlockNumber();
+        const latest = await provider.getBlockNumber();
+        rpcUsageMonitor.record(chain, "eth_blockNumber");
 
         if (latest <= cursor.lastScannedBlock) {
 
-            cursor.lastHeartbeat =
-                new Date();
-
+            cursor.lastHeartbeat = new Date();
             await cursor.save();
+
+            if (state.overrideInterval == null) {
+                state.currentInterval = Math.min(
+                    state.currentInterval * BACKOFF_MULTIPLIER,
+                    effectiveMaxInterval
+                );
+            }
+            this._scheduleNext(state);
 
             return;
 
         }
 
-        let from =
-            cursor.lastScannedBlock + 1;
+        if (state.overrideInterval == null) {
+            state.currentInterval = effectiveMinInterval;
+        }
 
+        let from = cursor.lastScannedBlock + 1;
         let chunksThisTick = 0;
 
         while (from <= latest && chunksThisTick < MAX_CHUNKS_PER_TICK) {
 
-            const to = Math.min(
-
-                from + BLOCK_CHUNK - 1,
-
-                latest
-
-            );
-
-            console.log(
-
-                `[${chain}] ${from} -> ${to}`
-
-            );
+            const to = Math.min(from + effectiveBlockChunk - 1, latest);
 
             if (!contracts.length) {
-
-                console.warn(
-                    `[${chain}] No contracts configured.`
-                );
-
-                inspector.warn(
-                    "BlockchainEngine",
-                    "No contracts configured",
-                    { chain }
-                );
-
+                inspector.warn("BlockchainEngine", "No contracts configured", { chain });
+                this._scheduleNext(state);
                 return;
-
             }
-
-            console.log(
-                `[${chain}] Watching ${contracts.length} contract(s)`
-            );
-
-            console.log(contracts);
 
             const rangeKey = `${chain}:${from}:${to}`;
             const cachedAt = this._recentRanges.get(rangeKey);
             if (cachedAt && (Date.now() - cachedAt) < CACHE_TTL_MS) {
-                console.log(`[${chain}] Skipping already-recorded range ${from}-${to} (cache hit)`);
                 cursor.lastScannedBlock = to;
                 cursor.lastHeartbeat = new Date();
                 await cursor.save();
@@ -272,80 +316,53 @@ class BlockchainEngine {
             }
             this._recentRanges.set(rangeKey, Date.now());
 
-            const logs =
-                await provider.getLogs({
-
+            let logs;
+            try {
+                logs = await provider.getLogs({
                     address: contracts,
-
+                    topics: [TRANSFER_TOPIC, null, watchedTopics],
                     fromBlock: from,
-
                     toBlock: to
-
                 });
+                rpcUsageMonitor.record(chain, "eth_getLogs");
+            } catch (err) {
+                const msg = err?.info?.responseBody || err?.shortMessage || err?.message || "";
+                const isPlanBlock = /does not support the .* method|upgrade to a paid plan|limited to a \d+ range|upgrade from .* plan/i.test(msg);
 
-            /*
-            -----------------------------------------
-            Decode
-            -----------------------------------------
-            */
+                if (isPlanBlock) {
+                    rpcUsageMonitor.recordHardBlock(chain, "eth_getLogs", msg);
+                    state.nextPollAt = Date.now() + Math.max(effectiveMaxInterval, state.overrideInterval ?? 0);
+                    return;
+                }
+
+                throw err;
+            }
 
             let decoded = 0;
+            let watched = 0;
+            let recorded = 0;
 
-let watched = 0;
+            for (const log of logs) {
 
-let recorded = 0;
+                const event = await decoderRegistry.decode(log, chain);
+                if (!event) continue;
+                decoded++;
 
-for (const log of logs) {
+                const watch = addressFilter.match(event.to);
+                if (!watch) continue;
+                watched++;
 
-    const event =
-        await decoderRegistry.decode(log, chain);
+                event.watch = watch;
+                await record(event);
+                recorded++;
 
-    if (!event) {
+                inspector.success(
+                    "BlockchainEngine",
+                    `Watched transfer detected`,
+                    { chain, token: event.token, to: event.to, value: event.value, txHash: event.txHash }
+                );
 
-        continue;
-
-    }
-
-    decoded++;
-
-    const watch =
-        addressFilter.match(
-            event.to
-        );
-
-    if (!watch) {
-
-        continue;
-
-    }
-
-    watched++;
-
-    event.watch = watch;
-
-    await record(event);
-
-    recorded++;
-
-    inspector.success(
-        "BlockchainEngine",
-        `Watched transfer detected`,
-        {
-            chain,
-            token: event.token,
-            to: event.to,
-            value: event.value,
-            txHash: event.txHash
-        }
-    );
-
-}
-
-console.log(
-
-    `[${chain.name}] RPC:${logs.length} Decoded:${decoded} Watched:${watched} Recorded:${recorded} Discarded:${decoded-watched}`
-
-);
+            }
 
             if (logs.length > 0) {
                 inspector.info(
@@ -355,30 +372,23 @@ console.log(
                 );
             }
 
-            /*
-            -----------------------------------------
-            Cursor
-            -----------------------------------------
-            */
-
             cursor.lastScannedBlock = to;
-
-            cursor.lastHeartbeat =
-                new Date();
-
-            cursor.totalBlocksScanned +=
-                (to - from + 1);
-
-            cursor.totalEventsCollected +=
-                logs.length;
+            cursor.lastHeartbeat = new Date();
+            cursor.totalBlocksScanned += (to - from + 1);
+            cursor.totalEventsCollected += logs.length;
 
             await cursor.save();
 
             from = to + 1;
             chunksThisTick++;
 
+            if (from <= latest && chunksThisTick < MAX_CHUNKS_PER_TICK) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
 
         }
+
+        this._scheduleNext(state);
 
     }
 

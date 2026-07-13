@@ -1,6 +1,7 @@
 import BlockchainInbox from "../../../models/blockchain/blockchainInboxModel.js";
 import Deposit from "../../../models/depositModel.js";
 import inspector from "../inspector/blockchainInspector.js";
+import activeDepositSessions from "../watch/activeDepositSessions.js";
 
 class DepositProcessor {
 
@@ -66,6 +67,8 @@ class DepositProcessor {
 
                 "WalletCreditWorker";
 
+            activeDepositSessions.clear(job.chain, `${job.watch.userId}:${job.to}`);
+
             await job.save();
 
             return;
@@ -107,6 +110,8 @@ class DepositProcessor {
         job.currentStage =
 
             "WalletCreditWorker";
+
+        activeDepositSessions.clear(job.chain, `${job.watch.userId}:${job.to}`);
 
         await job.save();
 

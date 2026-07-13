@@ -1,4 +1,5 @@
 import Wallet from "../models/walletModel.js";
+import activeDepositSessions from "../services/blockchain/watch/activeDepositSessions.js";
 
 /**
  * GET QUOTE
@@ -137,6 +138,15 @@ export const createDepositAddress = async (req, res) => {
         message: `${chain.toUpperCase()} address not found.`
       });
     }
+
+    // Mark this chain as actively awaited so blockchainEngine polls it
+    // fast (its normal adaptive cadence) instead of the 12h idle cadence,
+    // until the deposit is confirmed (cleared in depositProcessor.js) or
+    // the session's 30-min TTL lapses on its own.
+    activeDepositSessions.markActive(
+      chain.toLowerCase(),
+      `${userId}:${chainAddress.address}`
+    );
 
     return res.json({
       success: true,
