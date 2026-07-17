@@ -15,6 +15,17 @@
 // entries, notifications). It's the proposal's own _id-derived string, not
 // a Date.now() value, so re-running reconciliation against an
 // already-queued or already-applied drift never double-applies it.
+//
+// IMPORTANT: referenceId-based idempotency only protects against re-applying
+// the SAME proposal twice. It does NOT stop two independent PENDING proposals
+// from being created for the same live (userId, currency) drift if
+// reconciliation runs twice before the first proposal is resolved — each
+// would get its own referenceId and neither would recognize the other.
+// The partial unique index below closes that gap at the database level:
+// only one PENDING proposal can exist per (userId, currency) at a time.
+// Application code should also check for an existing PENDING proposal
+// before creating a new one (see reconciliationEngine.js) so this shows up
+// as a clean "already queued" outcome instead of a database error.
 
 import mongoose from 'mongoose';
 
@@ -78,5 +89,16 @@ const correctionQueueSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 correctionQueueSchema.index({ userId: 1, currency: 1, status: 1 });
+
+// Only one PENDING proposal allowed per (userId, currency) at a time.
+// Prevents two overlapping reconciliation runs (e.g. admin "Run Full
+// Correction" and a user's self-service sync firing close together) from
+// each queuing their own proposal for the same underlying drift, which
+// previously allowed both to later be approved and double-apply the
+// correction (double-credit or double-debit a real balance).
+correctionQueueSchema.index(
+  { userId: 1, currency: 1 },
+  { unique: true, partialFilterExpression: { status: 'PENDING' } }
+);
 
 export default mongoose.model('CorrectionQueue', correctionQueueSchema);

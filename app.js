@@ -9,6 +9,8 @@ import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import helmet from "helmet";
 import { generalApiLimiter } from "./middleware/rateLimiters.js";
+import reconciliationRoutes from './src/routes/reconciliation/reconciliationRoutes.js';
+import selfReconciliationRoutes from './src/routes/reconciliation/selfReconciliationRoutes.js';
 
 dotenv.config();
 
@@ -86,7 +88,6 @@ import bankRoutes from "./src/routes/bankRoutes.js";
 import beneficiaryRoutes from "./src/routes/beneficiaryRoutes.js";
 import kycRoutes from "./src/routes/kycRoutes.js";
 import diditRoutes from "./src/routes/diditRoutes.js";
-import swapRoutes from "./src/routes/swapRoutes.js";
 import phpSwapRoutes from "./src/routes/phpSwapRoutes.js";
 import onrampRoutes from "./src/routes/CryptoOnramproutes.js";
 import remittanceRoutes from "./src/routes/remittanceRoutes.js";
@@ -96,17 +97,20 @@ import internalWalletRoutes from "./src/routes/internalWalletRoutes.js";
 import webhookRoutes from "./src/routes/webhookRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
 import payoutRoutes from "./src/routes/payoutRoutes.js";
+import backgroundRoutes from "./src/routes/backgroundRoutes.js";
 import directDepositRoutes from "./src/routes/directDepositRoutes.js";
 import adminDepositRoutes from "./src/routes/adminDepositRoutes.js";
 import adminUserRoutes from "./src/routes/adminUserRoutes.js";
 import adminEventRoutes from "./src/routes/adminEventRoutes.js";
+import adminBlockchainPollingRoutes from "./src/routes/adminBlockchainPollingRoutes.js";
 import cryptoWithdrawalRoutes from "./src/routes/cryptoWithdrawalRoutes.js";
-import withdrawalRoutes from "./src/routes/withdrawalRoutes.js";
 import adminWithdrawalRoutes from "./src/routes/adminWithdrawalRoutes.js";
 import maribankNotifyRoute from "./src/routes/maribankNotifyRoute.js";
 import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js";
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
+import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
+import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
 
 /* ===========================
    Health
@@ -128,6 +132,16 @@ app.use("/api/v1/fees", feeRoutes);
 
 app.use("/api/v1/dashboard", dashboardRoutes);
 
+app.use(
+    "/api/v1/intelligence",
+    intelligenceRoutes
+);
+
+app.use(
+ "/api/v1/operator",
+ operatorRoutes
+);
+
 app.use("/api/v1/ledger", ledgerRoutes);
 app.use("/api/v1/transactions", transactionRoutes);
 app.use("/api/v1/transfer", transferRoutes);
@@ -141,7 +155,6 @@ app.use("/api/v1/admin", swapInspectorRoutes);
 app.use("/api/v1/kyc", kycRoutes);
 app.use("/api/v1/didit", diditRoutes);
 
-app.use("/api/v1/swap", swapRoutes);
 app.use("/api/v1/php-swap", phpSwapRoutes);
 
 app.use("/api/v1/onramp", onrampRoutes);
@@ -160,15 +173,18 @@ app.use("/api/v1/maya", mayaNotifyRoute);
 
 app.use("/api/v1/payment", paymentRoutes);
 app.use("/api/v1/payout", payoutRoutes);
+app.use("/api/v1/user/background", backgroundRoutes);
 
 app.use("/api/v1/deposit", directDepositRoutes);
 
-app.use("/api/v1/withdrawals", withdrawalRoutes);
 app.use("/api/v1/admin/withdrawals", adminWithdrawalRoutes);
 
 app.use("/api/v1/admin/deposits", adminDepositRoutes);
 app.use("/api/v1/admin/users", adminUserRoutes);
 app.use("/api/v1/admin/events", adminEventRoutes);
+app.use("/api/v1/admin/reconciliation", reconciliationRoutes);
+app.use("/api/v1/reconciliation", selfReconciliationRoutes);
+app.use("/api/v1/admin/blockchain", adminBlockchainPollingRoutes);
 app.use("/api/v1/admin/reconciliation", adminReconciliationRoutes);
 
 app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
@@ -178,6 +194,7 @@ app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
 =========================== */
 
 app.use("/api/admin/inspector", inspectorRoutes);
+app.use("/api/v1/intelligence", intelligenceRoutes);
 
 /* ===========================
    React Frontend

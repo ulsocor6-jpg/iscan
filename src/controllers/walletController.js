@@ -44,6 +44,7 @@ async function getOrCreateWallet(userId) {
 
     wallet = await Wallet.create({
       userId,
+      walletIndex,
       iscanAddress:
         "ISCAN-" +
         crypto.randomBytes(8).toString("hex").toUpperCase(),

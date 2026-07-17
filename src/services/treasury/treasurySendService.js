@@ -7,6 +7,7 @@ import Wallet from "../../models/walletModel.js";
 import { getOrCreateBaseDepositAddress } from "../flower/baseWalletService.js";
 import inspector from "../blockchain/inspector/blockchainInspector.js";
 import { withTreasuryLock } from "./treasurySendQueue.js";
+import { recordPendingOperation } from "../blockchain/pendingOperationService.js";
 
 const BASE_RPC             = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 const TREASURY_PRIVATE_KEY = process.env.BASE_TREASURY_PRIVATE_KEY;
@@ -116,6 +117,20 @@ export async function sendStablecoinToUser({
     }
 
     const tx = await token.transfer(toAddress, amountWei);
+
+    // Written BEFORE tx.wait() — this send goes to the user's own watched
+    // Base address, so without this the confirming transfer would look
+    // identical to a fresh external deposit to depositProcessor and could
+    // get double-credited.
+    await recordPendingOperation({
+      type: "INTERNAL_TRANSFER",
+      chain: "BASE",
+      txHash: tx.hash,
+      expectedAddress: toAddress,
+      token: currency,
+      referenceId: txRef,
+    });
+
     return tx.wait();
   });
 

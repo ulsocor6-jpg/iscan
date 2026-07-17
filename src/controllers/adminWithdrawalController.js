@@ -1,6 +1,28 @@
 import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "../services/walletService.js";
 import { settleCryptoWithdrawal } from "../services/withdrawalProcessor.js";
+import eventStreamService from "../services/eventStreamService.js";
+
+export async function getAllWithdrawals(req, res) {
+  try {
+    const withdrawals =
+      await WithdrawalRequest.find({})
+        .populate("userId", "firstName lastName email")
+        .sort({ createdAt: -1 })
+        .limit(500);
+
+    res.json({
+      success: true,
+      count: withdrawals.length,
+      withdrawals
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      error: err.message
+    });
+  }
+}
 
 export async function listPendingWithdrawals(req, res) {
   try {
@@ -71,6 +93,15 @@ export async function approveWithdrawal(req, res) {
       // "I have manually sent the money via Maya/GCash/Bank transfer" and
       // must NOT debit again.
       withdrawal.status = "completed";
+
+      eventStreamService.emit("withdrawal.completed", {
+        entityId: withdrawal.referenceId || withdrawal._id.toString(),
+        userId: withdrawal.userId ? withdrawal.userId.toString() : null,
+        cashoutId: withdrawal._id.toString(),
+        referenceId: withdrawal.referenceId,
+        amount: withdrawal.amount,
+        message: `Withdrawal ${withdrawal.referenceId} completed by admin — ₱${(withdrawal.netAmount ?? withdrawal.amount).toFixed(2)} sent.`,
+      }).catch(err => console.error("[adminWithdrawalController] Event emit failed:", err.message));
     }
 
     withdrawal.approvedBy = req.user?.id || null;
@@ -107,7 +138,11 @@ export async function rejectWithdrawal(req, res) {
     // Crypto withdrawals that reach here were never debited (they only
     // debit inside settleCryptoWithdrawal on approval), so no refund needed.
     if (withdrawal.type !== "crypto") {
-      await walletService.credit(withdrawal.userId, withdrawal.asset, withdrawal.amount + (withdrawal.fee || 0), {
+      // Only `withdrawal.amount` was ever debited (see paymentRoutes.js
+      // /cashout) — the fee comes out of netAmount when sent, it isn't a
+      // separate charge on top of amount. Refunding amount+fee here would
+      // now over-refund.
+      await walletService.credit(withdrawal.userId, withdrawal.asset, withdrawal.amount, {
         referenceId: `REFUND-${withdrawal.referenceId || withdrawal._id}`,
         description: `Withdrawal rejected — refund${reason ? `: ${reason}` : ""}`,
         transactionType: 'cashout_refund',
@@ -119,6 +154,16 @@ export async function rejectWithdrawal(req, res) {
     withdrawal.approvedBy = req.user?.id || null;
     withdrawal.approvedAt = new Date();
     await withdrawal.save();
+
+    eventStreamService.emit("withdrawal.rejected", {
+      entityId: withdrawal.referenceId || withdrawal._id.toString(),
+      userId: withdrawal.userId ? withdrawal.userId.toString() : null,
+      cashoutId: withdrawal._id.toString(),
+      referenceId: withdrawal.referenceId,
+      amount: withdrawal.amount,
+      reason: withdrawal.failReason,
+      message: `Withdrawal ${withdrawal.referenceId} rejected and refunded — ${withdrawal.failReason}`,
+    }).catch(err => console.error("[adminWithdrawalController] Event emit failed:", err.message));
 
     res.json({ success: true, withdrawal });
   } catch (err) {
@@ -135,22 +180,19 @@ import mongoose from "mongoose";
  */
 export async function verifyCashout(req, res) {
   try {
-    const { default: CashoutRequest } = await import("../models/CashoutRequest.js");
-    const { default: User } = await import("../models/userModel.js");
-
-    const cashout = await CashoutRequest.findById(req.params.id).lean();
+    // WithdrawalRequest is the live model — CashoutRequest is retired.
+    const cashout = await WithdrawalRequest.findById(req.params.id).lean();
     if (!cashout) return res.status(404).json({ error: "Not found" });
 
     const userId = new mongoose.Types.ObjectId(cashout.userId);
 
-    // Ledger debit entry for this cashout
+    // Match the exact debit for THIS withdrawal — no fallback to a loose
+    // transactionType match, which could surface a different cashout's
+    // ledger entry entirely.
     const debitEntry = await Ledger.findOne({
       userId,
       debit: { $gt: 0 },
-      $or: [
-        { referenceId: cashout.referenceId },
-        { transactionType: { $in: ['cashout', 'cashout_request'] } }
-      ]
+      referenceId: cashout.referenceId,
     }).sort({ createdAt: -1 }).lean();
 
     // Current ledger balance
@@ -160,8 +202,10 @@ export async function verifyCashout(req, res) {
     ]);
     const currentBalance = agg.length ? agg[0].c - agg[0].d : 0;
 
-    // Balance before cashout (add back the debit)
-    const balanceBefore = currentBalance + (cashout.amount || 0) + (cashout.fee || 0);
+    // Balance before cashout (add back the debit) — only `amount` is ever
+    // debited (see paymentRoutes.js /cashout), fee comes out of netAmount
+    // when sent, not charged separately from the user's balance.
+    const balanceBefore = currentBalance + (cashout.amount || 0);
 
     res.json({
       verified: !!debitEntry,

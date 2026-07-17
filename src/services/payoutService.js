@@ -4,6 +4,7 @@ import Transaction from "../models/transactionModel.js";
 import CashoutRequest from "../models/CashoutRequest.js";
 import Ledger from "../models/ledgerModel.js";
 import BankAccount from "../models/BankAccount.js";
+import eventStreamService from "./eventStreamService.js";
 
 const CASHOUT_FEE_RATE = 0.015;  // 1.5%
 const MIN_PAYOUT = 100;
@@ -109,6 +110,15 @@ export async function completePayout(cashoutId, adminNote = "") {
   cashout.adminNote   = adminNote;
   await cashout.save();
 
+  eventStreamService.emit("withdrawal.completed", {
+    entityId: cashout.referenceId || cashout._id.toString(),
+    userId: cashout.userId ? cashout.userId.toString() : null,
+    cashoutId: cashout._id.toString(),
+    referenceId: cashout.referenceId,
+    amount: cashout.amount,
+    message: `Cashout ${cashout.referenceId} completed by admin — ₱${(cashout.netAmount ?? cashout.amount).toFixed(2)} sent to ${cashout.destinationType} (${cashout.destinationAccount}).`,
+  }).catch(err => console.error("[payoutService] Event emit failed:", err.message));
+
   // Update transaction
   await Transaction.findOneAndUpdate(
     { referenceId: cashout.referenceId },
@@ -145,6 +155,16 @@ export async function cancelPayout(cashoutId, reason = "") {
   cashout.status    = "CANCELLED";
   cashout.adminNote = reason;
   await cashout.save();
+
+  eventStreamService.emit("withdrawal.rejected", {
+    entityId: cashout.referenceId || cashout._id.toString(),
+    userId: cashout.userId ? cashout.userId.toString() : null,
+    cashoutId: cashout._id.toString(),
+    referenceId: cashout.referenceId,
+    amount: cashout.amount,
+    reason,
+    message: `Cashout ${cashout.referenceId} rejected and refunded (₱${cashout.amount}) — ${reason || "no reason given"}.`,
+  }).catch(err => console.error("[payoutService] Event emit failed:", err.message));
 
   // Update transaction
   await Transaction.findOneAndUpdate(

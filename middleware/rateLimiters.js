@@ -49,15 +49,32 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/v1/webhooks",
   "/api/v1/didit/webhook",
 ];
-
+const AUTH_PATH_PREFIXES = ["/api/v1/auth"];
+const SKIP_GENERAL_LIMIT_PREFIXES = [...WEBHOOK_PATH_PREFIXES, ...AUTH_PATH_PREFIXES];
 export const generalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => WEBHOOK_PATH_PREFIXES.some((p) => req.originalUrl.startsWith(p)),
+  skip: (req) => SKIP_GENERAL_LIMIT_PREFIXES.some((p) => req.originalUrl.startsWith(p)),
   message: {
     success: false,
     message: "Too many requests. Please slow down."
+  }
+});
+
+/**
+ * Limiter for user self-service reconciliation ("refresh my balance").
+ * Prevents repeated on-chain lookups from being spammed by a single user.
+ * 5 attempts per 10 minutes, per IP.
+ */
+export const selfServiceRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many refresh attempts. Please wait a few minutes and try again."
   }
 });

@@ -10,6 +10,7 @@ import Swaps        from "./pages/Swaps";
 import Remittance   from "./pages/Remittance";
 import Activity     from "./pages/Activity";
 import Compliance   from "./pages/Compliance";
+import AdminReconciliation from "./pages/AdminReconciliation";
 import AdminCashouts from './pages/AdminCashouts';
 import AdminDeposits from './pages/AdminDeposits';
 import AdminUsers from './pages/AdminUsers';
@@ -20,7 +21,9 @@ import Treasury     from "./pages/Treasury";
 import Profile        from "./pages/Profile";
 import WalletManager from "./pages/WalletManager";
 import Dashboard      from "./pages/Dashboard";
+import MissionControl from "./pages/MissionControl";
 import InternalInspector from "./pages/technical/InternalInspector";
+import Operator from "./pages/Operator";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { loading, authenticated } = useAuth();
@@ -59,9 +62,12 @@ export default function App() {
         <Route path="/compliance" element={<RequireAuth><Compliance /></RequireAuth>} />
         <Route path="/admin/cashouts" element={<RequireAdmin><AdminCashouts /></RequireAdmin>} />
         <Route path="/admin/deposits" element={<RequireAdmin><AdminDeposits /></RequireAdmin>} />
+        <Route path="/admin/reconciliation" element={<RequireAdmin><AdminReconciliation /></RequireAdmin>} />
         <Route path="/admin/users" element={<RequireAdmin><AdminUsers /></RequireAdmin>} />
+        <Route path="/admin/operator" element={<RequireAdmin><Operator /></RequireAdmin>} />
         <Route path="/admin/system-inspector" element={<RequireAdmin><SystemInspector /></RequireAdmin>} />
         <Route path="/admin/blockchain-inspector" element={<RequireAdmin><BlockchainInspector /></RequireAdmin>} />
+        <Route path="/admin/mission-control" element={<RequireAdmin><MissionControl /></RequireAdmin>} />
         <Route path="/admin/swap-inspector" element={<RequireAdmin><SwapInspector /></RequireAdmin>} />
         <Route path="/admin/inspector" element={<RequireAdmin><InternalInspector /></RequireAdmin>} />
         <Route path="/treasury"      element={<RequireAdmin><Treasury /></RequireAdmin>} />

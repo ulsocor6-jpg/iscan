@@ -2,7 +2,6 @@
 
 import crypto                              from "crypto";
 import FlowerOrder                         from "../../models/flower/flowerOrderModel.js";
-import { confirmByTxHash }                 from "../../services/flower/flowerWatcherService.js";
 import { getOrCreateRoninDepositAddress }  from "../../services/flower/flowerWalletService.js";
 import { getOrCreateBaseDepositAddress }   from "../../services/flower/baseWalletService.js";
 import { assertAddressAvailable }          from "../../services/flower/flowerOrderGuard.js";
@@ -138,30 +137,3 @@ export const getOrderStatus = async (req, res) => {
 
 // POST /api/flower/confirm
 // Manual trigger: { orderId, txHash }
-export const manualConfirm = async (req, res) => {
-  try {
-    const { orderId, txHash } = req.body;
-
-    if (!orderId || !txHash) {
-      return res.status(400).json({
-        success: false,
-        message: "orderId and txHash are required"
-      });
-    }
-
-    const order = await FlowerOrder.findOne({ orderId, userId: req.user.id });
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    await confirmByTxHash(orderId, txHash);
-
-    res.json({
-      success: true,
-      message: "Confirmation triggered — pipeline is processing"
-    });
-
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};

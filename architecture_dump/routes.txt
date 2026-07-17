@@ -1,0 +1,142 @@
+src/routes/withdrawalRoutes.js:router.post(
+src/routes/maribankNotifyRoute.js:router.post("/notify", async (req, res) => {
+src/routes/flower/flowerRoutes.js:router.get("/wallet", authGuard, getFlowerWallet);
+src/routes/flower/flowerRoutes.js:router.post("/create", authGuard, createOrder);
+src/routes/flower/flowerRoutes.js:router.get("/status/:orderId", authGuard, getOrderStatus);
+src/routes/flower/flowerRoutes.js:router.post("/confirm", authGuard, manualConfirm);
+src/routes/flower/flowerRoutes.js:router.get("/usdt/quote", authGuard, quoteFlowerUsdtSwap);
+src/routes/flower/flowerRoutes.js:router.post("/usdt/swap", authGuard, executeFlowerUsdtSwap);
+src/routes/flower/flowerRoutes.js:router.get("/mine/active", authGuard, async (req, res) => {
+src/routes/flower/flowerRoutes.js:router.post("/:orderId/retry", authGuard, async (req, res) => {
+src/routes/beneficiaryRoutes.js:router.post(
+src/routes/beneficiaryRoutes.js:router.get(
+src/routes/dashboardRoutes.js:router.get(
+src/routes/dashboardRoutes.js:router.get(
+src/routes/dashboardRoutes.js:router.get(
+src/routes/dashboardRoutes.js:router.get(
+src/routes/dashboardRoutes.js:router.get("/stream", requireAuth, requireAdmin, (req, res) => {
+src/routes/userRoutes.js:router.get('/search', requireAuth, async (req, res) => {
+src/routes/userRoutes.js:router.get('/me', requireAuth, async (req, res) => {
+src/routes/remittanceRoutes.js:router.get('/rates', async (req, res) => {
+src/routes/remittanceRoutes.js:router.post('/send', requireAuth, async (req, res) => {
+src/routes/remittanceRoutes.js:router.get('/history', requireAuth, async (req, res) => {
+src/routes/remittanceRoutes.js:router.get('/pending', requireAuth, async (req, res) => {
+src/routes/remittanceRoutes.js:router.post('/settle/:id', requireAuth, async (req, res) => {
+src/routes/remittanceRoutes.js:router.get('/audit', requireAuth, async (req, res) => {
+src/routes/backgroundRoutes.js:router.get("/", requireAuth, async (req, res) => {
+src/routes/backgroundRoutes.js:router.post("/preset", requireAuth, async (req, res) => {
+src/routes/backgroundRoutes.js:router.delete("/", requireAuth, async (req, res) => {
+src/routes/onrampRoutes.js:router.get(
+src/routes/onrampRoutes.js:router.post(
+src/routes/onrampRoutes.js:router.get(
+src/routes/onrampRoutes.js:router.post(
+src/routes/onrampRoutes.js:router.get(
+src/routes/admin/swapInspector.js:router.get("/flower-orders", async (req, res) => {
+src/routes/admin/swapInspector.js:router.post("/flower-orders/:orderId/retry", async (req, res) => {
+src/routes/admin/inspectorRoutes.js:router.use(requireAuth);
+src/routes/admin/inspectorRoutes.js:router.use(requireAdmin);
+src/routes/admin/inspectorRoutes.js:router.get("/", getFlows);
+src/routes/admin/inspectorRoutes.js:router.get("/:flowId", getFlow);
+src/routes/admin/inspectorRoutes.js:router.delete("/clear", clearFlows);
+src/routes/mayaNotifyRoute.js:router.post("/notify", async (req, res) => {
+src/routes/transactionRoutes.js:router.get('/', requireAuth, async (req, res) => {
+src/routes/transactionRoutes.js:router.get('/:id', requireAuth, async (req, res) => {
+src/routes/p2pRoutes.js:router.post('/send', requireAuth, requireFullKYC, async (req, res) => {
+src/routes/cryptoWithdrawalRoutes.js:router.post("/request", requireAuth, createCryptoWithdrawal);
+src/routes/cryptoWithdrawalRoutes.js:router.get("/history", requireAuth, getCryptoWithdrawals);
+src/routes/webhookRoutes.js:router.post('/transak', express.raw({ type: 'application/json' }), async (req, res) => {
+src/routes/webhookRoutes.js:router.post('/payment', async (req, res) => {
+src/routes/feeRoutes.js:router.get('/my', requireAuth, async (req, res) => {
+src/routes/CryptoOnramproutes.js:router.get('/rate',                      requireAuth, getQuote);
+src/routes/CryptoOnramproutes.js:router.post('/deposit-address',          requireAuth, createDepositAddress);
+src/routes/CryptoOnramproutes.js:router.get('/deposit-status/:depositId', requireAuth, getDepositStatus);
+src/routes/CryptoOnramproutes.js:router.post('/convert',                  requireAuth, initiateConversion);
+src/routes/CryptoOnramproutes.js:router.get('/history',                   requireAuth, getOnrampHistory);
+src/routes/internalWalletRoutes.js:router.post('/credit', requireAuth, async (req, res) => {
+src/routes/internalWalletRoutes.js:router.post('/debit', requireAuth, async (req, res) => {
+src/routes/internalWalletRoutes.js:router.get('/balance', requireAuth, async (req, res) => {
+src/routes/adminDepositRoutes.js:router.get("/pending", requireAuth, requireAdmin, listPending);
+src/routes/adminDepositRoutes.js:router.post("/:id/approve", requireAuth, requireAdmin, approveDeposit);
+src/routes/transferRoutes.js:router.post("/send", requireAuth, requireFullKYC, async (req, res) => {
+src/routes/ledgerRoutes.js:router.get('/history', requireAuth, async (req, res) => {
+src/routes/ledgerRoutes.js:router.get('/', requireAuth, async (req, res) => {
+src/routes/adminEventRoutes.js:router.get("/", requireAuth, requireAdmin, listEvents);
+src/routes/adminWithdrawalRoutes.js:router.get("/pending", requireAuth, requireAdmin, listPendingWithdrawals);
+src/routes/adminWithdrawalRoutes.js:router.get("/all", requireAuth, requireAdmin, getAllWithdrawals);
+src/routes/adminWithdrawalRoutes.js:router.post("/:id/approve", requireAuth, requireAdmin, approveWithdrawal);
+src/routes/adminWithdrawalRoutes.js:router.post("/:id/reject", requireAuth, requireAdmin, rejectWithdrawal);
+src/routes/adminWithdrawalRoutes.js:router.get("/:id/verify", requireAuth, requireAdmin, verifyCashout);
+src/routes/adminBlockchainPollingRoutes.js:router.get("/polling", requireAuth, requireAdmin, getPollingState);
+src/routes/adminBlockchainPollingRoutes.js:router.post("/polling/:chain/override", requireAuth, requireAdmin, setPollingOverride);
+src/routes/adminBlockchainPollingRoutes.js:router.delete("/polling/:chain/override", requireAuth, requireAdmin, clearPollingOverride);
+src/routes/adminBlockchainPollingRoutes.js:router.post("/polling/:chain/bounds", requireAuth, requireAdmin, setPollingBounds);
+src/routes/adminBlockchainPollingRoutes.js:router.get("/usage", requireAuth, requireAdmin, getUsageSnapshot);
+src/routes/bankRoutes.js:router.post('/add', requireAuth, addBank);
+src/routes/bankRoutes.js:router.get('/list', requireAuth, getBanks);
+src/routes/bankRoutes.js:router.delete('/:id', requireAuth, deleteBank);
+src/routes/bankRoutes.js:router.post('/:id/default', requireAuth, setDefaultBank);
+src/routes/directDepositRoutes.js:router.post('/request', requireAuth, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/status/:referenceId', requireAuth, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/admin/pending', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.post('/admin/confirm', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/pending', requireAuth, async (req, res) => {
+src/routes/directDepositRoutes.js:router.post('/cancel', requireAuth, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/admin/logs', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/admin/flagged', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/admin/ingress', requireAuth, requireAdmin, async (req, res) => {
+src/routes/directDepositRoutes.js:router.get('/crypto/processing', requireAuth, async (req, res) => {
+src/routes/swapRoutes.js:router.post('/php', requireAuth, swapUSDtoPHP);
+src/routes/kycRoutes.js:router.get('/status',         requireAuth, getKYCStatus);
+src/routes/kycRoutes.js:router.post('/upload-id',     requireAuth, uploadID);
+src/routes/kycRoutes.js:router.post('/upload-selfie', requireAuth, uploadSelfie);
+src/routes/kycRoutes.js:router.get('/admin/pending',  requireAuth, requireAdmin, adminListPendingKYC);
+src/routes/kycRoutes.js:router.post('/admin/approve', requireAuth, requireAdmin, adminApproveKYC);
+src/routes/kycRoutes.js:router.post('/admin/reject',  requireAuth, requireAdmin, adminRejectKYC);
+src/routes/adminUserRoutes.js:router.get("/", requireAuth, requireAdmin, listUsers);
+src/routes/adminUserRoutes.js:router.get("/:id/details", requireAuth, requireAdmin, getUserDetails);
+src/routes/adminUserRoutes.js:router.post("/:id/promote", requireAuth, requireAdmin, promoteUser);
+src/routes/adminUserRoutes.js:router.post("/:id/demote", requireAuth, requireAdmin, demoteUser);
+src/routes/adminUserRoutes.js:router.post("/:id/impersonate", requireAuth, requireAdmin, impersonateUser);
+src/routes/adminReconciliationRoutes.js:router.get('/', requireAuth, requireAdmin, listReconciliation);
+src/routes/adminReconciliationRoutes.js:router.get('/:userId', requireAuth, requireAdmin, getReconciliationForUser);
+src/routes/authRoutes.js:router.use((req,res,next)=>{
+src/routes/authRoutes.js:router.post('/register', authActionLimiter, register);
+src/routes/authRoutes.js:router.post('/login', loginLimiter, login);
+src/routes/authRoutes.js:router.post('/logout', logout);
+src/routes/authRoutes.js:router.get('/verify', requireAuth, verify);
+src/routes/authRoutes.js:router.get('/me', requireAuth, verify);  // alias — dashboard calls both
+src/routes/authRoutes.js:router.get('/verify-email', verifyEmail);
+src/routes/authRoutes.js:router.post('/forgot-password', authActionLimiter, forgotPassword);
+src/routes/authRoutes.js:router.post('/reset-password', resetPassword);
+src/routes/authRoutes.js:router.post('/resend-verification', authActionLimiter, resendVerification);
+src/routes/authRoutes.js:router.post('/exit-impersonation', requireAuth, exitImpersonation);
+src/routes/diditRoutes.js:router.post('/verify', requireAuth, createVerificationSession);
+src/routes/diditRoutes.js:router.get('/decision/:sessionId', requireAuth, getSessionDecision);
+src/routes/diditRoutes.js:router.post('/webhook', handleDiditWebhook);
+src/routes/paymentRoutes.js:router.post('/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+src/routes/paymentRoutes.js:router.post('/cashin', requireAuth, cashIn);
+src/routes/paymentRoutes.js:router.post('/cashout', requireAuth, async (req, res) => {
+src/routes/paymentRoutes.js:router.get('/cashout/:referenceId/status', requireAuth, async (req, res) => {
+src/routes/paymentRoutes.js:router.get('/rate', async (req, res) => {
+src/routes/treasuryRoutes.js:router.get('/fees', requireAuth, async (req, res) => {
+src/routes/treasuryRoutes.js:router.get('/wallets', requireAuth, async (req, res) => {
+src/routes/treasuryRoutes.js:router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
+src/routes/treasuryRoutes.js:router.post('/pools/:currency/topup', requireAuth, requireAdmin, async (req, res) => {
+src/routes/treasuryRoutes.js:router.get('/withdrawal-cap', requireAuth, async (req, res) => {
+src/routes/payoutRoutes.js:router.post("/request", requireAuth, createPayout);
+src/routes/payoutRoutes.js:router.get("/my", requireAuth, getMyPayouts);
+src/routes/payoutRoutes.js:router.post("/admin/complete", requireAuth, requireAdmin, adminCompletePayouts);
+src/routes/payoutRoutes.js:router.post("/admin/cancel", requireAuth, requireAdmin, adminCancelPayout);
+src/routes/payoutRoutes.js:router.get("/admin/all", requireAuth, requireAdmin, adminGetAllPayouts);
+src/routes/walletRoutes.js:router.get('/balance', requireAuth, async (req, res) => {
+src/routes/walletRoutes.js:router.get('/balances', requireAuth, async (req, res) => {
+src/routes/walletRoutes.js:router.post('/link', requireAuth, linkWallet);
+src/routes/walletRoutes.js:router.post('/unlink', requireAuth, unlinkWallet);
+src/routes/walletRoutes.js:router.get('/list', requireAuth, getWallets);
+src/routes/walletRoutes.js:router.get('/status', (req, res) => res.json({ success: true }));
+src/routes/walletRoutes.js:router.get('/admin/list', requireAuth, requireAdmin, getAllWalletsAdmin);
+src/routes/walletRoutes.js:router.post('/notify-transfer', requireAuth, async (req, res) => {
+src/routes/phpSwapRoutes.js:router.get('/quote',  quoteSwap);
+src/routes/phpSwapRoutes.js:router.post('/execute', requireAuth, executeSwap);
+src/routes/phpSwapRoutes.js:router.get('/pool',   poolStatus);

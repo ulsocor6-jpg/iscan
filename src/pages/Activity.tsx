@@ -1,4 +1,5 @@
 import DashboardLayout from "../banking/components/DashboardLayout";
+import PendingWithdrawals from "../banking/components/PendingWithdrawals";
 import { useState, useEffect } from "react";
 
 interface ProcessingDeposit {
@@ -69,6 +70,7 @@ export default function Activity() {
     <DashboardLayout>
       <div className="dashboard">
         <h2>Activity</h2>
+        <PendingWithdrawals />
 
         {processing.length > 0 && (
           <div className="card" style={{ marginBottom: 16 }}>

@@ -1,4 +1,4 @@
-const fxService = require("./fx/fxService");
+import fxService from "./fx/fxService.js";
 const fraudBlockingService = require("./fraudBlockingService");
 const fraudService = require("./fraudService");
 const ledgerService = require("./ledgerService");
@@ -142,4 +142,4 @@ class TransferOrchestrator {
   }
 }
 
-module.exports = new TransferOrchestrator();
+export default new TransferOrchestrator();

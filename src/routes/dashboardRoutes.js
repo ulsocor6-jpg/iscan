@@ -1,7 +1,7 @@
 import express from "express";
 import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
 import dashboardService from "../services/dashboardService.js";
-import { getDashboard } from "../controllers/dashboardController.js";
+import { getDashboard, refreshChainBalances } from "../controllers/dashboardController.js";
 import eventStreamService from "../services/eventStreamService.js";
 
 const router = express.Router();
@@ -13,6 +13,15 @@ router.get(
   "/",
   requireAuth,
   getDashboard
+);
+
+// On-demand only — hit exclusively by a user tapping "Refresh" in the UI.
+// Never called on a timer. See dashboardController.refreshChainBalances
+// for the per-user cooldown that backstops repeated clicks.
+router.get(
+  "/refresh-balances",
+  requireAuth,
+  refreshChainBalances
 );
 
 /*
@@ -90,9 +99,10 @@ router.get(
   }
 );
 
-export default router;
-
 // SSE — Admin real-time event stream
+// NOTE: moved above `export default router` — in the original file this
+// route was registered AFTER the default export, which means it was
+// never actually mounted on the router Express uses. Fixed here.
 router.get("/stream", requireAuth, requireAdmin, (req, res) => {
 
   console.log(
@@ -116,3 +126,5 @@ router.get("/stream", requireAuth, requireAdmin, (req, res) => {
     clearInterval(heartbeat);
   });
 });
+
+export default router;

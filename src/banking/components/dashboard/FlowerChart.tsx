@@ -11,7 +11,7 @@ export default function FlowerChart() {
 
   async function fetchRate() {
     try {
-      const res  = await fetch("/api/v1/flower/usdt/quote?fromCurrency=FLOWER&toCurrency=USDT&amount=1", {
+      const res  = await fetch("/api/v1/flower/usdt/quote?fromCurrency=FLOWER&toCurrency=USDC&amount=1", {
         credentials: "include",
       });
       const data = await res.json();

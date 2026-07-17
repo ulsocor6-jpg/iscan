@@ -12,6 +12,7 @@ import Ledger from '../models/ledgerModel.js';
 import mongoose from 'mongoose';
 import { getOrCreateChainAddress } from '../services/walletAddressService.js';
 import { getLiveBalancesForWallet } from '../services/onchainBalanceService.js';
+import walletService from '../services/walletService.js';
 
 // Tokens whose per-chain amounts get summed into the flat totals the
 // Swaps page cards display (PHP is fiat-only and handled separately below).
@@ -51,6 +52,15 @@ router.get('/balances', requireAuth, async (req, res) => {
       ? Math.max(0, phpLedgerResult[0].credit - phpLedgerResult[0].debit)
       : 0;
 
+    // Internal, platform-custodied USDC (e.g. from completed swaps/cash-ins).
+    // This is a SEPARATE pool from the on-chain wallet balances summed into
+    // `totals.USDC` below — it's the same atomic Wallet.balances.USDC cache
+    // that walletService.debit() checks on submit (see settleUsdtToFlower
+    // -> walletService.debit(userId, "USDC", ...) in flowerUsdtSwapService.js).
+    // Returned separately so the frontend can show the correct pool per
+    // swap direction instead of conflating on-chain and internal balances.
+    const internalUsdcBalance = await walletService.getBalance(userId, 'USDC');
+
     // Make sure the user actually has HD addresses provisioned on every
     // chain we read balances from — a first-time user otherwise has no
     // chainAddresses entries yet and getLiveBalancesForWallet has nothing
@@ -87,6 +97,7 @@ router.get('/balances', requireAuth, async (req, res) => {
       balances: {
         PHP: phpBalance,
         ...totals,
+        internalUSDC: internalUsdcBalance,
       },
       onchain, // { BASE: { address, native, USDC, USDT, FLOWER }, RONIN: { ... } }
     });
@@ -112,7 +123,7 @@ router.post('/notify-transfer', requireAuth, async (req, res) => {
   try {
     const { txHash, token, amount, chain, fromAddress } = req.body;
     console.log(`[WALLET] Transfer notified: ${amount} ${token} on ${chain} from ${fromAddress} tx=${txHash}`);
-    // The baseListener/roninListener will detect the balance change automatically
+    // The Blockchain Engine will detect the balance change automatically
     // This just logs it for audit purposes
     res.json({ success: true, message: 'Transfer noted — balance will update once confirmed on-chain' });
   } catch (err) {

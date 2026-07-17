@@ -87,7 +87,70 @@ export default function SystemInspector() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [connected, setConnected] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
+  const [actionState, setActionState] = useState<Record<string, "pending" | "done" | "error">>({});
+  const [nowTick, setNowTick] = useState(Date.now());
   const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    const iv = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  function expiryLabel(expiresAt?: string) {
+    if (!expiresAt) return null;
+    const secs = Math.floor((new Date(expiresAt).getTime() - nowTick) / 1000);
+    if (secs <= 0) return { text: "Expired", color: "#f87171" };
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return { text: `Expires in ${m}:${String(s).padStart(2, "0")}`, color: secs < 60 ? "#f87171" : "#f59e0b" };
+  }
+
+  const pushToast = useCallback((message: string) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, message }].slice(-4));
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 6000);
+  }, []);
+
+  async function handleComplete(cashoutId: string) {
+    setActionState((s) => ({ ...s, [cashoutId]: "pending" }));
+    try {
+      const res = await fetch(`/api/v1/admin/withdrawals/${cashoutId}/approve`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to complete");
+      pushToast("Cashout marked completed.");
+      setActionState((s) => ({ ...s, [cashoutId]: "done" }));
+    } catch (err: any) {
+      pushToast(`Complete failed: ${err.message}`);
+      setActionState((s) => ({ ...s, [cashoutId]: "error" }));
+    }
+  }
+
+  async function handleReject(cashoutId: string) {
+    const reason = window.prompt("Reason for rejecting this cashout (user will be refunded):") || "";
+    setActionState((s) => ({ ...s, [cashoutId]: "pending" }));
+    try {
+      const res = await fetch(`/api/v1/admin/withdrawals/${cashoutId}/reject`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to reject");
+      pushToast("Cashout rejected and refunded.");
+      setActionState((s) => ({ ...s, [cashoutId]: "done" }));
+    } catch (err: any) {
+      pushToast(`Reject failed: ${err.message}`);
+      setActionState((s) => ({ ...s, [cashoutId]: "error" }));
+    }
+  }
 
   const loadHistory = useCallback(async (type: string) => {
     setLoadingHistory(true);
@@ -117,6 +180,9 @@ export default function SystemInspector() {
         const parsed = JSON.parse(msg.data);
         if (isBlockchainEvent(parsed.type)) return;
         setLive((prev) => [parsed, ...prev].slice(0, 300));
+        if (parsed.type === "withdrawal.verified") {
+          pushToast(parsed.data?.message || "Cashout request verified and awaiting admin release.");
+        }
       } catch {
         // heartbeat / non-JSON, ignore
       }
@@ -145,8 +211,54 @@ export default function SystemInspector() {
     .filter((e) => (filter === "__errors__" ? e.data?.level === "ERROR" : true))
     .slice(0, 300);
 
+  const resolvedCashoutIds = new Set(
+    rows
+      .filter((e) => e.type === "withdrawal.completed" || e.type === "withdrawal.rejected")
+      .map((e) => e.data?.cashoutId)
+      .filter(Boolean)
+  );
+
   return (
     <DashboardLayout>
+      <div
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          maxWidth: "360px",
+        }}
+      >
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            style={{
+              background: "#0a1f0a",
+              border: "1px solid #22c55e",
+              borderRadius: "10px",
+              padding: "12px 14px",
+              color: "#4ade80",
+              fontSize: "13px",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+              animation: "toastSlideIn 0.2s ease-out",
+            }}
+          >
+            <strong style={{ display: "block", marginBottom: "4px", color: "#22c55e" }}>
+              ✅ Withdrawal Verified
+            </strong>
+            {t.message}
+          </div>
+        ))}
+      </div>
+      <style>{`
+        @keyframes toastSlideIn {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
       <div style={{ padding: "24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
           <h1 style={{ fontSize: "20px", fontWeight: 700 }}>🎥 System Inspector</h1>
@@ -241,13 +353,18 @@ export default function SystemInspector() {
                       style={{
                         padding: "10px 16px",
                         borderBottom: isOpen ? "none" : "1px solid var(--color-border)",
-                        borderLeft: isError ? "3px solid #ef4444" : "3px solid transparent",
-                        background: isError ? "rgba(239,68,68,0.06)" : "transparent",
+                        borderLeft: isError ? "3px solid #ef4444" : isOpen ? "3px solid #3b82f6" : "3px solid transparent",
+                        background: isError
+                          ? "rgba(239,68,68,0.06)"
+                          : isOpen
+                          ? "rgba(59,130,246,0.08)"
+                          : "transparent",
                         fontSize: "12px",
                         display: "flex",
                         alignItems: "center",
                         gap: "12px",
                         cursor: "pointer",
+                        transition: "background 0.15s, border-left 0.15s",
                       }}
                     >
                       <span style={{ color: "var(--color-text-tertiary)", fontSize: "10px", width: "10px" }}>
@@ -280,6 +397,45 @@ export default function SystemInspector() {
                           ? ev.data.message
                           : JSON.stringify(ev.data)}
                       </span>
+                      {ev.type === "withdrawal.verified" && expiryLabel(ev.data?.expiresAt) && (
+                        <span style={{
+                          fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "99px",
+                          background: "rgba(245,158,11,0.1)", color: expiryLabel(ev.data?.expiresAt)!.color,
+                          whiteSpace: "nowrap",
+                        }}>
+                          {expiryLabel(ev.data?.expiresAt)!.text}
+                        </span>
+                      )}
+                      {ev.type === "withdrawal.verified" &&
+                        ev.data?.cashoutId &&
+                        !resolvedCashoutIds.has(ev.data.cashoutId) && (
+                          <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              disabled={actionState[ev.data.cashoutId] === "pending"}
+                              onClick={() => handleComplete(ev.data.cashoutId)}
+                              style={{
+                                fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "6px",
+                                border: "1px solid #22c55e", background: "#14532d", color: "#4ade80",
+                                cursor: actionState[ev.data.cashoutId] === "pending" ? "wait" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ✓ Complete
+                            </button>
+                            <button
+                              disabled={actionState[ev.data.cashoutId] === "pending"}
+                              onClick={() => handleReject(ev.data.cashoutId)}
+                              style={{
+                                fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "6px",
+                                border: "1px solid #7f1d1d", background: "#450a0a", color: "#f87171",
+                                cursor: actionState[ev.data.cashoutId] === "pending" ? "wait" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ✕ Reject
+                            </button>
+                          </div>
+                        )}
                       <span style={{ color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
                         {timeAgo(ev.timestamp)}
                       </span>

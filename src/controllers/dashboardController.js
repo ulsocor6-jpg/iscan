@@ -121,3 +121,55 @@ export const getDashboard = async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to load dashboard" });
   }
 };
+
+
+// On-demand refresh — hit exclusively by the user tapping "Refresh" in the
+// UI (see dashboardRoutes.js). 30s per-user cooldown based on the most
+// recent chainAddresses.lastSynced, so rapid double-taps don't fire
+// duplicate RPC calls for the same wallet.
+const REFRESH_COOLDOWN_MS = 30_000;
+
+export const refreshChainBalances = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const wallet = await Wallet.findOne({ userId });
+
+    if (!wallet) {
+      return res.status(404).json({ success: false, message: "Wallet not found" });
+    }
+
+    const lastSyncedTimes = (wallet.chainAddresses || [])
+      .map((ca) => ca.lastSynced)
+      .filter(Boolean)
+      .map((d) => new Date(d).getTime());
+
+    const mostRecentSync = lastSyncedTimes.length ? Math.max(...lastSyncedTimes) : 0;
+
+    if (Date.now() - mostRecentSync < REFRESH_COOLDOWN_MS) {
+      return res.status(429).json({
+        success: false,
+        message: "Please wait before refreshing again",
+        retryAfterMs: REFRESH_COOLDOWN_MS - (Date.now() - mostRecentSync),
+      });
+    }
+
+    const onchainBalances = await getLiveBalancesForWallet(wallet);
+
+    for (const ca of wallet.chainAddresses) {
+      const chainKey = ca.chain?.toUpperCase();
+      const data = onchainBalances[chainKey];
+      if (!data || data.error) continue;
+
+      if (typeof data.native === "number") ca.nativeBalance = data.native;
+      if (typeof data.FLOWER === "number") ca.flowerBalance = data.FLOWER;
+      ca.lastSynced = new Date();
+    }
+
+    await wallet.save();
+
+    return res.json({ success: true, onchainBalances });
+  } catch (err) {
+    console.error("[REFRESH BALANCES ERROR]", err);
+    return res.status(500).json({ success: false, message: "Failed to refresh balances" });
+  }
+};

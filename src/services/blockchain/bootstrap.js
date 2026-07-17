@@ -12,8 +12,11 @@ import consumerDispatcher from "./pipeline/consumerDispatcher.js";
 
 import workScheduler from "./scheduler/workScheduler.js";
 
+import { startExecutors } from "./bootstrap/executorBootstrap.js";
+
 import recoveryWorker from "./workers/recoveryWorker.js";
 import confirmationWorker from "./workers/confirmationWorker.js";
+import operationCorrelator from "./workers/operationCorrelator.js";
 import depositProcessor from "./workers/depositProcessor.js";
 import walletCreditWorker from "./workers/walletCreditWorker.js";
 import ledgerWorker from "./workers/ledgerWorker.js";
@@ -21,6 +24,7 @@ import dashboardWorker from "./workers/dashboardWorker.js";
 import flowerInboxWorker from "./workers/flowerInboxWorker.js";
 import flowerBaseRetryWorker from "./workers/flowerBaseRetryWorker.js";
 import flowerRoninRetryWorker from "./workers/flowerRoninRetryWorker.js";
+import flowerOrderCleanupWorker from "./workers/flowerOrderCleanupWorker.js";
 
 class BlockchainBootstrap {
 
@@ -159,6 +163,15 @@ class BlockchainBootstrap {
             confirmationWorker
         );
 
+        // Must run before depositProcessor / flowerInboxWorker: claims any
+        // confirmed event that matches a PendingOperation we wrote ourselves
+        // before broadcasting, so those two don't mistake our own internal
+        // sends/swaps for fresh external deposits. Sequential scheduler ==
+        // this ordering is the actual safety guarantee, not a suggestion.
+        workScheduler.register(
+            operationCorrelator
+        );
+
         workScheduler.register(
             depositProcessor
         );
@@ -186,27 +199,39 @@ class BlockchainBootstrap {
             flowerRoninRetryWorker
         );
 
-        /*
-        ----------------------------------------
-        Pipeline
-        ----------------------------------------
-        */
-
-        consumerDispatcher.start();
-
-        transactionPipeline.start();
-
-        workScheduler.start();
-
-        recoveryWorker.start();
+        workScheduler.register(
+            flowerOrderCleanupWorker
+        );
 
         /*
-        ----------------------------------------
-        Collector
-        ----------------------------------------
-        */
+----------------------------------------
+Pipeline
+----------------------------------------
+*/
 
-        blockchainEngine.start();
+consumerDispatcher.start();
+
+transactionPipeline.start();
+
+workScheduler.start();
+
+recoveryWorker.start();
+
+/*
+----------------------------------------
+Executors
+----------------------------------------
+*/
+
+startExecutors();
+
+/*
+----------------------------------------
+Collector
+----------------------------------------
+*/
+
+blockchainEngine.start();
 
         console.log("");
 

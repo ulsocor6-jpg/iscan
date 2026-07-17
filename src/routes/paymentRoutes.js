@@ -73,7 +73,7 @@ router.post('/cashout', requireAuth, async (req, res) => {
     const netAmount = php - fee;
 
     const bal = await walletService.getBalance(req.user.id, 'PHP');
-    if (bal < total) return res.status(400).json({ error: `Insufficient balance. Available: ₱${bal.toFixed(2)}, needed: ₱${total.toFixed(2)}` });
+    if (bal < php) return res.status(400).json({ error: `Insufficient balance. Available: ₱${bal.toFixed(2)}, needed: ₱${php.toFixed(2)}` });
 
     const ref = 'CO-' + crypto.randomBytes(8).toString('hex').toUpperCase();
 
@@ -82,7 +82,11 @@ router.post('/cashout', requireAuth, async (req, res) => {
     // MongoDB operation, so two concurrent requests can never both read
     // "sufficient balance" and both succeed — closes the double-spend race
     // the old getLedgerBalance()-then-write pattern was vulnerable to.
-    await walletService.debit(req.user.id, 'PHP', total, {
+    //
+    // Debit exactly the requested amount (php), not amount+fee — the fee
+    // is deducted from netAmount when it's sent out, not charged again
+    // here. Debiting `total` on top of that double-charged the fee.
+    await walletService.debit(req.user.id, 'PHP', php, {
       referenceId: ref,
       description: `Cash out to ${receiverName} via ${normalizedChannel} (fee ₱${fee})`,
       transactionType: 'cashout',
@@ -101,11 +105,12 @@ router.post('/cashout', requireAuth, async (req, res) => {
         destinationAccount: accountNumber,
         accountName: receiverName,
         status: 'pending_review',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10-minute processing window
       });
     } catch (createErr) {
       // WithdrawalRequest creation failed after the debit already went
       // through — refund immediately so no debit is ever left orphaned.
-      await walletService.credit(req.user.id, 'PHP', total, {
+      await walletService.credit(req.user.id, 'PHP', php, {
         referenceId: 'REFUND-' + ref,
         description: `Refund — withdrawal request failed to record (${createErr.message})`,
         transactionType: 'cashout_refund',
@@ -129,6 +134,7 @@ router.post('/cashout', requireAuth, async (req, res) => {
       netAmount: withdrawal.netAmount,
       destinationType: normalizedChannel,
       destinationAccount: withdrawal.destinationAccount,
+      expiresAt: withdrawal.expiresAt,
       message: `Cashout request verified and awaiting admin release — ₱${withdrawal.netAmount.toFixed(2)} to ${normalizedChannel} (${withdrawal.destinationAccount})`,
     }).catch(err => {
       console.error('[CASHOUT] System Inspector event emit failed:', err.message);
@@ -146,9 +152,45 @@ router.post('/cashout', requireAuth, async (req, res) => {
       metadata: { channel: normalizedChannel, receiverName, accountNumber, linkedAccountId: linkedAccount._id }
     });
 
-    res.json({ success: true, referenceId: ref, amount: php, fee, total, withdrawal });
+    res.json({
+      success: true,
+      referenceId: ref,
+      amount: php,
+      fee,
+      total,
+      netAmount,
+      expiresAt: withdrawal.expiresAt,
+      message: `Your ₱${netAmount.toFixed(2)} withdrawal to ${normalizedChannel} is verified and awaiting release — usually within 10 minutes.`,
+      withdrawal
+    });
   } catch (e) {
     console.error('[CASHOUT]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/v1/payment/cashout/:referenceId/status — lightweight poll target
+// so the frontend can show a live countdown and reflect refunds/approvals
+// without needing a websocket connection.
+router.get('/cashout/:referenceId/status', requireAuth, async (req, res) => {
+  try {
+    const withdrawal = await WithdrawalRequest.findOne({
+      referenceId: req.params.referenceId,
+      userId: req.user.id,
+    }).lean();
+
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Withdrawal not found.' });
+    }
+
+    res.json({
+      success: true,
+      status: withdrawal.status,
+      expiresAt: withdrawal.expiresAt,
+      failReason: withdrawal.failReason,
+      netAmount: withdrawal.netAmount,
+    });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
