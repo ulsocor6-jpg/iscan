@@ -42,7 +42,8 @@ export async function record(event) {
                         settlement: {},
                         wallet: {},
                         ledger: {},
-                        dashboard: {}
+                        dashboard: {},
+                        correlator: {}
                     }
                 }
             },

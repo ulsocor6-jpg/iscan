@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import DashboardLayout from "../banking/components/DashboardLayout";
 
 const api = (url: string, opts: any = {}) =>
@@ -37,9 +37,17 @@ function shortAddr(addr?: string) {
   return addr.length > 12 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
 }
 
+// USDC->FLOWER orders never go through DEPOSIT/SWEEP (they start at
+// SWAPPING off a ledger debit) so they get a shorter stage list — otherwise
+// those two stages would falsely render as "done" for a step that never ran.
+function stagesFor(order: any) {
+  return order.direction === "USDC_TO_FLOWER" ? ["SWAP", "SETTLE"] : STAGES;
+}
+
 function stageStatusFor(order: any, stage: string) {
-  const currentIndex = STAGES.indexOf(STAGE_FOR_STATUS[order.status] || "DEPOSIT");
-  const stageIndex = STAGES.indexOf(stage);
+  const stages = stagesFor(order);
+  const currentIndex = stages.indexOf(STAGE_FOR_STATUS[order.status] || stages[0]);
+  const stageIndex = stages.indexOf(stage);
   const isFailed = order.status.startsWith("FAILED");
 
   if (isFailed && stageIndex === currentIndex) return "failed";
@@ -56,12 +64,29 @@ const TABS = [
   { label: "Completed", value: "COMPLETED" },
 ];
 
+// Poll cadence: 30s while any order is still moving through the
+// pipeline, backing off to a 12h idle poll once everything is either
+// COMPLETED or FAILED (no point hammering the API for a static list).
+const ACTIVE_POLL_MS = 30 * 1000;
+const IDLE_POLL_MS   = 12 * 60 * 60 * 1000;
+
+// Live watcher log, fed by the existing admin SSE stream
+// (/api/v1/admin/dashboard/stream), which inspectorBridge.js already
+// forwards every inspector.info/success/warn/error("swap", ...) call
+// into as type "blockchain.swap". Grouped by orderId, capped per order
+// so a long-running order can't grow the log unbounded.
+const MAX_LOG_LINES = 30;
+
+type LiveLogEntry = { level: string; message: string; step?: string; timestamp: string };
+
 export default function SwapInspector() {
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [tab, setTab] = useState("__failed__");
   const [loading, setLoading] = useState(true);
+  const [liveLog, setLiveLog] = useState<Record<string, LiveLogEntry[]>>({});
+  const ordersRef = useRef<any[]>([]);
 
   const load = useCallback(async () => {
     const res = await api("/api/v1/admin/flower-orders");
@@ -70,10 +95,66 @@ export default function SwapInspector() {
   }, []);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    ordersRef.current = orders;
+  }, [orders]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    const tick = async () => {
+      await load();
+      if (cancelled) return;
+      const hasActive = ordersRef.current.some(
+        (o) => !o.status.startsWith("FAILED") && o.status !== "COMPLETED"
+      );
+      timer = setTimeout(tick, hasActive ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [load]);
+
+  // Live stream: reuses the existing admin SSE endpoint rather than
+  // opening a second connection. Every "blockchain.swap" event carries
+  // orderId in its metadata (set by inspector.*("swap", ..., { orderId, ... })
+  // calls in flowerSwapServiceBase.js / flowerUsdtSwapService.js), so we
+  // just bucket incoming events by orderId for the expanded row to render.
+  useEffect(() => {
+    const es = new EventSource("/api/v1/admin/dashboard/stream", { withCredentials: true });
+
+    es.onmessage = (e) => {
+      if (!e.data) return;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(e.data);
+      } catch {
+        return; // heartbeats etc. aren't JSON
+      }
+      if (parsed?.type !== "blockchain.swap") return;
+      const orderId = parsed?.data?.orderId;
+      if (!orderId) return;
+
+      setLiveLog((prev) => {
+        const existing = prev[orderId] || [];
+        const next = [
+          ...existing,
+          {
+            level: parsed.data.level,
+            message: parsed.data.message,
+            step: parsed.data.step,
+            timestamp: parsed.timestamp,
+          },
+        ].slice(-MAX_LOG_LINES);
+        return { ...prev, [orderId]: next };
+      });
+    };
+
+    return () => es.close();
+  }, []);
 
   const retry = async (orderId: string) => {
     setRetrying(orderId);
@@ -184,8 +265,17 @@ export default function SwapInspector() {
                         {order.chain}
                       </span>
                       <span style={{ flex: 1, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {order.receivedAmount || order.expectedAmount} FLOWER
-                        {order.usdcReceived ? ` → ${order.usdcReceived} USDC` : ""}
+                        {order.direction === "USDC_TO_FLOWER" ? (
+                          <>
+                            {order.usdcAmountIn} USDC
+                            {order.flowerAmountOut ? ` → ${order.flowerAmountOut} FLOWER` : ""}
+                          </>
+                        ) : (
+                          <>
+                            {order.receivedAmount || order.expectedAmount} FLOWER
+                            {order.usdcReceived ? ` → ${order.usdcReceived} USDC` : ""}
+                          </>
+                        )}
                         {isFailed && order.failureReason && (
                           <span style={{ color: "#fca5a5", marginLeft: 8 }}>{order.failureReason}</span>
                         )}
@@ -198,7 +288,7 @@ export default function SwapInspector() {
                     {isExpanded && (
                       <div style={{ padding: "12px 16px 16px", background: "var(--color-background-tertiary)" }}>
                         <div style={{ display: "flex", gap: "20px", marginBottom: "12px", flexWrap: "wrap" }}>
-                          {STAGES.map((s) => {
+                          {stagesFor(order).map((s) => {
                             const st = stageStatusFor(order, s);
                             const color = st === "done" ? "#4ade80" : st === "failed" ? "#f87171" : st === "active" ? "#facc15" : "#4b5563";
                             const icon = st === "done" ? "✅" : st === "failed" ? "❌" : st === "active" ? "⏳" : "⏸";
@@ -211,11 +301,38 @@ export default function SwapInspector() {
                           })}
                         </div>
 
+                        {liveLog[order.orderId]?.length > 0 && (
+                          <div style={{
+                            fontSize: "11px", fontFamily: "monospace",
+                            background: "rgba(0,0,0,0.25)", borderRadius: "8px",
+                            padding: "8px 10px", marginBottom: "12px",
+                            maxHeight: "160px", overflowY: "auto",
+                          }}>
+                            {liveLog[order.orderId].map((entry, i) => {
+                              const color =
+                                entry.level === "ERROR" ? "#f87171" :
+                                entry.level === "SUCCESS" ? "#4ade80" :
+                                entry.level === "WARNING" ? "#facc15" : "#94a3b8";
+                              return (
+                                <div key={i} style={{ color, marginBottom: "2px" }}>
+                                  [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.message}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginBottom: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
                           <div>User: {order.userId}</div>
-                          <div>Deposit: {shortAddr(order.depositAddress)}</div>
+                          {order.direction === "USDC_TO_FLOWER" ? (
+                            <div>USDC in: {order.usdcAmountIn}</div>
+                          ) : (
+                            <div>Deposit: {shortAddr(order.depositAddress)}</div>
+                          )}
                           <div>Source: {order.source}</div>
-                          <div>Sweep attempts: {order.sweepAttempts ?? 0}</div>
+                          {order.direction !== "USDC_TO_FLOWER" && (
+                            <div>Sweep attempts: {order.sweepAttempts ?? 0}</div>
+                          )}
                           {order.sweepTxHash && <div>Sweep tx: {shortAddr(order.sweepTxHash)}</div>}
                           {order.swapTxHash && <div>Swap tx: {shortAddr(order.swapTxHash)}</div>}
                         </div>

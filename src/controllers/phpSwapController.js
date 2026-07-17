@@ -40,13 +40,18 @@ export async function quoteSwap(req, res) {
 
 export async function executeSwap(req, res) {
   try {
-    const { fromCurrency, toCurrency, amount, chain = 'base' } = req.body;
+    const { fromCurrency, toCurrency, amount, chain } = req.body;
     const userId = req.user.id;
     const txRef  = uuid();
 
+    if (fromCurrency !== 'PHP' && !chain) {
+      return res.status(400).json({ error: 'chain is required (base|ronin) for stablecoin swaps' });
+    }
+
     let result;
     if (fromCurrency === 'PHP') {
-      result = await settlePHPToStablecoin({ userId, phpAmount: +amount, currency: toCurrency, txRef, chain });
+      // PHP -> stablecoin: outbound send, chain optional (defaults inside settlePHPToStablecoin)
+      result = await settlePHPToStablecoin({ userId, phpAmount: +amount, currency: toCurrency, txRef, chain: chain || 'base' });
     } else {
       result = await settleStablecoinToPHP({ userId, stablecoinAmount: +amount, currency: fromCurrency, txRef, chain });
     }
@@ -62,6 +67,8 @@ export async function executeSwap(req, res) {
         feePercent: 1.5,
         feeAmount,
         netAmount: grossAmount - feeAmount,
+        chain: result.chain ?? null,
+        txHash: result.txHash ?? null,
         metadata: { fromCurrency, toCurrency, txRef }
       });
     } catch (feeErr) {

@@ -102,4 +102,88 @@ export async function reconcileAllUsers({ onlyMismatches = false } = {}) {
   return reports;
 }
 
-export default { reconcileUser, reconcileAllUsers, getOnChainTotal };
+import walletServiceInstance from './walletService.js';
+import inspector from './blockchain/inspector/blockchainInspector.js';
+
+// Writes a labeled correction entry (credit or debit) to bring
+// wallet.balances.<currency> in line with the real on-chain balance.
+// This does NOT delete or rewrite history — it adds one more Ledger row,
+// same as any other movement, tagged "balance_correction" so it's
+// clearly distinguishable from a real user-initiated transaction.
+//
+// Runs both directions on purpose:
+//   - chain_ahead_of_ledger: credit the missing amount (funds are real,
+//     just uncredited — e.g. a deposit the watcher missed).
+//   - ledger_ahead_of_chain: debit the excess amount (ledger claims more
+//     than the chain can back). This is the "dangerous" direction the
+//     original reconciliationService comment flagged as never
+//     auto-corrected — now intentionally enabled per product decision,
+//     logged loudly via inspector either way so it is always visible.
+const CORRECTION_EPSILON = 1e-6;
+
+export async function correctUserDrift(userId) {
+  const report = await reconcileUser(userId);
+  if (!report) return null;
+
+  const corrections = [];
+
+  for (const r of report.results) {
+    if (Math.abs(r.drift) < CORRECTION_EPSILON) continue;
+
+    const { currency, ledgerBalance, onChainBalance, drift, status } = r;
+    const amount = Math.abs(drift);
+    const referenceId = `balance-correction-${userId}-${currency}-${Date.now()}`;
+
+    try {
+      if (status === 'chain_ahead_of_ledger') {
+        await walletServiceInstance.credit(userId, currency, amount, {
+          referenceId,
+          description: `Balance correction: ${currency} on-chain balance exceeded ledger`,
+          transactionType: 'balance_correction',
+        });
+      } else if (status === 'ledger_ahead_of_chain') {
+        await walletServiceInstance.debit(userId, currency, amount, {
+          referenceId,
+          description: `Balance correction: ${currency} ledger balance exceeded on-chain`,
+          transactionType: 'balance_correction',
+        });
+      } else {
+        continue;
+      }
+
+      inspector.info(
+        'reconciliation',
+        `Balance correction applied: ${currency} ${status} by ${amount}`,
+        { userId: String(userId), currency, direction: status, amount, ledgerBalance, onChainBalance }
+      );
+
+      corrections.push({ currency, direction: status, amount });
+    } catch (err) {
+      inspector.error(
+        'reconciliation',
+        `Balance correction FAILED: ${currency} for user ${userId}: ${err.message}`,
+        { userId: String(userId), currency, direction: status, amount, ledgerBalance, onChainBalance }
+      );
+    }
+  }
+
+  return { userId: String(userId), corrections };
+}
+
+export async function correctAllUsersDrift() {
+  const wallets = await Wallet.find({}, { userId: 1 });
+  const results = [];
+
+  for (const w of wallets) {
+    try {
+      const result = await correctUserDrift(w.userId);
+      if (result && result.corrections.length > 0) results.push(result);
+    } catch (err) {
+      results.push({ userId: String(w.userId), error: err.message });
+    }
+  }
+
+  return results;
+}
+
+export default { reconcileUser, reconcileAllUsers, getOnChainTotal, correctUserDrift, correctAllUsersDrift };

@@ -19,6 +19,19 @@
 // truth - see walletService.js history in memory). There's no separate
 // "wallet cache vs ledger" drift class to detect here; that box is folded
 // into the snapshot rebuild step at the end of a correction.
+//
+// DUPLICATE-PROPOSAL GUARD: before queuing a new proposal for a given
+// (userId, currency), we check whether a PENDING one already exists and
+// reuse it instead of creating a second one. Without this, two overlapping
+// reconciliation runs (e.g. an admin's "Run Full Correction" and a user's
+// self-service sync firing close together) could each queue their own
+// proposal against the same live drift. Both would later look valid to
+// approve individually, but approving both would apply the correction
+// twice - once as a credit/debit, and a second time on top of that -
+// producing a real, if temporary, wrong balance. The database also enforces
+// this via a partial unique index in correctionQueueModel.js; the check
+// here exists so the normal-case outcome is a clean "already queued"
+// response instead of a database error bubbling up.
 
 import { randomUUID } from 'crypto';
 import Wallet from '../../models/walletModel.js';
@@ -58,6 +71,26 @@ export async function runForUser(userId, { mode = 'AUTO_CORRECT', maxAutoRisk = 
       continue;
     }
 
+    // Guard against duplicate PENDING proposals for the same live drift.
+    // If reconciliation already queued something for this (userId, currency)
+    // that hasn't been resolved yet, don't create a second one - surface the
+    // existing proposal instead so callers (and the UI) see it as "already
+    // queued" rather than getting a fresh proposalId that duplicates it.
+    if (mode !== 'DRY_RUN') {
+      const existing = await CorrectionQueue.findOne({
+        userId, currency: result.currency, status: 'PENDING',
+      });
+      if (existing) {
+        outcomes.push({
+          currency: result.currency, riskLevel,
+          policyDecision: existing.policyDecision,
+          applied: false, queued: true,
+          proposalId: existing._id, alreadyQueued: true,
+        });
+        continue;
+      }
+    }
+
     const proposalDoc = {
       userId, currency: result.currency,
       ledgerBalance: result.ledgerBalance, onChainBalance: result.onChainBalance,
@@ -83,6 +116,14 @@ export async function runForUser(userId, { mode = 'AUTO_CORRECT', maxAutoRisk = 
     // key downstream), THEN decide whether to apply it immediately. The
     // referenceId is deterministic from the proposal's own _id, so it's
     // stable whether this gets auto-applied now or approved later.
+    //
+    // Note: even with the existence check above, a race is still
+    // theoretically possible between two near-simultaneous calls both
+    // passing that check before either writes. The partial unique index on
+    // (userId, currency, status: PENDING) in correctionQueueModel.js is the
+    // real backstop - if that happens, the losing insert below will throw a
+    // duplicate-key error rather than silently creating a second PENDING
+    // proposal.
     const proposal = new CorrectionQueue({
       ...proposalDoc,
       policyDecision: policy.decision,
@@ -91,7 +132,28 @@ export async function runForUser(userId, { mode = 'AUTO_CORRECT', maxAutoRisk = 
       referenceId: `pending-${randomUUID()}`,
     });
     proposal.referenceId = transactionFinalizer.buildReferenceId(proposal._id);
-    await proposal.save();
+
+    try {
+      await proposal.save();
+    } catch (err) {
+      // Duplicate-key error from the partial unique index means another
+      // concurrent run just won this race and already queued a PENDING
+      // proposal for this (userId, currency). Look it up and treat it the
+      // same as the existence check above, instead of throwing.
+      if (err?.code === 11000) {
+        const raceWinner = await CorrectionQueue.findOne({
+          userId, currency: result.currency, status: 'PENDING',
+        });
+        outcomes.push({
+          currency: result.currency, riskLevel,
+          policyDecision: raceWinner?.policyDecision ?? policy.decision,
+          applied: false, queued: true,
+          proposalId: raceWinner?._id ?? null, alreadyQueued: true,
+        });
+        continue;
+      }
+      throw err;
+    }
 
     await transactionFinalizer.recordAudit({
       userId, currency: result.currency, event: 'PROPOSAL_CREATED', runId,

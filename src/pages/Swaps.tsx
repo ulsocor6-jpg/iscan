@@ -32,6 +32,46 @@ export default function Swaps() {
   const [quoting, setQuoting]             = useState(false);
   const [balances, setBalances]           = useState<any>({});
   const [onchain, setOnchain]             = useState<any>({});
+  const [syncing, setSyncing]             = useState(false);
+  const [syncMsg, setSyncMsg]             = useState("");
+  const [syncStatus, setSyncStatus]       = useState<"success"|"pending"|"neutral"|"error"|"">("");
+
+  async function fetchBalances() {
+    try {
+      const res = await fetch("/api/v1/wallet/balances", {
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      setBalances(data.balances || {});
+      setOnchain(data.onchain || {});
+    } catch (err) {
+      console.error("[SWAPS] Failed to load balances:", err);
+    }
+  }
+  async function handleSyncBalance() {
+    setSyncing(true); setSyncMsg(""); setSyncStatus("");
+    try {
+      const res = await fetch("/api/v1/reconciliation/me/run", {
+        method: "POST", credentials: "include",
+      });
+      const data = await res.json();
+      const msg = data.message || (data.success ? "Balance updated." : "Unable to update balance right now.");
+      setSyncMsg(msg);
+      if (!data.success) setSyncStatus("error");
+      else if (msg === "Balance updated.") setSyncStatus("success");
+      else if (msg.startsWith("We're reviewing")) setSyncStatus("pending");
+      else setSyncStatus("neutral");
+      await fetchBalances();
+    } catch {
+      setSyncMsg("Unable to update balance right now.");
+      setSyncStatus("error");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const [connectedWallet, setConnectedWallet] = useState<string|null>(null);
   const [walletAddress, setWalletAddress]     = useState<string|null>(null);
 
@@ -45,10 +85,11 @@ export default function Swaps() {
   const [fuError, setFuError]         = useState("");
   const [fuPolling, setFuPolling]     = useState<any>(null); // { orderId, status, estimatedOut } while we wait for the real on-chain result
 
-  const phpBal    = balances?.PHP    || balances?.php    || 0;
-  const usdtBal   = balances?.USDT   || balances?.usdt   || 0;
-  const usdcBal   = balances?.USDC   || balances?.usdc   || 0;
-  const flowerBal = balances?.FLOWER || balances?.flower || 0;
+  const phpBal        = balances?.PHP        || balances?.php        || 0;
+  const usdtBal       = balances?.USDT       || balances?.usdt       || 0;
+  const usdcBal       = balances?.USDC       || balances?.usdc       || 0; // on-chain sum (Base+Ronin)
+  const flowerBal     = balances?.FLOWER     || balances?.flower     || 0;
+  const internalUsdcBal = balances?.internalUSDC || balances?.internalUsdc || 0; // platform-custodied, what debit() checks
 
   useEffect(() => {
     fetch("/api/v1/bank/list", { credentials:"include" })
@@ -113,16 +154,18 @@ export default function Swaps() {
       setFuQuoting(true);
       try {
         const res  = await fetch(
-          `/api/v1/flower/usdt/quote?fromCurrency=${from}&toCurrency=${to}&amount=${fuAmount}`,
+          `/api/v1/flower/usdt/quote?fromCurrency=${from}&toCurrency=${to}&amount=${fuAmount}&chain=${flowerChain}`,
           { credentials:"include" }
         );
         const data = await res.json();
+        if (!res.ok) { setFuQuote(null); setFuError(data.error || "Could not get a quote"); return; }
+        setFuError("");
         setFuQuote(data);
-      } catch { setFuQuote(null); }
+      } catch { setFuQuote(null); setFuError("Network error getting quote"); }
       finally { setFuQuoting(false); }
     }, 500);
     return () => clearTimeout(timer);
-  }, [fuAmount, fuDirection]);
+  }, [fuAmount, fuDirection, flowerChain]);
 
   async function pollFlowerOrderStatus(orderId: string, estimatedOut: number) {
     const POLL_INTERVAL_MS = 4000;
@@ -142,6 +185,7 @@ export default function Swaps() {
         if (status === "SWAPPED" || status === "COMPLETED") {
           setFuPolling(null);
           setFuResult({ ...data.order, succeeded: true });
+          await fetchBalances();
           return;
         }
         if (status === "FAILED") {
@@ -168,7 +212,7 @@ export default function Swaps() {
       const res  = await fetch("/api/v1/flower/usdt/swap", {
         method:"POST", credentials:"include",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ fromCurrency:from, toCurrency:to, amount:parseFloat(fuAmount) })
+        body: JSON.stringify({ fromCurrency:from, toCurrency:to, amount:parseFloat(fuAmount), chain:flowerChain })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
@@ -196,15 +240,32 @@ export default function Swaps() {
     try {
       const from = tab === "php-usdt" ? "PHP" : currency;
       const to   = tab === "php-usdt" ? toCurrency : "PHP";
+      // Which chain actually holds enough balance for this swap. Without
+      // this, chain was omitted entirely and the backend used to silently
+      // default to 'base', so Ronin-held USDC never actually got swept.
+      let swapChain;
+      if (from !== "PHP") {
+        const amt = parseFloat(amount);
+        const baseBal  = onchain?.BASE?.[from]  ?? 0;
+        const roninBal = onchain?.RONIN?.[from] ?? 0;
+        swapChain = roninBal >= amt ? "ronin"
+                  : baseBal  >= amt ? "base"
+                  : (baseBal >= roninBal ? "base" : "ronin");
+      }
+
       const res  = await fetch("/api/v1/php-swap/execute", {
         method:"POST", credentials:"include",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ fromCurrency:from, toCurrency:to, amount:parseFloat(amount) })
+        body: JSON.stringify({
+          fromCurrency:from, toCurrency:to, amount:parseFloat(amount),
+          ...(swapChain ? { chain: swapChain } : {})
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
       setResult({ type:"swap", ...data });
       setAmount("");
+      await fetchBalances();
     } catch(err:any) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -220,6 +281,7 @@ export default function Swaps() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
       setResult({ type:"cashout", ...data });
+      await fetchBalances();
     } catch(err:any) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -236,6 +298,7 @@ export default function Swaps() {
       if (!res.ok) throw new Error(data.error || data.message);
       if (data.checkoutUrl) window.open(data.checkoutUrl, "_blank");
       setResult({ type:"cashin", ...data });
+      await fetchBalances();
     } catch(err:any) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -308,6 +371,10 @@ export default function Swaps() {
         const data = await res.json();
         if (data?.deposit?.status && data.deposit.status !== "PENDING") {
           setBankDeposit((prev:any) => ({ ...prev, status: data.deposit.status }));
+
+          if (data.deposit.status === "CREDITED") {
+            await fetchBalances();
+          }
         }
       } catch {}
     }, 5000);
@@ -405,7 +472,33 @@ export default function Swaps() {
           })}
         </div>
 
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,flexWrap:"wrap" as const}}>
+          <button onClick={handleSyncBalance} disabled={syncing} style={{
+            background: syncing ? "#1d2942" : "linear-gradient(135deg,#3b82f6,#22c55e)",
+            border:"none", borderRadius:8,
+            padding:"10px 20px", color:"white", fontSize:14, fontWeight:700,
+            cursor: syncing ? "wait" : "pointer", opacity: syncing ? 0.6 : 1,
+            boxShadow: syncing ? "none" : "0 0 12px rgba(34,197,94,0.35)"
+          }}>
+            {syncing ? "⏳ Syncing..." : "🔄 Sync Balance"}
+          </button>
+          {syncMsg && (
+            <span style={{
+              fontSize:13, fontWeight:600,
+              color: syncStatus==="success" ? "#22c55e"
+                   : syncStatus==="pending" ? "#eab308"
+                   : syncStatus==="error"   ? "#ef4444"
+                   : "#94a3b8"
+            }}>
+              {syncStatus==="success" && "✓ "}
+              {syncStatus==="pending" && "⏳ "}
+              {syncStatus==="error" && "✗ "}
+              {syncMsg}
+            </span>
+          )}
+        </div>
         <div style={{...card,marginBottom:24}}>
+
           <div style={{color:"#94a3b8",fontSize:12,marginBottom:10}}>Connect Wallet</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap" as const}}>
             {WALLETS.map(w => (
@@ -746,11 +839,21 @@ export default function Swaps() {
           const fromLabel  = isF2U ? "FLOWER 🌸" : "USDC";
           const toLabel    = isF2U ? "USDC"       : "FLOWER 🌸";
           const fromSymbol = isF2U ? "🌸" : "$";
-          const fromBal    = isF2U ? flowerBal : usdcBal;
+          // FLOWER->USDC deposits real FLOWER on-chain, so "available" must
+          // match the selected chain's real balance (onchain[flowerChain]).
+          // USDC->FLOWER instead debits the flat internal Ledger via
+          // walletService.debit() (see "Insufficient ${asset} balance" in
+          // walletService.js) -- that check has no chain scoping at all, so
+          // showing a chain-scoped on-chain balance there would disagree with
+          // what a submit actually checks. `chain` only picks which treasury
+          // executes the reverse swap, not which balance funds it.
+          const fromBal    = isF2U
+            ? (onchain?.[flowerChain]?.FLOWER ?? 0)
+            : internalUsdcBal;
 
           return (
             <div style={card}>
-              <h3 style={{margin:"0 0 4px"}}>Swap FLOWER 🌸 → USDC</h3>
+              <h3 style={{margin:"0 0 4px"}}>Swap {fromLabel} → {toLabel}</h3>
               <p style={{color:"#94a3b8",fontSize:13,marginTop:0,marginBottom:16}}>
                 Internal swap between FLOWER and USDC. Rate fetched live from Uniswap V3 on Base.
               </p>
@@ -761,7 +864,7 @@ export default function Swaps() {
                 </label>
                 <select
                   value={flowerChain}
-                  onChange={e=>setFlowerChain(e.target.value)}
+                  onChange={e=>{ setFlowerChain(e.target.value); setFuQuote(null); setFuError(""); }}
                   style={inp}
                 >
                   <option value="RONIN">Ronin</option>
@@ -783,7 +886,7 @@ export default function Swaps() {
               </div>
 
               <p style={{color:"#94a3b8",fontSize:13,marginTop:0,marginBottom:16}}>
-                {flowerChain === "RONIN" ? "Swap FLOWER on Base via Uniswap V3." : "Swap FLOWER on Base via Uniswap V3."}
+                {flowerChain === "RONIN" ? "Swap FLOWER on Ronin via Katana." : "Swap FLOWER on Base via Uniswap V3."}
               </p>
 
               <div style={{

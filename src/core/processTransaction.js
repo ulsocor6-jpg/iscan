@@ -67,7 +67,11 @@ export default async function processTransaction(raw) {
     if (user) {
       await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
         query,
-        result: { accountId: bankAccount._id, userId: bankAccount.userId },
+        result: {
+          accountId: bankAccount._id,
+          userId: bankAccount.userId,
+          matchedUserName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || null,
+        },
         decision: { matched: true, reason: "MATCHED_BY_RECIPIENT_LAST_FOUR" },
       });
     } else {
@@ -116,7 +120,11 @@ export default async function processTransaction(raw) {
 
     if (user) {
       await inspectorService.finishStage(flowId, InspectorStage.USER_LOOKUP, {
-        result: { userId: user._id, email: user.email },
+        result: {
+          userId: user._id,
+          email: user.email,
+          matchedUserName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || null,
+        },
         decision: { matched: true, method: matchMethod, reason: "MATCHED" },
       });
     } else if (ambiguousAnonymous) {

@@ -36,7 +36,12 @@ const userSchema = new mongoose.Schema({
       accountName:   { type: String },
       addedAt:       { type: Date, default: Date.now }
     }
-  ]
+  ],
+
+  backgroundPreference: {
+    type:  { type: String, enum: ['none', 'preset', 'custom'], default: 'none' },
+    value: { type: String, default: '' },
+  },
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

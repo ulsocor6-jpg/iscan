@@ -16,6 +16,11 @@ import inspector        from "../blockchain/inspector/blockchainInspector.js";
 
 import { sweepFlowerToTreasuryBase } from "./flowerSweepServiceBase.js";
 import { processSwap as processSwapBase } from "../flowerSwapServiceBase.js";
+import {
+  finalizeReverseSwapSuccess,
+  finalizeReverseSwapFailure,
+  retryDebitAndSwap,
+} from "./flowerUsdtSwapService.js";
 
 async function reload(orderId) {
   return FlowerOrder.findOne({ orderId });
@@ -120,6 +125,44 @@ async function retryRonin(order) {
   return reload(order.orderId);
 }
 
+// USDC->FLOWER orders skip deposit/sweep entirely (they start at SWAPPING
+// off a ledger debit, not an on-chain deposit) so they get their own retry
+// path rather than falling into retryBase/retryRonin, which assume the
+// FLOWER_TO_USDC direction and would try to sweep FLOWER that was never
+// deposited.
+async function retryUsdcToFlower(order) {
+  if (!order.usdcHeld) {
+    // No debit is currently in effect for this order — either it never got
+    // past the balance check (insufficient balance) or a prior failure
+    // already auto-refunded the user. Re-run balance check -> debit rather
+    // than calling the executor directly, which would swap real treasury
+    // FLOWER to the user without ever having taken their USDC.
+    try {
+      return await retryDebitAndSwap(order);
+    } catch (err) {
+      emitFailure(order, err);
+      throw err;
+    }
+  }
+
+  const chain = String(order.chain).toUpperCase();
+  const executor = chain === "BASE"
+    ? (await import("../flowerSwapServiceBase.js")).processReverseSwap
+    : (await import("./flowerSwapService.js")).processReverseSwap;
+
+  try {
+    await executor(order.orderId);
+    await finalizeReverseSwapSuccess(order.orderId, chain);
+  } catch (err) {
+    emitFailure(order, err);
+    if (err.stage !== "post-transfer") {
+      await finalizeReverseSwapFailure(order, err);
+    }
+    throw err;
+  }
+  return reload(order.orderId);
+}
+
 export async function retryOrder(orderId, { requesterId, isAdmin = false } = {}) {
   const order = await reload(orderId);
   if (!order) throw new Error("Order not found");
@@ -127,6 +170,8 @@ export async function retryOrder(orderId, { requesterId, isAdmin = false } = {})
     throw new Error("Not authorized to retry this order");
   }
   if (order.status === "COMPLETED") throw new Error("Order already completed");
+
+  if (order.direction === "USDC_TO_FLOWER") return retryUsdcToFlower(order);
 
   const chain = String(order.chain).toUpperCase();
   if (chain === "BASE") return retryBase(order);

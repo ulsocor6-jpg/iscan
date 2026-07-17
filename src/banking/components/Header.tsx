@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { logout } from "../../services/authService";
 import { useAuth } from "../../hooks/useAuth";
 import FlowerTicker from "./dashboard/FlowerTicker";
+import BackgroundPicker from "./BackgroundPicker";
 import { useAdminAlerts } from "../../hooks/useAdminAlerts";
 import type { AdminAlert } from "../../hooks/useAdminAlerts";
 
@@ -444,6 +445,7 @@ export default function Header() {
           )}
 
           <button>⚙️</button>
+          <BackgroundPicker />
           <FlowerTicker />
 
           {/* User menu */}

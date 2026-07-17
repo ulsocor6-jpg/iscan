@@ -201,6 +201,11 @@ const BlockchainInboxSchema = new mongoose.Schema(
       dashboard: {
         type: WorkerSchema,
         default: () => ({})
+      },
+
+      correlator: {
+        type: WorkerSchema,
+        default: () => ({})
       }
 
     },

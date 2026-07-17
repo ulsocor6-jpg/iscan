@@ -3,6 +3,12 @@ import walletService from "../walletService.js";
 import transactionService from "../transactionService.js";
 
 export default async function settlementWorker(job) {
+
+  console.log(
+    "[SETTLEMENT WORKER RECEIVED]",
+    JSON.stringify(job)
+  );
+
   const {
     txId,
     senderId,
@@ -23,9 +29,19 @@ export default async function settlementWorker(job) {
       finalCreditAmount,
     });
 
+    console.log(
+      "[SETTLEMENT COMPLETED]",
+      txId
+    );
+
     return { success: true };
+
   } catch (err) {
-    console.error("SETTLEMENT ERROR", err);
+
+    console.error(
+      "[SETTLEMENT ERROR]",
+      err
+    );
 
     await transactionService.update(txId, {
       status: "FAILED",

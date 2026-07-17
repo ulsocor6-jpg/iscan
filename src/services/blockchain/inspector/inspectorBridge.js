@@ -25,6 +25,7 @@ const STAGE_CATEGORY = {
   WalletCreditWorker: "deposit",
   LedgerWorker: "deposit",
   RecoveryWorker: "system",
+  TreasurySendService: "withdrawal",
   swap: "swap",
 };
 

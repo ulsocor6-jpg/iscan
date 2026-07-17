@@ -7,9 +7,21 @@ const flowerOrderSchema = new mongoose.Schema(
     token:{ type:String, default:"FLOWER" },
     chain:{ type:String, default:"RONIN" },
     source:{ type:String, enum:["GENERIC","USDT_WIDGET"], default:"GENERIC" },
-    depositAddress:{ type:String, required:true },
-    expectedAmount:{ type:Number, required:true },
+    direction:{ type:String, enum:["FLOWER_TO_USDC","USDC_TO_FLOWER"], default:"FLOWER_TO_USDC" },
+    depositAddress:{ type:String, required: function() { return this.direction === "FLOWER_TO_USDC"; } },
+    expectedAmount:{ type:Number, required: function() { return this.direction === "FLOWER_TO_USDC"; } },
     receivedAmount:{ type:Number, default:0 },
+    usdcAmountIn:{ type:Number, default:0 },
+    flowerAmountOut:{ type:Number, default:0 },
+
+    // USDC_TO_FLOWER only. true = the pipeline currently holds USDC debited
+    // from the user (debit succeeded, swap not yet confirmed/refunded) —
+    // retry should go straight to the swap executor. false = no debit is
+    // currently in effect (never debited due to insufficient balance, or
+    // already auto-refunded after a prior failure) — retry must re-check
+    // balance and re-debit before attempting the swap, never call the
+    // executor directly, or the user gets FLOWER without ever paying USDC.
+    usdcHeld:{ type:Boolean, default:false },
     txHash:{ type:String, unique:true, sparse:true, index:true },
     lastScannedBlock:{ type:Number },
     failureReason:{ type:String },

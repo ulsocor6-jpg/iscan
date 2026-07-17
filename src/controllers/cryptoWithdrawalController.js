@@ -29,6 +29,13 @@ const NETWORK_FEES = {
   RONIN: 1.0,
 };
 
+// Platform revenue fee, taken out of the withdrawal amount (not added on
+// top) — matches the "You Receive: amount - fee" figure shown in the UI.
+// Combined with the network fee estimate below, this is deducted from
+// what actually gets sent on-chain; the difference stays in the treasury
+// wallet as the platform's cut, rather than being silently discarded.
+const PLATFORM_FEE_PCT = 0.005; // 0.5%
+
 // Ronin addresses are sometimes displayed with a "ronin:" prefix instead
 // of "0x" — same underlying hex, just a different convention. Normalize
 // to 0x since that is what ethers/treasurySendService expects.
@@ -76,15 +83,25 @@ export async function createCryptoWithdrawal(req, res) {
       toAddress: normalizedAddress,
       amount: parsedAmount,
     });
-    const fee = feeResult.fee || NETWORK_FEES[network] || 0;
+    const networkFee = feeResult.fee || NETWORK_FEES[network] || 0;
     if (!feeResult.estimated) {
-      console.warn(`[cryptoWithdrawal] live fee estimate failed, using fallback ${fee} ${asset} for ${network}`);
+      console.warn(`[cryptoWithdrawal] live fee estimate failed, using fallback ${networkFee} ${asset} for ${network}`);
     }
 
-    const totalRequired = parsedAmount + fee;
+    const platformFee = parsedAmount * PLATFORM_FEE_PCT;
+    const totalFee = networkFee + platformFee;
+    const sendAmount = parsedAmount - totalFee;
 
-    if (balance < totalRequired)
-      return res.status(400).json({ error: `Insufficient ${asset}. Need ${totalRequired} (${parsedAmount} + ${fee} fee), have ${balance}` });
+    // Balance check: the fee now comes OUT of the requested amount rather
+    // than being required on top of it — so the user only needs to have
+    // the amount they typed, not amount+fee.
+    if (balance < parsedAmount)
+      return res.status(400).json({ error: `Insufficient ${asset}. Need ${parsedAmount}, have ${balance}` });
+
+    if (sendAmount <= 0)
+      return res.status(400).json({
+        error: `Withdrawal amount too small to cover fees. Amount: ${parsedAmount} ${asset}, fees: ${totalFee.toFixed(6)} ${asset} (network: ${networkFee.toFixed(6)}, platform: ${platformFee.toFixed(6)}).`
+      });
 
     const withdrawal = await WithdrawalRequest.create({
       userId: req.user.id,
@@ -92,6 +109,8 @@ export async function createCryptoWithdrawal(req, res) {
       asset,
       network,
       amount: parsedAmount,
+      fee: totalFee,
+      netAmount: sendAmount,
       destinationAddress: normalizedAddress.trim(),
       status: "pending_review",
     });
@@ -118,8 +137,10 @@ export async function createCryptoWithdrawal(req, res) {
         id: withdrawal._id,
         asset, network,
         amount: parsedAmount,
-        fee,
-        willReceive: parsedAmount - fee,
+        networkFee,
+        platformFee,
+        fee: totalFee,
+        willReceive: sendAmount,
         destinationAddress: withdrawal.destinationAddress,
         status: withdrawal.status,
         txHash: withdrawal.txHash || null,

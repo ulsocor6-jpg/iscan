@@ -20,12 +20,14 @@ const cryptoDepositSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: ["base", "ronin"],
+      index: true,
     },
 
     token: {
       type: String,
       required: true,
       enum: ["USDC", "USDT"],
+      index: true,
     },
 
     amount: {
@@ -50,12 +52,43 @@ const cryptoDepositSchema = new mongoose.Schema(
       index: true,
     },
 
-    creditedAt: {
-      type: Date,
+    // Treasury sweep information
+    treasurySweepTx: {
+      type: String,
+      default: null,
+      index: true,
     },
 
+    sweptAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    // Timing
+    creditedAt: {
+      type: Date,
+      default: null,
+    },
+
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Error tracking
     error: {
       type: String,
+      default: null,
+    },
+
+    retryCount: {
+      type: Number,
+      default: 0,
+    },
+
+    lastRetryAt: {
+      type: Date,
+      default: null,
     },
   },
   {

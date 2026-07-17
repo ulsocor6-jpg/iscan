@@ -83,7 +83,7 @@ async function ensureGasForSweep({ chain, provider, config, derivedAddress }) {
   return { funded: true, amount: ethers.formatEther(topUpWei), txHash: fundTx.hash };
 }
 
-export async function sweepStablecoinToTreasury({ chain, token, walletIndex }) {
+export async function sweepStablecoinToTreasury({ chain, token, walletIndex, amount = null }) {
   const config = CHAIN_CONFIG[chain?.toLowerCase()];
   if (!config) throw new Error(`Unsupported sweep chain: ${chain}`);
 
@@ -102,21 +102,38 @@ export async function sweepStablecoinToTreasury({ chain, token, walletIndex }) {
   const signer = new ethers.Wallet(derived.privateKey, provider);
   const contract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
-  const [balance, decimals] = await Promise.all([
+  const [onChainBalance, decimals] = await Promise.all([
     contract.balanceOf(derived.address),
     contract.decimals(),
   ]);
 
-  if (balance === 0n) {
+  if (onChainBalance === 0n) {
     return { swept: 0, txHash: null, fromAddress: derived.address };
+  }
+
+  // `amount` lets a caller sweep only part of the on-chain balance (e.g. a
+  // partial USDC->PHP swap) instead of always pulling everything the user
+  // holds. Defaults to sweeping the full balance when omitted, preserving
+  // the original behavior for callers that intentionally want a full sweep
+  // (e.g. treasury cleanup tooling).
+  let sweepAmount = onChainBalance;
+  if (amount !== null) {
+    const requested = ethers.parseUnits(amount.toString(), decimals);
+    if (requested > onChainBalance) {
+      throw new Error(
+        `Requested sweep amount ${amount} ${token} exceeds on-chain balance ` +
+        `${ethers.formatUnits(onChainBalance, decimals)} ${token} for ${derived.address}`
+      );
+    }
+    sweepAmount = requested;
   }
 
   await ensureGasForSweep({ chain, provider, config, derivedAddress: derived.address });
 
-  const humanAmount = parseFloat(ethers.formatUnits(balance, decimals));
+  const humanAmount = parseFloat(ethers.formatUnits(sweepAmount, decimals));
   console.log(`[SWEEP] ${humanAmount} ${token} on ${chain} from ${derived.address} -> treasury ${treasuryAddress}`);
 
-  const tx = await contract.transfer(treasuryAddress, balance);
+  const tx = await contract.transfer(treasuryAddress, sweepAmount);
   const receipt = await tx.wait();
 
   console.log(`[SWEEP] complete — tx: ${receipt.hash}`);

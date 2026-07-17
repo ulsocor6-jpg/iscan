@@ -1,46 +1,77 @@
 const queue = [];
+const handlers = {};
 
 /**
  * Add settlement job
  */
-export function enqueueSettlement(job) {
-  queue.push({
-    ...job,
-    attempts: 0,
+export async function add(name, data) {
+  const job = {
+    id: Date.now().toString(),
+    name,
+    data,
     status: "pending",
-    createdAt: Date.now()
-  });
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+
+  queue.push(job);
+
+  console.log(
+    "[SETTLEMENT QUEUE ADD]",
+    name,
+    job.id
+  );
+
+  // execute immediately if worker registered
+  if (handlers[name]) {
+    try {
+      job.status = "processing";
+
+      const result = await handlers[name](job);
+
+      job.status = "completed";
+      job.result = result;
+
+      return result;
+
+    } catch (err) {
+      job.status = "failed";
+      job.error = err.message;
+
+      throw err;
+    }
+  }
+
+  return job;
 }
+
 
 /**
- * Get next job
+ * Worker registration
  */
-export function getNextJob() {
-  return queue.find(j => j.status === "pending");
-}
+export const settlementQueue = {
+
+  process(name, fn) {
+    handlers[name] = fn;
+
+    console.log(
+      "[SETTLEMENT HANDLER REGISTERED]",
+      name
+    );
+  },
+
+};
+
 
 /**
- * Update job
+ * Debug helpers
  */
-export function updateJob(jobId, update) {
-  const job = queue.find(j => j.jobId === jobId);
-  if (job) Object.assign(job, update);
-}
-
 export function getQueue() {
   return queue;
 }
 
-// ── Compatibility shim added by fix_and_wire.sh ──────────────────────────
-// Provides a minimal .process() based queue interface expected by
-// src/services/settlement/index.js
-const handlers = {};
-export const settlementQueue = {
-  process(name, fn) {
-    handlers[name] = fn;
-  },
-  async run(name, job) {
-    if (handlers[name]) return handlers[name](job);
-    throw new Error(`No handler registered for "${name}"`);
-  },
-};
+export function getNextJob() {
+  return queue.find(
+    j => j.status === "pending"
+  );
+}

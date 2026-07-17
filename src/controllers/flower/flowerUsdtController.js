@@ -28,7 +28,7 @@ export async function quoteFlowerUsdtSwap(req, res) {
 // Body: { fromCurrency, toCurrency, amount }
 export async function executeFlowerUsdtSwap(req, res) {
   try {
-    const { fromCurrency, toCurrency, amount } = req.body;
+    const { fromCurrency, toCurrency, amount, chain } = req.body;
     const userId = req.user.id;
 
     if (!fromCurrency || !toCurrency || !amount)
@@ -38,7 +38,7 @@ export async function executeFlowerUsdtSwap(req, res) {
     if (fromCurrency === "FLOWER" && toCurrency === "USDC") {
       result = await settleFlowerToUsdt({ userId, amount: parseFloat(amount) });
     } else if (fromCurrency === "USDC" && toCurrency === "FLOWER") {
-      result = await settleUsdtToFlower({ userId, amount: parseFloat(amount) });
+      result = await settleUsdtToFlower({ userId, amount: parseFloat(amount), chain: chain || "BASE" });
     } else {
       return res.status(400).json({ error: "Only FLOWER↔USDC supported on this endpoint" });
     }

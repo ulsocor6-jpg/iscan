@@ -14,6 +14,10 @@ const lbl: React.CSSProperties = {
 // ── Platform fee on top of network gas (%) ────────────────────────────────────
 const PLATFORM_FEE_PCT = 0.5; // 0.5% — adjust as needed
 
+// ── PHP withdrawal fee — must match paymentRoutes.js (php * 0.015) ───────────
+const PHP_FEE_PCT = 1.5;
+
+
 // ── Assets — only USDC, USDT, FLOWER live ────────────────────────────────────
 const ASSETS = [
   { id: "USDC",   icon: "◎", color: "#2775ca", live: true  },
@@ -145,9 +149,41 @@ function PhpWithdrawal() {
     finally { setLoading(false); }
   }
 
-  if (result) return (
-    <div style={{ background: "#0a1f0a", borderRadius: 8, padding: 16 }}>
-      <p style={{ color: "#22c55e", margin: "0 0 8px", fontWeight: 700 }}>✅ Withdrawal Submitted!</p>
+  // ── Live status + countdown for the pending withdrawal ──────────────────
+  const [liveStatus,  setLiveStatus]  = useState<string>("pending_review");
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!result?.referenceId) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/v1/payment/cashout/${result.referenceId}/status`, { credentials: "include" });
+        const d = await r.json();
+        if (cancelled || !d.success) return;
+        setLiveStatus(d.status);
+        if (d.expiresAt) {
+          const secs = Math.max(0, Math.floor((new Date(d.expiresAt).getTime() - Date.now()) / 1000));
+          setSecondsLeft(secs);
+        }
+      } catch {}
+    };
+
+    poll();
+    const iv = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [result?.referenceId]);
+
+  if (result) {
+    const mins = secondsLeft != null ? Math.floor(secondsLeft / 60) : null;
+    const secs = secondsLeft != null ? secondsLeft % 60 : null;
+
+    return (
+    <div style={{ background: liveStatus === "expired" ? "#1a1013" : "#0a1f0a", borderRadius: 8, padding: 16 }}>
+      <p style={{ color: liveStatus === "expired" ? "#f87171" : "#22c55e", margin: "0 0 8px", fontWeight: 700 }}>
+        {liveStatus === "expired" ? "⏱️ Withdrawal Expired & Refunded" : "✅ Withdrawal Submitted!"}
+      </p>
       <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 4px" }}>
         Ref: <strong style={{ color: "white" }}>{result.referenceId}</strong>
       </p>
@@ -157,13 +193,31 @@ function PhpWithdrawal() {
         {" "}(Fee: ₱{result.fee})
       </p>
       <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{result.message}</p>
-      <button onClick={() => { setResult(null); setAmount(""); }}
+
+      {liveStatus === "pending_review" && secondsLeft != null && (
+        <p style={{ color: secondsLeft < 60 ? "#f87171" : "#f59e0b", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+          ⏳ Awaiting release — auto-refund in {mins}:{String(secs).padStart(2, "0")} if not processed
+        </p>
+      )}
+      {liveStatus === "expired" && (
+        <p style={{ color: "#f87171", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+          This withdrawal wasn't processed in time and has been automatically refunded to your balance.
+        </p>
+      )}
+      {liveStatus === "completed" && (
+        <p style={{ color: "#22c55e", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+          ✅ Released to your {channel} account.
+        </p>
+      )}
+
+      <button onClick={() => { setResult(null); setAmount(""); setSecondsLeft(null); setLiveStatus("pending_review"); }}
         style={{ marginTop: 16, background: "transparent", border: "1px solid #1d2942",
           borderRadius: 8, color: "#94a3b8", padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
         New Withdrawal
       </button>
     </div>
   );
+  }
 
   return (
     <>
@@ -181,6 +235,30 @@ function PhpWithdrawal() {
       <label style={lbl}>Amount (PHP)</label>
       <input style={inp} type="number" placeholder="Min ₱100"
         value={amount} onChange={e => setAmount(e.target.value)} />
+
+      {(() => {
+        const parsedPhp = parseFloat(amount || "0");
+        const phpFee = parseFloat((parsedPhp * (PHP_FEE_PCT / 100)).toFixed(2));
+        const phpNet = Math.max(0, parsedPhp - phpFee);
+        if (parsedPhp <= 0) return null;
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>Fee ({PHP_FEE_PCT}%)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>-₱{phpFee.toFixed(2)}</div>
+            </div>
+            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Send</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "white" }}>₱{parsedPhp.toFixed(2)}</div>
+            </div>
+            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Receive</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>₱{phpNet.toFixed(2)}</div>
+            </div>
+          </div>
+        );
+      })()}
+
 
       {banksLoading ? (
         <p style={{ color: "#64748b", fontSize: 13, marginTop: 16 }}>Loading linked accounts…</p>
@@ -206,7 +284,7 @@ function PhpWithdrawal() {
 
       <div style={{ background: "#1a1a0a", border: "1px solid #854d0e", borderRadius: 8,
         padding: "10px 12px", marginTop: 16, marginBottom: 16, color: "#fbbf24", fontSize: 12 }}>
-        ⚠️ Fee: 1.5% • Minimum ₱100 • Processed within 24 hours
+        ⚠️ Fee: 1.5% • Minimum ₱100 • Processed within 10 minutes
       </div>
       <button className="auth-btn" onClick={handleCashOut}
         disabled={loading || !amount || !linkedAccount}>

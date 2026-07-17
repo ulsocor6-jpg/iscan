@@ -60,7 +60,11 @@ async function getPool(currency) {
 }
 
 // USDC/USDT → PHP
-export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency = 'USDC', txRef, chain = 'base' }) {
+export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency = 'USDC', txRef, chain }) {
+  if (!chain) {
+    throw new Error('chain is required for stablecoin swaps (base|ronin) — refusing to guess where the user\'s balance lives');
+  }
+
   const rate   = await getUSDPHPRate(chain, stablecoinAmount);
   const phpOut = stablecoinAmount * rate;
 
@@ -78,37 +82,65 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
   await phpPool.save();
 
   try {
-  const stableBal = await walletService.getBalance(userId, currency);
-  if (stableBal < stablecoinAmount)
-    throw new Error(`Insufficient ${currency} balance`);
-
-  // On-chain ground-truth check: the ledger balance above is internal
-  // bookkeeping, not proof the stablecoin is actually in the user's wallet.
-  // Verify against the live chain before crediting PHP.
-  const wallet = await Wallet.findOne({ userId });
-  if (!wallet) throw new Error(`No wallet found for user ${userId}`);
-  const chainEntry = wallet.chainAddresses?.find(
-    c => c.chain?.toLowerCase() === chain.toLowerCase()
-  );
-  if (!chainEntry?.address) {
-    throw new Error(`No ${chain} address on file for user ${userId}`);
-  }
-  const onChainBalance = await getTokenBalance(chain.toUpperCase(), chainEntry.address, currency);
-  if (onChainBalance === null) {
-    throw new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
-  }
-  if (onChainBalance < stablecoinAmount) {
-    throw new Error(
-      `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency} on-chain, claims ${stablecoinAmount}. Refusing to credit PHP against unbacked balance.`
+    // No internal-ledger pre-check here on purpose. The only balance that
+    // matters for a real crypto sweep is what's actually on-chain — the
+    // check right below this does that. An internal ledger figure can be
+    // stale or simply never populated for a user who funded their address
+    // directly, and gating on it here blocked real, fully-backed swaps
+    // (e.g. a user with 0.91 USDC on-chain but a near-zero internal
+    // ledger number was refused before the on-chain check ever ran).
+    const wallet = await Wallet.findOne({ userId });
+    if (!wallet) throw new Error(`No wallet found for user ${userId}`);
+    const chainEntry = wallet.chainAddresses?.find(
+      c => c.chain?.toLowerCase() === chain.toLowerCase()
     );
-  }
+    if (!chainEntry?.address) {
+      throw new Error(`No ${chain} address on file for user ${userId}`);
+    }
+    const onChainBalance = await getTokenBalance(chain.toUpperCase(), chainEntry.address, currency);
+    if (onChainBalance === null) {
+      throw new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
+    }
+    if (onChainBalance < stablecoinAmount) {
+      throw new Error(
+        `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency} on-chain, claims ${stablecoinAmount}. Refusing to credit PHP against unbacked balance.`
+      );
+    }
 
-  await walletService.debit(userId, currency, stablecoinAmount);
+    // Sweep FIRST. PHP must never be ledger-credited until the user's
+    // real stablecoin has actually landed in treasury on-chain. This used
+    // to run after crediting PHP and was "non-fatal if it fails," which
+    // let PHP get paid out against stablecoin that was never actually
+    // collected (e.g. Ronin sweeps silently no-op'ing on a bad chain
+    // default). Now: no confirmed sweep => no PHP, nothing settled.
+    if (wallet.walletIndex === undefined || wallet.walletIndex === null) {
+      throw new Error(`No walletIndex on file for user ${userId} — cannot sweep`);
+    }
 
-    // Credit user PHP wallet
+    let sweepResult;
+    try {
+      sweepResult = await sweepStablecoinToTreasury({
+        chain,
+        token: currency,
+        walletIndex: wallet.walletIndex,
+        amount: stablecoinAmount,
+      });
+    } catch (sweepErr) {
+      throw new Error(`Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`);
+    }
+
+    if (!sweepResult?.txHash || sweepResult.swept < stablecoinAmount) {
+      throw new Error(
+        `Sweep did not confirm expected amount for ${userId} on ${chain}: swept ${sweepResult?.swept ?? 0}, expected ${stablecoinAmount}. Refusing to credit PHP.`
+      );
+    }
+
+    console.log(`[swap] sweep confirmed for ${userId}:`, sweepResult);
+
+    // Only now that the on-chain sweep is confirmed do we touch ledgers.
+    await walletService.debit(userId, currency, stablecoinAmount);
     await walletService.credit(userId, "PHP", phpOut);
 
-    // Settle pools
     phpPool.balance        -= phpOut;
     phpPool.reserved       -= phpOut;
     phpPool.totalSwappedIn += stablecoinAmount;
@@ -126,35 +158,13 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
       senderAddress: 'ISCAN', receiverAddress: 'ISCAN',
       amount: stablecoinAmount, currency,
       type: 'swap', status: 'settled',
-      metadata: { phpOut, rate, sourceCurrency: currency },
+      metadata: { phpOut, rate, sourceCurrency: currency, sweepTxHash: sweepResult.txHash, sweepChain: chain },
       ledgerGroupId: txRef
     });
 
     console.log(`[swap] ${stablecoinAmount} ${currency} → ₱${phpOut.toFixed(2)} for ${userId}`);
 
-    // Sweep the user's real on-chain stablecoin into treasury now that
-    // they've been credited PHP for it. This is the actual on-chain
-    // settlement leg — without it, the user's real USDC/USDT just sits
-    // in their HD wallet untouched while they've already been paid PHP.
-    // Non-fatal if it fails: the user has already been correctly
-    // credited, and the sweep can be retried/reconciled separately.
-    try {
-      const wallet = await Wallet.findOne({ userId });
-      if (wallet?.walletIndex !== undefined && wallet?.walletIndex !== null) {
-        const sweepResult = await sweepStablecoinToTreasury({
-          chain,
-          token: currency,
-          walletIndex: wallet.walletIndex,
-        });
-        console.log(`[swap] sweep result for ${userId}:`, sweepResult);
-      } else {
-        console.error(`[swap] sweep skipped — no walletIndex for ${userId}`);
-      }
-    } catch (sweepErr) {
-      console.error(`[swap] SWEEP FAILED for ${userId} (PHP already credited, needs manual reconciliation):`, sweepErr.message);
-    }
-
-    return { phpOut, rate, txRef };
+    return { phpOut, rate, txRef, sweepTxHash: sweepResult.txHash };
 
   } catch (err) {
     phpPool.reserved -= phpOut;

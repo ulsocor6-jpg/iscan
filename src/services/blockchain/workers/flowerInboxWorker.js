@@ -37,34 +37,20 @@ class FlowerInboxWorker {
 
   async handleOne(job) {
     const depositAddress = job.to;
-    const chain = (job.watch?.chain || job.chain || "").toUpperCase();
 
-    // EvmV2DexAdapter assumes a Uniswap-V2-style router (getAmountsOut /
-    // swapExactTokensForTokens). The real Base router is confirmed to be
-    // Uniswap V3's SwapRouter02, called via exactInputSingle in
-    // flowerSwapServiceBase.js. Until EvmV2DexAdapter has a V3 counterpart,
-    // this worker must not process Base orders — it would call the wrong
-    // interface against a real contract instead of failing cleanly.
-    if (chain === "BASE") {
-      console.warn(`[FlowerInboxWorker] ${job.txHash} — BASE chain not supported by this worker yet (V2/V3 router mismatch), skipping`);
-      await BlockchainInbox.findByIdAndUpdate(job._id, {
-        $set: {
-          "workers.flower.done": true,
-          "workers.flower.blockedReason": "BASE_V3_UNSUPPORTED",
-          "workers.flower.updatedAt": new Date()
-        }
-      });
-      return;
-    }
-
+    // NOTE: BASE used to be skipped here over a V2/V3 router mismatch
+    // concern. That concern applies to routing sweep/swap through
+    // EvmV2DexAdapter — but retryOrder() -> retryBase() never uses that
+    // adapter; it calls sweepFlowerToTreasuryBase/processSwapBase (real
+    // Uniswap V3) directly. This worker only detects the deposit and
+    // delegates to retryOrder, which already branches correctly per
+    // chain. The skip was stale and has been removed.
 
     const order = await FlowerOrder.findOne({
       depositAddress: new RegExp(`^${depositAddress}$`, "i"),
-      status: { $in: ["WAITING_DEPOSIT", "CREATED"] },
-      // USDT_WIDGET orders are owned by flowerUsdtSwapService end-to-end —
-      // never claim those here, even if one happens to still be in a
-      // matchable status.
-      source: "GENERIC"
+      status: { $in: ["WAITING_DEPOSIT", "CREATED"] }
+      // source filter removed — GENERIC and USDT_WIDGET orders both need
+      // real on-chain deposit verification before sweep/swap runs.
     });
 
     if (!order) {

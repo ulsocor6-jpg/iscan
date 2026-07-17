@@ -4,7 +4,7 @@ import Wallet from "../../models/walletModel.js";
 
 /**
  * creditUser()
- * Called by baseListener, roninListener, tronListener on confirmed deposit.
+ * Called by the Blockchain Engine on confirmed deposit.
  * - Idempotency: skips if txHash already in ledger
  * - Credits crypto balance on wallet.balances Map
  * - Converts to PHP and credits wallet.balance (PHP)

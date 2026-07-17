@@ -1,11 +1,20 @@
 import mongoose from 'mongoose';
 const chainAddressSchema = new mongoose.Schema({
-  chain:       { type:String },
-  address:     { type:String },
-  chainId:     { type:String },
-  usdtBalance: { type:Number, default:0 },
-  usdcBalance: { type:Number, default:0 },
-}, { _id:false });
+  chain:         { type: String },
+  address:       { type: String },
+  chainId:       { type: String },
+
+  nativeBalance: { type: Number, default: 0 },
+
+  usdtBalance:   { type: Number, default: 0 },
+
+  usdcBalance:   { type: Number, default: 0 },
+
+  flowerBalance: { type: Number, default: 0 },
+
+  lastSynced:    { type: Date }
+
+}, { _id: false });
 const linkedWalletSchema = new mongoose.Schema({
   address:       { type:String, required:true },
   provider: { type:String, enum:['metamask','ronin','coinbase','trustwallet','other','MAYA','GCASH','BANK'], default:'metamask' },

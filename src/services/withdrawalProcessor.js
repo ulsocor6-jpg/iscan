@@ -79,10 +79,17 @@ export async function settleCryptoWithdrawal(withdrawal) {
   }
 
   try {
+    // Send netAmount (amount minus fees) on-chain, not the full debited
+    // amount — the fee difference simply stays in the treasury wallet
+    // rather than going out to the user. Fall back to the full amount for
+    // any withdrawal created before fee tracking existed (netAmount will
+    // be the schema default of 0 in that case, not a real "send nothing").
+    const sendAmount = withdrawal.netAmount > 0 ? withdrawal.netAmount : withdrawal.amount;
+
     const result = await sendCryptoToAddress({
       chain: withdrawal.network,
       currency: withdrawal.asset,
-      amount: withdrawal.amount,
+      amount: sendAmount,
       toAddress: withdrawal.destinationAddress,
       txRef: `WD-${withdrawal._id}`,
     });
@@ -97,6 +104,8 @@ export async function settleCryptoWithdrawal(withdrawal) {
       userId: withdrawal.userId,
       asset: withdrawal.asset,
       amount: withdrawal.amount,
+      sentAmount: sendAmount,
+      fee: withdrawal.fee || 0,
       txHash: result.txHash,
     });
 

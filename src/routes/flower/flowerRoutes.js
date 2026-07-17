@@ -5,7 +5,6 @@ import {
   getFlowerWallet,
   createOrder,
   getOrderStatus,
-  manualConfirm
 } from "../../controllers/flower/flowerController.js";
 import { retryOrder } from "../../services/flower/flowerOrderRecovery.js";
 import FlowerOrder from "../../models/flower/flowerOrderModel.js";
@@ -15,7 +14,6 @@ const router = express.Router();
 router.get("/wallet", authGuard, getFlowerWallet);
 router.post("/create", authGuard, createOrder);
 router.get("/status/:orderId", authGuard, getOrderStatus);
-router.post("/confirm", authGuard, manualConfirm);
 router.get("/usdt/quote", authGuard, quoteFlowerUsdtSwap);
 router.post("/usdt/swap", authGuard, executeFlowerUsdtSwap);
 

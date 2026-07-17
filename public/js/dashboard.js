@@ -1,274 +1,241 @@
 /**
-
-* dashboard-api.js
-* ISCAN Dashboard API
-* Ledger-based Wallet System
-  */
+ * dashboard-api.js
+ * ISCAN Dashboard API
+ * Ledger-based Wallet System
+ */
 
 const API = '/api/v1';
 
 /* ==================================================
-CORE FETCH
+   CORE FETCH
 ================================================== */
 
 async function apiFetch(path, options = {}) {
-const res = await fetch(`${API}${path}`, {
-credentials: 'include',
-headers: {
-'Content-Type': 'application/json',
-...(options.headers || {})
-},
-...options
-});
+  const res = await fetch(`${API}${path}`, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    ...options
+  });
 
-let data;
+  let data;
 
-try {
-data = await res.json();
-} catch {
-throw new Error('Invalid server response');
-}
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Invalid server response');
+  }
 
-if (!res.ok) {
-if (res.status === 401) {
-window.location.href = '/login';
-return;
-}
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
 
-```
-throw new Error(
-  data.message ||
-  data.error ||
-  `HTTP ${res.status}`
-);
-```
+    throw new Error(
+      data.message ||
+      data.error ||
+      `HTTP ${res.status}`
+    );
+  }
 
-}
-
-return data;
+  return data;
 }
 
 /* ==================================================
-AUTH
+   AUTH
 ================================================== */
 
 export const auth = {
-me() {
-return apiFetch('/auth/me');
-},
+  me() {
+    return apiFetch('/auth/me');
+  },
 
-async logout() {
-await apiFetch('/auth/logout', {
-method: 'POST'
-});
+  async logout() {
+    await apiFetch('/auth/logout', {
+      method: 'POST'
+    });
 
-```
-window.location.href = '/login';
-```
-
-}
+    window.location.href = '/login';
+  }
 };
 
 /* ==================================================
-DASHBOARD
+   DASHBOARD
 ================================================== */
 
 export const dashboard = {
 
-async overview() {
-return apiFetch('/dashboard');
-},
+  // Fast initial load — Ledger balances only, zero RPC calls.
+  // Chain balances come back as `pending` in the portfolio list
+  // until refreshChainBalances() is called explicitly.
+  async overview() {
+    return apiFetch('/dashboard');
+  },
 
-async refresh() {
-return apiFetch('/dashboard');
-},
+  // On-demand only. Call this from a "Refresh" button's click handler —
+  // never on an interval. This is the one call that actually hits
+  // Base/Ronin RPCs, so it should only fire when the user asks for it.
+  // The backend also enforces an 8s per-user cooldown, so rapid repeat
+  // clicks return the previous result with `throttled: true` instead of
+  // re-hitting RPC.
+  async refreshChainBalances() {
+    return apiFetch('/dashboard/refresh-balances');
+  },
 
-async health() {
-return apiFetch('/dashboard/health');
-},
+  async health() {
+    return apiFetch('/dashboard/health');
+  },
 
-async risk() {
-return apiFetch('/dashboard/risk');
-}
+  async risk() {
+    return apiFetch('/dashboard/risk');
+  }
 };
 
 /* ==================================================
-WALLET
+   WALLET
 ================================================== */
 
 export const wallet = {
 
-async get() {
-const data = await apiFetch('/dashboard');
+  async get() {
+    const data = await apiFetch('/dashboard');
 
-```
-return {
-  wallet: data.wallet || {},
-  balance: data.balance || 0,
-  balances: data.balances || {}
-};
-```
+    return {
+      wallet: data.wallet || {},
+      balance: data.balance || 0,
+      balances: data.balances || {}
+    };
+  },
 
-},
+  async balance() {
+    const data = await apiFetch('/dashboard');
 
-async balance() {
-const data = await apiFetch('/dashboard');
-
-```
-return {
-  balance: data.balance || 0,
-  balances: data.balances || {}
-};
-```
-
-}
+    return {
+      balance: data.balance || 0,
+      balances: data.balances || {}
+    };
+  }
 };
 
 /* ==================================================
-USERS
+   USERS
 ================================================== */
 
 export const users = {
 
-search(query) {
-return apiFetch(
-`/users/search?q=${encodeURIComponent(query)}`
-);
-}
+  search(query) {
+    return apiFetch(
+      `/users/search?q=${encodeURIComponent(query)}`
+    );
+  }
 };
 
 /* ==================================================
-TRANSFER
+   TRANSFER
 ================================================== */
 
 export const transfer = {
 
-async send({
-toWalletId,
-amount,
-asset = 'PHP',
-memo = ''
-}) {
+  async send({
+    toWalletId,
+    amount,
+    asset = 'PHP',
+    memo = ''
+  }) {
 
-```
-const result = await apiFetch(
-  '/transfer/send',
-  {
-    method: 'POST',
-    body: JSON.stringify({
-      toWalletId,
-      amount,
-      asset,
-      memo
-    })
+    const result = await apiFetch(
+      '/transfer/send',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          toWalletId,
+          amount,
+          asset,
+          memo
+        })
+      }
+    );
+
+    return result;
   }
-);
-
-return result;
-```
-
-}
 };
 
 /* ==================================================
-LEDGER
+   LEDGER
 ================================================== */
 
 export const ledger = {
 
-history(limit = 30) {
-return apiFetch(
-`/ledger/history?limit=${limit}`
-);
-},
+  history(limit = 30) {
+    return apiFetch(
+      `/ledger/history?limit=${limit}`
+    );
+  },
 
-feed(limit = 30) {
-return apiFetch(
-`/ledger?limit=${limit}`
-);
-}
+  feed(limit = 30) {
+    return apiFetch(
+      `/ledger?limit=${limit}`
+    );
+  }
 };
 
 /* ==================================================
-LIVE DASHBOARD REFRESH
+   CHAIN BALANCE REFRESH (manual, button-driven)
+   ------------------------------------------------
+   Replaces the old startBalanceRefresh()/stopBalanceRefresh()
+   5-second polling loop, which called the full dashboard
+   endpoint — and therefore Base/Ronin RPC — every 5s for every
+   open tab. Wire refreshChainBalancesNow() to a button's onclick;
+   nothing in this module calls it automatically.
 ================================================== */
 
-let refreshTimer = null;
+let _refreshInFlight = false;
 
-export function startBalanceRefresh(
-callback,
-interval = 5000
-) {
-
-if (refreshTimer) {
-clearInterval(refreshTimer);
-}
-
-refreshTimer = setInterval(
-async () => {
-try {
-
-```
-    const data =
-      await dashboard.overview();
-
-    if (callback) {
-      callback(data);
-    }
-
+export async function refreshChainBalancesNow(callback) {
+  if (_refreshInFlight) return; // ignore double-clicks while a call is out
+  _refreshInFlight = true;
+  try {
+    const data = await dashboard.refreshChainBalances();
+    if (callback) callback(data);
+    return data;
   } catch (err) {
-    console.error(
-      '[DASHBOARD REFRESH]',
-      err.message
-    );
+    console.error('[CHAIN BALANCE REFRESH]', err.message);
+    throw err;
+  } finally {
+    _refreshInFlight = false;
   }
-},
-interval
-```
-
-);
-}
-
-export function stopBalanceRefresh() {
-
-if (refreshTimer) {
-clearInterval(refreshTimer);
-refreshTimer = null;
-}
 }
 
 /* ==================================================
-DASHBOARD INIT
+   DASHBOARD INIT
 ================================================== */
 
 export async function dashboardInit() {
 
-const [userData, dashData] =
-await Promise.all([
-auth.me(),
-dashboard.overview()
-]);
+  const [userData, dashData] =
+    await Promise.all([
+      auth.me(),
+      dashboard.overview()
+    ]);
 
-return {
+  return {
+    user:
+      userData.user ||
+      userData,
 
-```
-user:
-  userData.user ||
-  userData,
+    wallet:
+      dashData.wallet || {},
 
-wallet:
-  dashData.wallet || {},
+    balance:
+      dashData.balance || 0,
 
-balance:
-  dashData.balance || 0,
+    balances:
+      dashData.balances || {},
 
-balances:
-  dashData.balances || {},
-
-recentTransactions:
-  dashData.recentTransactions || []
-```
-
-};
+    recentTransactions:
+      dashData.recentTransactions || []
+  };
 }
-

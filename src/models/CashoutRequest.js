@@ -15,7 +15,7 @@ const schema = new mongoose.Schema({
   referenceId: { type: String, unique: true, sparse: true },
   status: {
     type: String,
-    enum: ["PENDING", "PROCESSING", "COMPLETED", "CANCELLED", "FAILED"],
+    enum: ["PENDING", "PROCESSING", "COMPLETED", "CANCELLED", "FAILED", "EXPIRED"],
     default: "PENDING"
   },
   processAt: { type: Date, default: null },

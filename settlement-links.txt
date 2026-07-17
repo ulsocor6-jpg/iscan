@@ -1,0 +1,51 @@
+src/routes/remittanceRoutes.js:48:      settlementMethod: 'manual',
+src/routes/remittanceRoutes.js:83:// GET all pending for settlement (admin use)
+src/routes/remittanceRoutes.js:109:    tx.settlementRef = result.referenceId || 'MOCK';
+src/routes/remittanceRoutes.js:110:    tx.settlementMethod = 'coinsph';
+src/services/flower/flowerSettlementService.js:14:// FAILED anymore. A failure here means settlement didn't finish — but the
+src/services/flower/flowerSettlementService.js:42:  // already SETTLING (e.g. a prior attempt died partway through settlement),
+src/services/flower/flowerSettlementService.js:136:    console.error(`[FlowerSettlement] ${orderId} — settlement step failed, leaving at SETTLING for retry:`, err.message);
+src/services/flower/flowerSwapService.js:106:    // 10. Hand off to settlement. Separate try/catch: the on-chain swap
+src/services/flower/flowerSwapService.js:108:    // A settlement failure must never flow into the outer catch below,
+src/services/flower/flowerSwapService.js:114:        `[FlowerSwap] ${orderId} — swap succeeded (tx: ${receipt.hash}) but settlement failed: ${settleErr.message}. ` +
+src/services/ledgerCashoutEngine.js:44:    settlementMethod: "maya",
+src/services/ledgerCashoutEngine.js:80:      transactionType: "cashout_settlement",
+src/services/ledgerCashoutEngine.js:102:    tx.settlementRef = result.referenceId;
+src/services/blockchain/executors/swapExecutor.js:60:            Move swap settlement here.
+src/services/blockchain/journal/blockchainInbox.js:42:                        settlement: {},
+src/services/cashoutService.js:25:    ledgerGroupId: referenceId, settlementMethod: channel.toLowerCase(),
+src/services/cashoutService.js:42:    tx.settlementRef = result.referenceId;
+src/services/settlementEngine.js:2: * settlementEngine.js  (UPDATED)
+src/services/settlementEngine.js:57:            settlementMethod: rail,
+src/services/settlementEngine.js:58:            settlementRef:    result.referenceId,
+src/services/settlementEngine.js:62:          console.log(`[settlementEngine] ✅ Settled via ${rail}, ref: ${result.referenceId}`);
+src/services/settlementEngine.js:67:        console.warn(`[settlementEngine] ⚠️ ${rail} failed:`, err.message);
+src/services/settlementEngine.js:75:    throw new Error(`All settlement rails failed: ${errors.join(' | ')}`);
+src/services/settlement/settlementProcessor.js:36:    type: "settlement_credit",
+src/services/settlement/settlementProcessor.js:51:  tx.settlementRef = result.referenceId;
+src/services/settlement/settlementWorker.js:5:export default async function settlementWorker(job) {
+src/services/settlement/settlementQueue.js:4: * Add settlement job
+src/services/settlement/settlementQueue.js:36:// src/services/settlement/index.js
+src/services/settlement/settlementQueue.js:38:export const settlementQueue = {
+src/services/settlement/index.js:1:import settlementWorker from "./settlementWorker.js";
+src/services/settlement/index.js:2:import { settlementQueue } from "./settlementQueue.js";
+src/services/settlement/index.js:5:  if (settlementQueue && typeof settlementQueue.process === "function") {
+src/services/settlement/index.js:6:    settlementQueue.process("finalize-transfer", async (job) => {
+src/services/settlement/index.js:7:      return settlementWorker(job);
+src/services/settlement/index.js:10:    console.warn("[settlement] settlementQueue.process not available - settlement worker not started");
+src/services/flowerSwapServiceBase.js:138:      console.error(`[FlowerSwapBase] ${orderId} — swap succeeded but settlement failed: ${settleErr.message}. Order left at SWAPPED for retry.`);
+src/services/swap/phpSettlementService.js:137:    // settlement leg — without it, the user's real USDC/USDT just sits
+src/services/fintechCashoutEngine.js:140:    // settlement credit
+src/services/fintechCashoutEngine.js:144:      type: "cashout_settlement",
+src/services/fintechCashoutEngine.js:166:    tx.settlementRef = result.referenceId;
+src/services/transferOrchestrator.js:6:const settlementQueue = require("./settlement/settlementQueue");
+src/services/transferOrchestrator.js:112:      await settlementQueue.add("finalize-transfer", {
+src/controllers/moonpayWebhookController.js:5:import settlementEngine from '../services/settlementEngine.js';
+src/controllers/moonpayWebhookController.js:12: * Handles payment confirmation + settlement trigger
+src/controllers/moonpayWebhookController.js:68:    // 6. Let settlement engine finalize asynchronously
+src/controllers/moonpayWebhookController.js:69:    await settlementEngine.enqueue({
+src/models/blockchain/blockchainInboxModel.js:186:      settlement: {
+src/models/transactionModel.js:110:    settlementMethod: {
+src/models/transactionModel.js:122:    settlementRef: {
+src/models/ledgerModel.js:19:      'settlement', 'freeze', 'cash_in', 'cash_out', 'cashout', 'cashin',
+src/models/ledgerModel.js:21:      'credit', 'debit', 'p2p', 'cashout_request', 'cashout_debit', 'cashout_settlement', 'cashout_fee', 'cashout_refund', 'flower_swap', 'balance_correction'

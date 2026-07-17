@@ -10,9 +10,14 @@ import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.
 // DISABLED (superseded by Android watcher — see maribankNotifyRoute.js)
 // import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
 import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
+import { startWalletBalanceSyncWorker } from "./src/services/blockchain/workers/walletBalanceSyncWorker.js";
+import withdrawalExpiryService from "./src/services/withdrawalExpiryService.js";
+import eventRetentionService from "./src/services/eventRetentionService.js";
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
+import intelligenceCore from "./src/intelligence/intelligenceCore.js";
+
 
 // ── Process-level safety net ────────────────────────────────────────────
 // Node 15+ terminates the entire process on an unhandled promise rejection
@@ -61,8 +66,26 @@ async function startServer() {
     }
 
     await mongoose.connect(mongoUrl);
-    console.log("MongoDB connected");
 
+console.log("MongoDB connected");
+
+await intelligenceCore.start();
+
+intelligenceCore.report({
+
+    node:"mongodb",
+
+    type:"database",
+
+    status:"ONLINE",
+
+    metrics:{
+        host: mongoose.connection.host,
+        database: mongoose.connection.name
+    }
+
+});
+    
     await blockchainBootstrap.start();
 
     // FIX #9: Each worker/listener is independently wrapped so a failure in one
@@ -70,10 +93,50 @@ async function startServer() {
     // startTreasuryBalancer and startStatusWorker were nested inside the
     // startRoninListener try block — if Ronin threw, all three were silently skipped.
     try {
-      startSettlementWorker();
-    } catch (err) {
-      console.error("Settlement worker failed to start (continuing anyway):", err.message);
-    }
+
+  startSettlementWorker();
+
+
+  intelligenceCore.report({
+
+      node:"settlementWorker",
+
+      type:"worker",
+
+      status:"ONLINE",
+
+      metrics:{
+          startedAt:new Date()
+      }
+
+  });
+
+
+} catch (err) {
+
+
+  console.error(
+    "Settlement worker failed to start (continuing anyway):",
+    err.message
+  );
+
+
+  intelligenceCore.report({
+
+      node:"settlementWorker",
+
+      type:"worker",
+
+      status:"CRITICAL",
+
+      error:{
+          message:err.message
+      }
+
+  });
+
+
+}
 
     // try {
     // startRoninListener();
@@ -119,10 +182,47 @@ async function startServer() {
       console.error("Deposit expiry worker failed to start (continuing anyway):", err.message);
     }
 
+    try {
+      startWalletBalanceSyncWorker();
+    } catch (err) {
+      console.error("Wallet balance sync worker failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      withdrawalExpiryService.start();
+    } catch (err) {
+      console.error("Withdrawal expiry service failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      eventRetentionService.start();
+    } catch (err) {
+      console.error("Event retention service failed to start (continuing anyway):", err.message);
+    }
+
+
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      console.log("ISCAN running on port", PORT);
-    });
+
+  console.log("ISCAN running on port", PORT);
+
+
+  intelligenceCore.report({
+
+    node:"api",
+
+    type:"server",
+
+    status:"ONLINE",
+
+    metrics:{
+      port:PORT,
+      startedAt:new Date()
+    }
+
+  });
+
+});
 
   } catch (err) {
     console.error("Server failed to start:", err);

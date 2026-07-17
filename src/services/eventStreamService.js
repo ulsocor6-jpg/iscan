@@ -63,7 +63,20 @@ class EventStreamService {
     // Only persist deposit/withdrawal/error-type events to the DB. This is
     // what actually caps collection growth — routine events (http_request,
     // admin GETs, etc.) are still visible live via SSE but never written.
-    if (!PERSIST_PATTERN.test(type)) {
+    //
+    // blockchain.* events are a special case: their "type" is always
+    // `blockchain.<StageName>` (e.g. "blockchain.TreasurySendService"),
+    // which never matches PERSIST_PATTERN regardless of success/failure —
+    // that info lives in data.level, not the type string. Without this,
+    // withdrawal treasury-send logs broadcast live but never make it into
+    // history, so refreshing the Blockchain Inspector loses them. Only
+    // financially-relevant categories are persisted here (not "scan"),
+    // to avoid reintroducing the flooding this pattern was built to stop.
+    const isPersistableBlockchainEvent =
+      type.startsWith('blockchain.') &&
+      (data?.category === 'withdrawal' || data?.category === 'deposit');
+
+    if (!PERSIST_PATTERN.test(type) && !isPersistableBlockchainEvent) {
       return null;
     }
 
