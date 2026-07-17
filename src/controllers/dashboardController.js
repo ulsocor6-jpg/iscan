@@ -3,6 +3,7 @@ import Wallet from "../models/walletModel.js";
 import Ledger from "../models/ledgerModel.js";
 import { getRate } from "../services/fx/rateProvider.js";
 import { getLiveBalancesForWallet } from "../services/onchainBalanceService.js";
+import { getPendingSweepTotalsByChain } from "../services/flower/flowerPendingSweepService.js";
 
 const _rateCache = {};
 const _rateCacheMs = 60_000;
@@ -57,6 +58,25 @@ const sumOnchainByToken = (onchainBalances) => {
   return totals;
 };
 
+// A FLOWER deposit address is reused across every order a user creates, and
+// a completed swap credits the ledger immediately but leaves the tokens
+// sitting on-chain until the next sweep batch. Net that out of every
+// on-chain FLOWER figure in place, so the hero total, the per-chain
+// onchainBalances payload returned to the frontend, and the Wallet
+// Portfolio panel can never disagree with each other. See
+// flowerPendingSweepService.js.
+const applyPendingSweepAdjustment = async (userId, onchainBalances) => {
+  if (!onchainBalances || Object.keys(onchainBalances).length === 0) return;
+  const pendingSweep = await getPendingSweepTotalsByChain(userId);
+  for (const [chainKey, data] of Object.entries(onchainBalances)) {
+    if (!data || data.error) continue;
+    if (typeof data.FLOWER === "number") {
+      const pending = pendingSweep[chainKey] || 0;
+      data.FLOWER = Math.max(0, data.FLOWER - pending);
+    }
+  }
+};
+
 export const getDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -66,6 +86,7 @@ export const getDashboard = async (req, res) => {
     let onchainBalances = {};
     try {
       onchainBalances = wallet ? await getLiveBalancesForWallet(wallet) : {};
+      await applyPendingSweepAdjustment(userId, onchainBalances);
     } catch (err) {
       console.error("[DASHBOARD] on-chain balance fetch failed:", err.message);
     }
@@ -125,7 +146,7 @@ export const getDashboard = async (req, res) => {
 
 // On-demand refresh — hit exclusively by the user tapping "Refresh" in the
 // UI (see dashboardRoutes.js). 30s per-user cooldown based on the most
-// recent chainAddresses.lastSynced, so rapid double-taps don't fire
+// recent chainAddresses.lastSynced, so rapid double-taps don\'t fire
 // duplicate RPC calls for the same wallet.
 const REFRESH_COOLDOWN_MS = 30_000;
 
@@ -154,6 +175,7 @@ export const refreshChainBalances = async (req, res) => {
     }
 
     const onchainBalances = await getLiveBalancesForWallet(wallet);
+    await applyPendingSweepAdjustment(userId, onchainBalances);
 
     for (const ca of wallet.chainAddresses) {
       const chainKey = ca.chain?.toUpperCase();

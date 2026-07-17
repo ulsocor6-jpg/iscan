@@ -1,10 +1,12 @@
 import Wallet from "../../../models/walletModel.js";
 import { getLiveBalancesForWallet } from "../../onchainBalanceService.js";
+import { getPendingSweepTotalsByChain } from "../../flower/flowerPendingSweepService.js";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 async function syncWallet(wallet) {
   const live = await getLiveBalancesForWallet(wallet);
+  const pendingSweep = await getPendingSweepTotalsByChain(wallet.userId);
 
   let dirty = false;
 
@@ -19,7 +21,12 @@ async function syncWallet(wallet) {
     }
 
     if (typeof data.FLOWER === "number") {
-      ca.flowerBalance = data.FLOWER;
+      // Net out FLOWER already credited by a completed swap but not yet
+      // physically swept to treasury -- otherwise the displayed balance
+      // doesn't drop after a swap (or looks like it went up) until the
+      // next sweep batch runs. See flowerPendingSweepService.js.
+      const pending = pendingSweep[chainKey] || 0;
+      ca.flowerBalance = Math.max(0, data.FLOWER - pending);
     }
 
     if (typeof data.USDC === "number") {

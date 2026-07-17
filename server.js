@@ -17,6 +17,9 @@ import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
 import intelligenceCore from "./src/intelligence/intelligenceCore.js";
+import operatorSubscriber from "./src/services/operator/operatorSubscriber.js";
+
+
 
 
 // ── Process-level safety net ────────────────────────────────────────────
@@ -199,7 +202,8 @@ intelligenceCore.report({
     } catch (err) {
       console.error("Event retention service failed to start (continuing anyway):", err.message);
     }
-
+    
+    operatorSubscriber.start();
 
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
