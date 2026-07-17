@@ -16,3 +16,10 @@ debug_ronin.mjs
 patch_*.mjs
 artifacts/
 cache/
+
+# Prevent stray backup/duplicate files from being committed
+*.bak
+*.bak.*
+wallets-backup-*.json
+.audit-backups/
+iscansystem-cleaned.zip
