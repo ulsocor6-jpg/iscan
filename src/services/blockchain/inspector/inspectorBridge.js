@@ -29,6 +29,8 @@ const STAGE_CATEGORY = {
   swap: "swap",
   withdrawal: "withdrawal",
   "php-settlement": "swap",
+  deposit: "deposit",
+  "php-deposit": "deposit",
 };
 
 inspector.on("event", (evt) => {

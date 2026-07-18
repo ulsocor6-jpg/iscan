@@ -6,6 +6,7 @@
 import { ethers } from "ethers";
 import DepositAddress from "../../models/depositAddressModel.js";
 import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
+import inspector from "./inspector/blockchainInspector.js";
 
 const ERC20_ABI = [
   "event Transfer(address indexed from,address indexed to,uint256 value)"
@@ -128,6 +129,14 @@ async function scanToken(
     console.log(
       `[BASE STABLE] Detected ${amount} ${symbol} at ${addr.address} tx=${log.transactionHash}`
     );
+    inspector.info("deposit", `Detected ${amount} ${symbol} at ${addr.address}`, {
+      orderId: log.transactionHash,
+      userId: addr.userId,
+      token: symbol,
+      amount,
+      chain: "base",
+      step: "detect",
+    });
 
     try {
       const result =
@@ -144,12 +153,27 @@ async function scanToken(
         console.log(
           `[BASE STABLE] Duplicate transaction ignored ${log.transactionHash}`
         );
+        inspector.info("deposit", `Duplicate transaction ignored`, {
+          orderId: log.transactionHash,
+          userId: addr.userId,
+          token: symbol,
+          chain: "base",
+          step: "detect",
+        });
       }
     } catch (err) {
       console.error(
         `[BASE STABLE] Failed processing ${log.transactionHash}:`,
         err.message
       );
+      inspector.error("deposit", `Failed processing deposit tx ${log.transactionHash}: ${err.message}`, {
+        orderId: log.transactionHash,
+        userId: addr.userId,
+        token: symbol,
+        amount,
+        chain: "base",
+        step: "detect",
+      });
     }
   }
 }
@@ -191,6 +215,9 @@ export async function startBaseStableListener() {
             `[BASE STABLE] ${symbol}:`,
             err.message
           );
+          inspector.error("deposit", `Base stable scan failed for ${symbol}: ${err.message}`, {
+            symbol, chain: "base", step: "scan",
+          });
         }
       }
     } catch (err) {
@@ -198,6 +225,9 @@ export async function startBaseStableListener() {
         "[BASE STABLE]",
         err.message
       );
+      inspector.error("deposit", `Base stable listener watch loop failed: ${err.message}`, {
+        chain: "base", step: "watch-loop",
+      });
     }
   }, 30000);
 }

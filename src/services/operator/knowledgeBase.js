@@ -192,6 +192,59 @@ export default [
   },
 
   // ==========================================================
+  // PHP DEPOSIT (cash-in via GCash/Maya/Bank)
+  // ==========================================================
+
+  {
+    code: "PHP_DEPOSIT_LEDGER_FAILED",
+    title: "PHP Deposit Ledger Credit Failed",
+    patterns: [
+      "ledger credit failed for ref"
+    ],
+    severity: "HIGH",
+    confidence: 95,
+    recommendation: "Deposit was reverted to PENDING automatically — safe to retry admin confirm. Investigate the ledger error if it repeats."
+  },
+
+  {
+    code: "PHP_DEPOSIT_REQUEST_FAILED",
+    title: "PHP Deposit Request Failed",
+    patterns: [
+      "deposit request failed"
+    ],
+    severity: "WARNING",
+    confidence: 88,
+    recommendation: "User's cash-in request never got created — safe for them to retry."
+  },
+
+  // ==========================================================
+  // DEPOSIT
+  // ==========================================================
+
+  {
+    code: "DEPOSIT_PROCESSING_FAILED",
+    title: "Deposit Processing Failed",
+    patterns: [
+      "failed processing deposit tx"
+    ],
+    severity: "HIGH",
+    confidence: 92,
+    recommendation: "Deposit was detected on-chain but failed to process — check cryptoDepositPipeline for the underlying error before assuming funds are lost."
+  },
+
+  {
+    code: "DEPOSIT_SCAN_FAILED",
+    title: "Deposit Scan Failed",
+    patterns: [
+      "base stable scan failed for",
+      "base stable listener watch loop failed"
+    ],
+    severity: "WARNING",
+    confidence: 85,
+    recommendation: "A scan cycle failed — usually transient (RPC hiccup). If it repeats, check RPC provider health."
+  },
+
+  // ==========================================================
   // WITHDRAWAL
   // ==========================================================
 
