@@ -84,10 +84,49 @@ class IncidentEngine {
     return [...this.activeIncidents.values()];
   }
 
+  // Alias kept for API-shape compatibility with the controller.
+  listOpen() {
+    return this.getOpen();
+  }
+
+  // No separate resolved-history store exists in memory (resolved
+  // incidents are deleted from activeIncidents on resolve() — full
+  // history lives in Mongo via inspectorBridge/eventStreamService).
+  // For now this just returns the open set; a real history view should
+  // query eventStreamService's persisted "operator.incident" events.
+  list() {
+    return this.getOpen();
+  }
+
+  get(id) {
+    return [...this.activeIncidents.values()].find(i => i.id === id) || null;
+  }
+
+  acknowledge(id) {
+    const incident = [...this.activeIncidents.values()].find(i => i.id === id);
+    if (!incident) return null;
+    incident.status = "ACKNOWLEDGED";
+    incident.acknowledgedAt = new Date();
+    return incident;
+  }
+
+  // Resolve by id — unambiguous, unlike code+source which multiple open
+  // incidents could share across different orders.
+  resolveById(id) {
+    const incident = [...this.activeIncidents.entries()].find(([, v]) => v.id === id);
+    if (!incident) return null;
+    const [key] = incident;
+    return this.resolve(key) ? this.get(id) || { id, status: "RESOLVED" } : null;
+  }
+
   createKey(event, diagnosis) {
+    // Raw inspector events only ever have {stage, metadata, ...} — never
+    // top-level source/orderId. Using those (as this did before) meant
+    // every incident with the same code collapsed into one shared key
+    // regardless of which order/user it actually belonged to.
     return [
-      event.source,
-      event.orderId,
+      event.stage,
+      event.metadata?.orderId,
       diagnosis.code
     ].join(":");
   }

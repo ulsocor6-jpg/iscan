@@ -192,6 +192,69 @@ export default [
   },
 
   // ==========================================================
+  // WITHDRAWAL
+  // ==========================================================
+
+  {
+    code: "WITHDRAWAL_DEBIT_FAILED",
+    title: "Withdrawal Debit Failed",
+    patterns: [
+      "debit failed for wd-"
+    ],
+    severity: "WARNING",
+    confidence: 90,
+    recommendation: "No funds moved. Usually a race on the balance check — safe for the user to retry."
+  },
+
+  {
+    code: "WITHDRAWAL_SEND_FAILED",
+    title: "Withdrawal Send Failed (Reversed)",
+    patterns: [
+      "send failed for wd-"
+    ],
+    severity: "HIGH",
+    confidence: 95,
+    recommendation: "Ledger debit was reversed automatically. Investigate the on-chain send error before advising retry."
+  },
+
+  // ==========================================================
+  // PHP SETTLEMENT
+  // ==========================================================
+
+  {
+    code: "PHP_ONCHAIN_BALANCE_MISMATCH",
+    title: "PHP Swap Refused — On-chain Balance Short",
+    patterns: [
+      "on-chain balance mismatch for user"
+    ],
+    severity: "WARNING",
+    confidence: 96,
+    recommendation: "User's on-chain balance is less than claimed — no PHP was credited. Check for a pending/unconfirmed deposit."
+  },
+
+  {
+    code: "PHP_SWEEP_FAILED",
+    title: "PHP Swap Sweep Failed",
+    patterns: [
+      "sweep failed for"
+    ],
+    severity: "HIGH",
+    confidence: 95,
+    recommendation: "Stablecoin was never swept to treasury — no PHP was credited. Investigate the sweep error before retrying."
+  },
+
+  {
+    code: "PHP_SWEEP_MISMATCH",
+    title: "PHP Swap Sweep Amount Mismatch",
+    patterns: [
+      "sweep did not confirm expected amount"
+    ],
+    severity: "CRITICAL",
+    confidence: 97,
+    recommendation: "Swept amount didn't match expected — do not credit PHP. Investigate before any manual override."
+  },
+
+  // ==========================================================
   // FORWARDER SWEEP
   // ==========================================================
 
