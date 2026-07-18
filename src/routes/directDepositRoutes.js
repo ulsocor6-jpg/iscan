@@ -8,6 +8,7 @@ import walletService from '../services/walletService.js';
 import inspectorService from '../services/inspectorService.js';
 import { InspectorStage } from '../inspector/inspectorConstants.js';
 import BlockchainInbox from '../models/blockchain/blockchainInboxModel.js';
+import inspector from '../services/blockchain/inspector/blockchainInspector.js';
 
 const router = express.Router();
 
@@ -127,6 +128,10 @@ router.post('/request', requireAuth, async (req, res) => {
       },
     });
   } catch (err) {
+    inspector.error("php-deposit", `Deposit request failed: ${err.message}`, {
+      userId: req.user?.id,
+      step: "request",
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -183,13 +188,28 @@ router.post('/admin/confirm', requireAuth, requireAdmin, async (req, res) => {
         transactionType: 'cashin',
       });
     } catch (ledgerErr) {
+      inspector.error("php-deposit", `Ledger credit failed for ref ${referenceId}: ${ledgerErr.message}`, {
+        orderId: referenceId,
+        userId: deposit.userId?.toString(),
+        amount: deposit.amount,
+        step: "admin-confirm-credit",
+      });
       await DirectDeposit.findOneAndUpdate({ referenceId }, { status: 'PENDING' });
       throw ledgerErr;
     }
 
     console.log(`[DEPOSIT] Admin confirmed ₱${deposit.amount} for user ${deposit.userId} ref:${referenceId}`);
+    inspector.success("php-deposit", `Admin confirmed ₱${deposit.amount} for ref ${referenceId}`, {
+      orderId: referenceId,
+      userId: deposit.userId?.toString(),
+      amount: deposit.amount,
+      step: "admin-confirm",
+    });
     res.json({ success: true, credited: deposit.amount, referenceId });
   } catch (err) {
+    inspector.error("php-deposit", `Admin confirm failed: ${err.message}`, {
+      step: "admin-confirm",
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -266,6 +286,10 @@ router.post('/cancel', requireAuth, async (req, res) => {
     console.log(`[DEPOSIT] User ${req.user.id} cancelled deposit ref:${referenceId}`);
     res.json({ success: true, deposit });
   } catch (err) {
+    inspector.error("php-deposit", `Deposit cancel failed: ${err.message}`, {
+      userId: req.user?.id,
+      step: "cancel",
+    });
     res.status(500).json({ error: err.message });
   }
 });
