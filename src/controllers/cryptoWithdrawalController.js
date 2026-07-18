@@ -2,6 +2,7 @@ import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "../services/walletService.js";
 import { settleCryptoWithdrawal, exceedsAutoApproveLimit } from "../services/withdrawalProcessor.js";
 import { estimateNetworkFee } from "../services/treasury/gasEstimationService.js";
+import inspector from "../services/blockchain/inspector/blockchainInspector.js";
 
 // Only assets/chains we actually have treasury infrastructure for right
 // now (real private keys + contract addresses in treasurySendService.js).
@@ -85,7 +86,12 @@ export async function createCryptoWithdrawal(req, res) {
     });
     const networkFee = feeResult.fee || NETWORK_FEES[network] || 0;
     if (!feeResult.estimated) {
-      console.warn(`[cryptoWithdrawal] live fee estimate failed, using fallback ${networkFee} ${asset} for ${network}`);
+      inspector.warn("withdrawal", `Live fee estimate failed, using fallback ${networkFee} ${asset} for ${network}`, {
+        userId: req.user.id,
+        asset, network,
+        fallbackFee: networkFee,
+        step: "fee-estimate",
+      });
     }
 
     const platformFee = parsedAmount * PLATFORM_FEE_PCT;
@@ -148,6 +154,10 @@ export async function createCryptoWithdrawal(req, res) {
       },
     });
   } catch (err) {
+    inspector.error("withdrawal", `Withdrawal creation failed: ${err.message}`, {
+      userId: req.user?.id,
+      step: "create",
+    });
     console.error("[cryptoWithdrawal] error:", err);
     res.status(500).json({ error: err.message });
   }
