@@ -196,6 +196,39 @@ export default [
   // ==========================================================
 
   {
+    code: "DEPOSIT_SENDER_MISMATCH",
+    title: "Deposit Sender Not Linked",
+    patterns: [
+      "deposit notification sender not linked to any wallet"
+    ],
+    severity: "WARNING",
+    confidence: 85,
+    recommendation: "A payment came in from an account that isn't linked to any user. Could be a typo on the sender's end, or an unrelated payment — check DepositVerificationLog for the raw payload."
+  },
+
+  {
+    code: "DEPOSIT_NO_ACTIVE_REQUEST",
+    title: "Deposit With No Active Request",
+    patterns: [
+      "payment received for.*with no active deposit request"
+    ],
+    severity: "WARNING",
+    confidence: 88,
+    recommendation: "User sent money without an active cash-in request (expired, or never created one). Funds landed but weren't auto-credited — needs manual review."
+  },
+
+  {
+    code: "DEPOSIT_AMOUNT_MISMATCH",
+    title: "Deposit Amount Mismatch",
+    patterns: [
+      "amount mismatch for"
+    ],
+    severity: "HIGH",
+    confidence: 93,
+    recommendation: "User sent a different amount than requested — deposit is now PENDING_REVIEW, needs admin to confirm or reject manually."
+  },
+
+  {
     code: "PHP_DEPOSIT_LEDGER_FAILED",
     title: "PHP Deposit Ledger Credit Failed",
     patterns: [

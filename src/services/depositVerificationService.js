@@ -3,6 +3,7 @@ import walletService from "./walletService.js";
 import Transaction from "../models/transactionModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import DepositVerificationLog from "../models/DepositVerificationLog.js";
+import inspector from "./blockchain/inspector/blockchainInspector.js";
 
 export async function verifyDeposit({
 
@@ -34,6 +35,11 @@ if (!wallet) {
     rawPayload: payload
   });
 
+  inspector.warn("php-deposit", `Deposit notification sender not linked to any wallet: ${senderAccount} via ${channel}`, {
+    senderAccount, receiverAccount, amount, channel,
+    step: "verify-sender",
+  });
+
   return {
     matched:false,
     code:"SENDER_MISMATCH"
@@ -58,6 +64,11 @@ const deposit = await DirectDeposit.findOne({
       rawPayload: payload
     });
 
+    inspector.warn("php-deposit", `Payment received for ${wallet.userId} with no active deposit request: ${amount} via ${channel}`, {
+      userId: wallet.userId, senderAccount, receiverAccount, amount, channel,
+      step: "verify-match",
+    });
+
     return {
       matched: false,
       code: "NO_ACTIVE_REQUEST"
@@ -80,6 +91,15 @@ const deposit = await DirectDeposit.findOne({
       channel,
       verificationResult: "AMOUNT_MISMATCH",
       rawPayload: payload
+    });
+
+    inspector.error("php-deposit", `Amount mismatch for ${deposit.referenceId}: requested ${deposit.amount}, received ${amount}`, {
+      orderId: deposit.referenceId,
+      userId: deposit.userId,
+      requestedAmount: deposit.amount,
+      receivedAmount: amount,
+      channel,
+      step: "verify-amount",
     });
 
     return {
@@ -134,6 +154,14 @@ const deposit = await DirectDeposit.findOne({
   deposit.creditedAt = new Date();
 
   await deposit.save();
+
+  inspector.success("php-deposit", `Auto-matched and credited ${amount} PHP for ${deposit.referenceId}`, {
+    orderId: deposit.referenceId,
+    userId: deposit.userId,
+    amount,
+    channel,
+    step: "credited",
+  });
 
   return {
     matched: true,
