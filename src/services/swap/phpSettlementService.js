@@ -6,6 +6,7 @@ import { getUSDPHPRate, getPHPUSDRate } from '../fx/phpRateOracle.js';
 import Wallet from '../../models/walletModel.js';
 import walletService from '../walletService.js';
 import Transaction from '../../models/transactionModel.js';
+import inspector from '../blockchain/inspector/blockchainInspector.js';
 
 // Treasury wallets checked for real-time on-chain reconciliation. PHP has
 // no on-chain equivalent and is intentionally excluded — its pool is
@@ -24,10 +25,11 @@ async function getOnChainPoolTotal(currency) {
         const bal = await getTokenBalance(w.chainKey, w.address, currency);
         return typeof bal === "number" ? bal : 0;
       } catch (err) {
-        console.error(
-          `[phpSettlementService] on-chain balance fetch failed for ${w.chainKey} ${currency}:`,
-          err.message
-        );
+        inspector.warn("php-settlement", `On-chain balance fetch failed for ${w.chainKey} ${currency}: ${err.message}`, {
+          chain: w.chainKey,
+          currency,
+          step: "pool-reconcile",
+        });
         return 0;
       }
     })
@@ -48,9 +50,12 @@ async function getPool(currency) {
   // on-chain reality on its own.
   const onChainTotal = await getOnChainPoolTotal(currency);
   if (onChainTotal !== null && onChainTotal !== pool.balance) {
-    console.log(
-      `[phpSettlementService] reconciling ${currency} pool: ledger=${pool.balance} -> onChain=${onChainTotal}`
-    );
+    inspector.info("php-settlement", `Reconciling ${currency} pool: ledger=${pool.balance} -> onChain=${onChainTotal}`, {
+      currency,
+      ledgerBalance: pool.balance,
+      onChainBalance: onChainTotal,
+      step: "pool-reconcile",
+    });
     pool.balance = onChainTotal;
     pool.updatedAt = new Date();
     await pool.save();
@@ -102,6 +107,12 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
       throw new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
     }
     if (onChainBalance < stablecoinAmount) {
+      inspector.error("php-settlement", `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency}, claims ${stablecoinAmount}`, {
+        orderId: txRef,
+        userId, currency, chain,
+        onChainBalance, claimedAmount: stablecoinAmount,
+        step: "balance-check",
+      });
       throw new Error(
         `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency} on-chain, claims ${stablecoinAmount}. Refusing to credit PHP against unbacked balance.`
       );
@@ -126,15 +137,28 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
         amount: stablecoinAmount,
       });
     } catch (sweepErr) {
+      inspector.error("php-settlement", `Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`, {
+        orderId: txRef, userId, chain, currency, amount: stablecoinAmount, step: "sweep",
+      });
       throw new Error(`Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`);
     }
 
     if (!sweepResult?.txHash || sweepResult.swept < stablecoinAmount) {
+      inspector.error("php-settlement", `Sweep did not confirm expected amount for ${userId} on ${chain}: swept ${sweepResult?.swept ?? 0}, expected ${stablecoinAmount}`, {
+        orderId: txRef, userId, chain, currency,
+        swept: sweepResult?.swept ?? 0, expected: stablecoinAmount,
+        step: "sweep-confirm",
+      });
       throw new Error(
         `Sweep did not confirm expected amount for ${userId} on ${chain}: swept ${sweepResult?.swept ?? 0}, expected ${stablecoinAmount}. Refusing to credit PHP.`
       );
     }
 
+    inspector.success("php-settlement", `Sweep confirmed for ${userId}`, {
+      orderId: txRef, userId, chain, currency,
+      swept: sweepResult.swept, txHash: sweepResult.txHash,
+      step: "sweep-confirm",
+    });
     console.log(`[swap] sweep confirmed for ${userId}:`, sweepResult);
 
     // Only now that the on-chain sweep is confirmed do we touch ledgers.
@@ -162,6 +186,10 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
       ledgerGroupId: txRef
     });
 
+    inspector.success("php-settlement", `${stablecoinAmount} ${currency} -> PHP ${phpOut.toFixed(2)} settled for ${userId}`, {
+      orderId: txRef, userId, currency, stablecoinAmount, phpOut, rate,
+      step: "settled",
+    });
     console.log(`[swap] ${stablecoinAmount} ${currency} → ₱${phpOut.toFixed(2)} for ${userId}`);
 
     return { phpOut, rate, txRef, sweepTxHash: sweepResult.txHash };
@@ -223,6 +251,10 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
       ledgerGroupId: txRef
     });
 
+    inspector.success("php-settlement", `PHP ${phpAmount} -> ${usdtOut.toFixed(6)} ${currency} settled for ${userId}`, {
+      orderId: txRef, userId, currency, phpAmount, usdtOut, rate,
+      step: "settled",
+    });
     console.log(`[swap] ₱${phpAmount} → ${usdtOut.toFixed(6)} ${currency} for ${userId}`);
     return { usdtOut, rate, txRef };
 

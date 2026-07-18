@@ -13,6 +13,7 @@ import walletService from "./walletService.js";
 import { sendCryptoToAddress } from "./treasury/treasurySendService.js";
 import eventStreamService from "./eventStreamService.js";
 import { sendTelegramAlert } from "./telegramAlertService.js";
+import inspector from "./blockchain/inspector/blockchainInspector.js";
 
 // Optional safety valve: per-request cap above which a crypto withdrawal
 // is left as "pending_review" for manual approval instead of settling
@@ -53,7 +54,13 @@ export async function settleCryptoWithdrawal(withdrawal) {
     withdrawal.status = "failed";
     withdrawal.failReason = debitErr.message;
     await withdrawal.save();
-
+    inspector.error("withdrawal", `Debit failed for WD-${withdrawal._id}: ${debitErr.message}`, {
+      orderId: withdrawal._id.toString(),
+      userId: withdrawal.userId,
+      asset: withdrawal.asset,
+      amount: withdrawal.amount,
+      step: "debit",
+    });
     await eventStreamService.emit("withdrawal.failed", {
       entityId: withdrawal._id.toString(),
       userId: withdrawal.userId,
@@ -98,7 +105,13 @@ export async function settleCryptoWithdrawal(withdrawal) {
     withdrawal.txHash = result.txHash;
     withdrawal.approvedAt = new Date();
     await withdrawal.save();
-
+    inspector.success("withdrawal", `WD-${withdrawal._id} settled`, {
+      orderId: withdrawal._id.toString(),
+      userId: withdrawal.userId,
+      asset: withdrawal.asset,
+      amount: withdrawal.amount,
+      txHash: result.txHash,
+    });
     await eventStreamService.emit("withdrawal.completed", {
       entityId: withdrawal._id.toString(),
       userId: withdrawal.userId,
@@ -128,7 +141,13 @@ export async function settleCryptoWithdrawal(withdrawal) {
     withdrawal.status = "failed";
     withdrawal.failReason = sendErr.message;
     await withdrawal.save();
-
+    inspector.error("withdrawal", `Send failed for WD-${withdrawal._id}: ${sendErr.message}`, {
+      orderId: withdrawal._id.toString(),
+      userId: withdrawal.userId,
+      asset: withdrawal.asset,
+      amount: withdrawal.amount,
+      step: "send",
+    });
     await eventStreamService.emit("withdrawal.failed", {
       entityId: withdrawal._id.toString(),
       userId: withdrawal.userId,
