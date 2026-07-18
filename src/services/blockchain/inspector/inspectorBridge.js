@@ -27,6 +27,8 @@ const STAGE_CATEGORY = {
   RecoveryWorker: "system",
   TreasurySendService: "withdrawal",
   swap: "swap",
+  withdrawal: "withdrawal",
+  "php-settlement": "swap",
 };
 
 inspector.on("event", (evt) => {
