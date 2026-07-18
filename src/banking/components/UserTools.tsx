@@ -8,26 +8,40 @@ type Message = {
   createdAt: number;
 };
 
+type LookupResult = {
+  success: boolean;
+  message?: string;
+  summary?: string;
+  canRetry?: boolean;
+  canCancel?: boolean;
+  stuck?: boolean;
+  withdrawal?: {
+    reference: string;
+    status: string;
+    asset?: string;
+    amount?: number;
+  };
+};
+
 const WELCOME: Message = {
   id: "welcome",
   role: "assistant",
-  text: "Hi — I'm here to help with your deposits, withdrawals, and swaps. Ask me about a specific transaction, or describe what's going on.",
+  text: "Hi — I'm here to help with your deposits, withdrawals, and swaps. " +
+        "Give me a reference number (like WD-abc123 or CO-abc123) and I'll look it up.",
   createdAt: Date.now(),
 };
 
-// TODO(wiring): replace this with a real call to a new, ownership-scoped
-// endpoint — e.g. POST /api/v1/support/operator-chat — once that exists.
-// It must resolve userId from the auth cookie server-side (never trust a
-// client-supplied userId) and only ever return incidents/orders that
-// belong to req.user.id. Until that endpoint exists, this always returns
-// a placeholder so the widget is testable end-to-end in the UI now.
-async function sendToOperator(message: string): Promise<string> {
-  await new Promise((r) => setTimeout(r, 500));
-  return (
-    "This is a placeholder response — the real connection to your account " +
-    "activity isn't wired up yet. Once it is, I'll be able to look up your " +
-    `actual transactions and tell you what's happening. You said: "${message}"`
-  );
+// Matches WD-<hex> (crypto withdrawal, mongo _id) or CO-<hex> (PHP cashout).
+const REFERENCE_PATTERN = /\b(WD|CO)-[A-Za-z0-9]+\b/i;
+
+async function callSupport(path: string, reference: string): Promise<LookupResult> {
+  const res = await fetch(`/api/v1/support/withdrawals/${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reference }),
+  });
+  return res.json();
 }
 
 export default function UserTools() {
@@ -35,6 +49,9 @@ export default function UserTools() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // Tracks the most recently looked-up reference + what actions it
+  // offers, so a follow-up like "retry it" knows what "it" refers to.
+  const [activeRef, setActiveRef] = useState<{ reference: string; canRetry: boolean; canCancel: boolean } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,36 +60,90 @@ export default function UserTools() {
     }
   }, [messages, open]);
 
+  function addAssistantMessage(text: string) {
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "assistant", text, createdAt: Date.now() },
+    ]);
+  }
+
+  async function handleMessage(text: string) {
+    const refMatch = text.match(REFERENCE_PATTERN);
+
+    if (refMatch) {
+      const reference = refMatch[0].toUpperCase();
+      const result = await callSupport("lookup", reference);
+
+      if (!result.success) {
+        setActiveRef(null);
+        addAssistantMessage(result.message || "I couldn't find that reference on your account.");
+        return;
+      }
+
+      setActiveRef({
+        reference,
+        canRetry: !!result.canRetry,
+        canCancel: !!result.canCancel,
+      });
+
+      let reply = result.summary || "Found it, but I don't have a status summary to show.";
+      if (result.canRetry || result.canCancel) {
+        const options = [
+          result.canRetry ? "say \"retry\" to try it again" : null,
+          result.canCancel ? "say \"cancel\" to close it out" : null,
+        ].filter(Boolean).join(", or ");
+        reply += ` You can ${options}.`;
+      }
+      addAssistantMessage(reply);
+      return;
+    }
+
+    const lower = text.toLowerCase();
+    const wantsRetry = /\bretry\b/.test(lower);
+    const wantsCancel = /\bcancel\b|\bclose\b/.test(lower);
+
+    if ((wantsRetry || wantsCancel) && activeRef) {
+      if (wantsRetry && !activeRef.canRetry) {
+        addAssistantMessage(`${activeRef.reference} isn't eligible for retry right now.`);
+        return;
+      }
+      if (wantsCancel && !activeRef.canCancel) {
+        addAssistantMessage(`${activeRef.reference} isn't eligible to cancel right now.`);
+        return;
+      }
+
+      const result = await callSupport(wantsRetry ? "retry" : "cancel", activeRef.reference);
+      addAssistantMessage(result.message || (result.success ? "Done." : "That didn't work — please try again."));
+      if (result.success) setActiveRef(null);
+      return;
+    }
+
+    if (wantsRetry || wantsCancel) {
+      addAssistantMessage("I don't have a transaction in context yet — give me a reference number first (like WD-abc123 or CO-abc123).");
+      return;
+    }
+
+    addAssistantMessage(
+      "I can look up a specific transaction if you give me its reference number " +
+      "(starts with WD- for crypto withdrawals, or CO- for PHP cashouts)."
+    );
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (!text || sending) return;
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      text,
-      createdAt: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "user", text, createdAt: Date.now() },
+    ]);
     setInput("");
     setSending(true);
 
     try {
-      const reply = await sendToOperator(text);
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: Date.now() },
-      ]);
+      await handleMessage(text);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          text: "Something went wrong reaching support. Please try again in a moment.",
-          createdAt: Date.now(),
-        },
-      ]);
+      addAssistantMessage("Something went wrong reaching support. Please try again in a moment.");
     } finally {
       setSending(false);
     }
@@ -121,7 +192,7 @@ export default function UserTools() {
           <div className="user-tools-input-row">
             <textarea
               className="user-tools-input"
-              placeholder="Describe the issue or ask about a transaction…"
+              placeholder="Reference number, or 'retry' / 'cancel'…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
