@@ -1,6 +1,7 @@
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import ImpersonationBanner from "./ImpersonationBanner";
+import UserTools from "./UserTools";
 import { BackgroundProvider, useBackground } from "../../hooks/useBackground";
 
 type Props = {
@@ -41,6 +42,7 @@ export default function DashboardLayout({
           <Header />
           {children}
         </main>
+        <UserTools />
       </div>
     </BackgroundProvider>
   );
