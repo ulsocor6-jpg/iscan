@@ -235,18 +235,9 @@ export async function resolveIncident(req, res) {
 
     try {
 
-        const {
-
-            code,
-
-            source
-
-        } = req.body;
-
         const result =
-            incidentEngine.resolve(
-                code,
-                source
+            incidentEngine.resolveById(
+                req.params.id
             );
 
         if (!result) {
