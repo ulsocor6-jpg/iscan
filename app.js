@@ -111,6 +111,7 @@ import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
+import supportRoutes from "./src/routes/supportRoutes.js";
 
 /* ===========================
    Health
@@ -140,6 +141,11 @@ app.use(
 app.use(
  "/api/v1/operator",
  operatorRoutes
+);
+
+app.use(
+ "/api/v1/support",
+ supportRoutes
 );
 
 app.use("/api/v1/ledger", ledgerRoutes);
