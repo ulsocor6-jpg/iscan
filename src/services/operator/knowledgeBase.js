@@ -409,6 +409,80 @@ export default [
     severity: "CRITICAL",
     confidence: 96,
     recommendation: "Inspect MongoDB connectivity."
+  },
+  // ==========================================================
+  // PHP DEPOSIT — FLOW STAGE FAILURES (Inspector model, structured)
+  // ==========================================================
+  {
+    code: "PHP_DEPOSIT_PARSER_STAGE_FAILED",
+    title: "PHP Deposit Parser Stage Failed",
+    severity: "WARNING",
+    confidence: 75,
+    recommendation: "Deposit notification failed to parse in the flow's PARSER stage — check the flow's stage input/error in Inspector.",
+    match(event) {
+      return event.stage === "PARSER" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_USER_LOOKUP_STAGE_FAILED",
+    title: "PHP Deposit User Lookup Failed",
+    severity: "WARNING",
+    confidence: 80,
+    recommendation: "Could not match the deposit to a user — likely a sender/account mismatch. Check the flow's USER_LOOKUP stage for details.",
+    match(event) {
+      return event.stage === "USER_LOOKUP" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_MATCH_STAGE_FAILED",
+    title: "PHP Deposit Match Failed",
+    severity: "WARNING",
+    confidence: 80,
+    recommendation: "No matching PENDING deposit found (or ambiguous match) — needs manual review.",
+    match(event) {
+      return event.stage === "DEPOSIT_MATCH" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_VERIFIER_STAGE_FAILED",
+    title: "PHP Deposit Verifier Failed",
+    severity: "WARNING",
+    confidence: 82,
+    recommendation: "Deposit was no longer eligible at verify time — check for a race with expiry or a second claim.",
+    match(event) {
+      return event.stage === "VERIFIER" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_LEDGER_STAGE_FAILED",
+    title: "PHP Deposit Ledger Stage Failed",
+    severity: "HIGH",
+    confidence: 90,
+    recommendation: "Ledger credit failed inside the deposit flow — funds not yet credited. Investigate before manually crediting.",
+    match(event) {
+      return event.stage === "LEDGER" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_WALLET_STAGE_FAILED",
+    title: "PHP Deposit Wallet Stage Failed",
+    severity: "HIGH",
+    confidence: 90,
+    recommendation: "Ledger credited but wallet update failed — check for a ledger/wallet balance mismatch before retrying.",
+    match(event) {
+      return event.stage === "WALLET" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
+  },
+  {
+    code: "PHP_DEPOSIT_EVENT_STREAM_STAGE_FAILED",
+    title: "PHP Deposit Event Stream Failed",
+    severity: "WARNING",
+    confidence: 70,
+    recommendation: "Deposit completed and credited, but the realtime event failed to publish — cosmetic only, dashboard may be stale for this flow.",
+    match(event) {
+      return event.stage === "EVENT_STREAM" && event.metadata?.pipeline === "PHP_DEPOSIT";
+    }
   }
+
 
 ];
