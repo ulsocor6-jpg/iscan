@@ -25,7 +25,6 @@ export default function Sidebar() {
 {label:"🧠 Mission Control",path:"/admin/mission-control"},
 {label:"🔁 Swap Inspector",path:"/admin/swap-inspector"},
 {label:"🔬 Inspector",path:"/inspector"},
-{label:"🛰️ Mission Control",path:"/admin/mission-control"},
 {label:"🖥 Operator",path:"/admin/operator"}
 ] : []),
     {label:"Compliance",path:"/compliance"},
