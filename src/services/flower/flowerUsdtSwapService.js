@@ -16,6 +16,7 @@ import Wallet          from "../../models/walletModel.js";
 import { getTokenBalance }           from "../onchainBalanceService.js";
 import { sweepStablecoinToTreasury } from "../treasury/stablecoinSweepService.js";
 import { sendCryptoToAddress }       from "../treasury/treasurySendService.js";
+import { retryOrder }                from "./flowerOrderRecovery.js";
 
 const { PLATFORM_FEE } = flowerConfig; // 2
 
@@ -97,11 +98,27 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   // refuse a second concurrent order on the same address.
   await assertAddressAvailable(depositAddress);
 
-  // Create order at WAITING_DEPOSIT. flowerInboxWorker (BlockchainInbox
-  // watcher) is the sole source of truth for whether the deposit actually
-  // landed — it verifies the real on-chain amount at depositAddress and
-  // only then calls retryOrder(), which drives sweep -> swap -> settle.
-  // This function never advances the order past WAITING_DEPOSIT itself.
+  // Deposit addresses are REUSED across every order a user creates, so a
+  // returning user who already holds FLOWER there from a prior deposit
+  // has nothing new to send — flowerInboxWorker only reacts to a fresh
+  // CONFIRMED BlockchainInbox transfer event, which will never arrive for
+  // funds that already landed. Check the live on-chain balance up front;
+  // if it already covers this order, skip WAITING_DEPOSIT and kick off
+  // the same sweep -> swap -> settle chain flowerInboxWorker would trigger
+  // for a genuine fresh deposit. (Root-caused via order
+  // 7a267e30-fc5f-49bf-a8d1-1f510f0e8035, stuck at WAITING_DEPOSIT with
+  // 7.3554 FLOWER already sitting at its deposit address.)
+  const AMOUNT_TOLERANCE_PCT = 0.01; // matches flowerInboxWorker's tolerance
+  let existingBalance = null;
+  try {
+    existingBalance = await getTokenBalance("BASE", depositAddress, "FLOWER");
+  } catch (err) {
+    console.warn(`[FlowerUsdt] Could not check existing FLOWER balance for ${depositAddress}: ${err.message}`);
+  }
+  const alreadyFunded =
+    existingBalance != null &&
+    existingBalance >= amount * (1 - AMOUNT_TOLERANCE_PCT);
+
   const orderId = txRef;
   await FlowerOrder.create({
     orderId,
@@ -111,10 +128,23 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     depositAddress: depositAddress.toLowerCase(),
     expectedAmount: amount,   // real target — verified by flowerInboxWorker, never self-declared
     source:         "USDT_WIDGET",
-    status:         "WAITING_DEPOSIT"
+    status:         alreadyFunded ? "DEPOSIT_RECEIVED" : "WAITING_DEPOSIT",
+    ...(alreadyFunded
+      ? { receivedAmount: existingBalance, currentStage: "DEPOSIT" }
+      : {})
   });
 
-  console.log(`[FlowerUsdt] Created order ${orderId} — waiting for on-chain deposit of ${amount} FLOWER to ${depositAddress} (verified by flowerInboxWorker, same as GENERIC orders)`);
+  if (alreadyFunded) {
+    console.log(`[FlowerUsdt] ${orderId} — ${existingBalance} FLOWER already present at ${depositAddress}, skipping deposit wait and sweeping immediately`);
+    // Fire-and-forget: this endpoint already returns "processing" to the
+    // client immediately, matching the existing WAITING_DEPOSIT UX. The
+    // sweep/swap/settle chain reports its own progress via the Inspector.
+    retryOrder(orderId, { isAdmin: true }).catch(err => {
+      console.error(`[FlowerUsdt] ${orderId} — immediate sweep kickoff failed: ${err.message}`);
+    });
+  } else {
+    console.log(`[FlowerUsdt] Created order ${orderId} — waiting for on-chain deposit of ${amount} FLOWER to ${depositAddress} (verified by flowerInboxWorker, same as GENERIC orders)`);
+  }
 
   return {
     txRef:        orderId,
@@ -122,7 +152,9 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     sourceAmount: amount,
     usdtOut,
     status:       "processing",
-    message:      "Swap submitted. Your USDT will be credited once the on-chain transaction confirms (~30s).",
+    message:      alreadyFunded
+      ? "Swap submitted. FLOWER already detected in your wallet — processing now."
+      : "Swap submitted. Your USDT will be credited once the on-chain transaction confirms (~30s).",
   };
 }
 
