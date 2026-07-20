@@ -115,9 +115,22 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
   } catch (err) {
     console.warn(`[FlowerUsdt] Could not check existing FLOWER balance for ${depositAddress}: ${err.message}`);
   }
-  const alreadyFunded =
-    existingBalance != null &&
-    existingBalance >= amount * (1 - AMOUNT_TOLERANCE_PCT);
+
+  // This widget is balance-based, not deposit-based: the UI shows the
+  // user's live on-chain FLOWER balance and lets them swap up to that
+  // amount. A request for more than they actually hold must be rejected
+  // up front — silently falling back to WAITING_DEPOSIT here creates an
+  // order that can never complete, since nothing new is coming to
+  // deposit, and it just sits in the stuck-orders queue forever.
+  if (existingBalance == null) {
+    throw new Error("Could not verify your FLOWER balance right now — please try again in a moment.");
+  }
+  if (existingBalance < amount * (1 - AMOUNT_TOLERANCE_PCT)) {
+    throw new Error(
+      `Insufficient FLOWER balance: you have ${existingBalance.toFixed(6)} FLOWER, ` +
+      `but requested to swap ${amount} FLOWER.`
+    );
+  }
 
   const orderId = txRef;
   await FlowerOrder.create({
@@ -128,23 +141,24 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     depositAddress: depositAddress.toLowerCase(),
     expectedAmount: amount,   // real target — verified by flowerInboxWorker, never self-declared
     source:         "USDT_WIDGET",
-    status:         alreadyFunded ? "DEPOSIT_RECEIVED" : "WAITING_DEPOSIT",
-    ...(alreadyFunded
-      ? { receivedAmount: existingBalance, currentStage: "DEPOSIT" }
-      : {})
+    status:         "DEPOSIT_RECEIVED",
+    // Sweep only what was REQUESTED, never the full address balance —
+    // the address is reused across every order this user creates, so
+    // anything beyond `amount` belongs to a future order, not this one.
+    // (Using the raw user-supplied `amount` here also avoids the float
+    // round-trip precision loss that comes from converting an on-chain
+    // balance through formatUnits()->parseFloat() and back.)
+    receivedAmount: amount,
+    currentStage:   "DEPOSIT"
   });
 
-  if (alreadyFunded) {
-    console.log(`[FlowerUsdt] ${orderId} — ${existingBalance} FLOWER already present at ${depositAddress}, skipping deposit wait and sweeping immediately`);
-    // Fire-and-forget: this endpoint already returns "processing" to the
-    // client immediately, matching the existing WAITING_DEPOSIT UX. The
-    // sweep/swap/settle chain reports its own progress via the Inspector.
-    retryOrder(orderId, { isAdmin: true }).catch(err => {
-      console.error(`[FlowerUsdt] ${orderId} — immediate sweep kickoff failed: ${err.message}`);
-    });
-  } else {
-    console.log(`[FlowerUsdt] Created order ${orderId} — waiting for on-chain deposit of ${amount} FLOWER to ${depositAddress} (verified by flowerInboxWorker, same as GENERIC orders)`);
-  }
+  console.log(`[FlowerUsdt] ${orderId} — ${amount} FLOWER already present at ${depositAddress} (balance: ${existingBalance}), sweeping immediately`);
+  // Fire-and-forget: this endpoint already returns "processing" to the
+  // client immediately. The sweep/swap/settle chain reports its own
+  // progress via the Inspector.
+  retryOrder(orderId, { isAdmin: true }).catch(err => {
+    console.error(`[FlowerUsdt] ${orderId} — immediate sweep kickoff failed: ${err.message}`);
+  });
 
   return {
     txRef:        orderId,
@@ -152,9 +166,7 @@ export async function settleFlowerToUsdt({ userId, amount, txRef = uuid() }) {
     sourceAmount: amount,
     usdtOut,
     status:       "processing",
-    message:      alreadyFunded
-      ? "Swap submitted. FLOWER already detected in your wallet — processing now."
-      : "Swap submitted. Your USDT will be credited once the on-chain transaction confirms (~30s).",
+    message:      "Swap submitted. FLOWER already detected in your wallet — processing now.",
   };
 }
 
