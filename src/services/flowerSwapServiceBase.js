@@ -196,67 +196,79 @@ export async function processReverseSwap(orderId) {
   });
 
   try {
-    const usdcContract = new ethers.Contract(USDC_TOKEN, ERC20_ABI, signer);
-    inspector.info("swap", `Checking treasury USDC balance for ${orderId}`, {
-      orderId, chain: "BASE", step: "treasury_balance_check"
-    });
-    const bal = await usdcContract.balanceOf(signer.address);
-    if (bal < amountIn) {
-      throw new Error(`Treasury USDC balance ${ethers.formatUnits(bal, 6)} < ${usdcAmount}`);
-    }
-    inspector.success("swap", `Treasury has sufficient USDC for ${orderId}`, {
-      orderId, chain: "BASE", step: "treasury_balance_ok",
-      treasuryBalance: parseFloat(ethers.formatUnits(bal, 6)), required: usdcAmount
-    });
-
-    const allowance = await usdcContract.allowance(signer.address, ROUTER);
-    if (allowance < amountIn) {
-      inspector.info("swap", `Approving router to spend USDC for ${orderId}`, {
-        orderId, chain: "BASE", step: "approve_router"
+    // Serialize check->approve->execute per chain's treasury wallet — see
+    // identical comment/fix in processSwap() above. Without this lock,
+    // concurrent USDC_TO_FLOWER orders can both pass the balance check
+    // against the same pooled treasury balance, then race on approve()
+    // (which is a SET, not additive) — the loser's approved allowance gets
+    // silently overwritten, causing the router's exactInputSingle to
+    // revert with "STF" (safeTransferFrom failed) even though the balance
+    // check passed. This caused real failures: orders d916c504 and
+    // f0dee1d4.
+    const { receipt } = await withLock("flower:BASE", async () => {
+      const usdcContract = new ethers.Contract(USDC_TOKEN, ERC20_ABI, signer);
+      inspector.info("swap", `Checking treasury USDC balance for ${orderId}`, {
+        orderId, chain: "BASE", step: "treasury_balance_check"
       });
-      const approveTx = await usdcContract.approve(ROUTER, amountIn);
-      await approveTx.wait();
-      inspector.success("swap", `Router approved for ${orderId}`, {
-        orderId, chain: "BASE", step: "approve_router_confirmed"
+      const bal = await usdcContract.balanceOf(signer.address);
+      if (bal < amountIn) {
+        throw new Error(`Treasury USDC balance ${ethers.formatUnits(bal, 6)} < ${usdcAmount}`);
+      }
+      inspector.success("swap", `Treasury has sufficient USDC for ${orderId}`, {
+        orderId, chain: "BASE", step: "treasury_balance_ok",
+        treasuryBalance: parseFloat(ethers.formatUnits(bal, 6)), required: usdcAmount
       });
-    }
 
-    const { getFlowerUsdtRate } = await import("./flower/flowerUsdtSwapService.js");
-    const rate = await getFlowerUsdtRate();
-    if (!rate) throw new Error("FLOWER price unavailable — refusing to swap without a slippage reference");
-    const approxFlowerOut = usdcAmount / (rate * 1.5); // conservative floor — see note in flower/flowerSwapService.js
-    inspector.info("swap", `Quote for ${orderId}: ~${approxFlowerOut.toFixed(4)} FLOWER at rate ${rate}`, {
-      orderId, chain: "BASE", step: "quote", rate, approxFlowerOut
+      const allowance = await usdcContract.allowance(signer.address, ROUTER);
+      if (allowance < amountIn) {
+        inspector.info("swap", `Approving router to spend USDC for ${orderId}`, {
+          orderId, chain: "BASE", step: "approve_router"
+        });
+        const approveTx = await usdcContract.approve(ROUTER, amountIn);
+        await approveTx.wait();
+        inspector.success("swap", `Router approved for ${orderId}`, {
+          orderId, chain: "BASE", step: "approve_router_confirmed"
+        });
+      }
+
+      const { getFlowerUsdtRate } = await import("./flower/flowerUsdtSwapService.js");
+      const rate = await getFlowerUsdtRate();
+      if (!rate) throw new Error("FLOWER price unavailable — refusing to swap without a slippage reference");
+      const approxFlowerOut = usdcAmount / (rate * 1.5); // conservative floor — see note in flower/flowerSwapService.js
+      inspector.info("swap", `Quote for ${orderId}: ~${approxFlowerOut.toFixed(4)} FLOWER at rate ${rate}`, {
+        orderId, chain: "BASE", step: "quote", rate, approxFlowerOut
+      });
+      const amountOutMin = ethers.parseUnits(
+        (approxFlowerOut * (1 - SLIPPAGE_BPS / 10000)).toFixed(18), 18
+      );
+
+      const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+      console.log(`[FlowerSwapBase] ${orderId} — swapping ${usdcAmount} USDC → FLOWER via UniV3`);
+      const tx = await router.exactInputSingle({
+        tokenIn:           USDC_TOKEN,
+        tokenOut:          FLOWER_TOKEN,
+        fee:               FEE_TIER,
+        recipient:         signer.address,
+        amountIn,
+        amountOutMinimum:  amountOutMin,
+        sqrtPriceLimitX96: 0n
+      });
+
+      inspector.info("swap", `Swap tx broadcast for ${orderId}`, {
+        orderId, chain: "BASE", step: "tx_broadcast", txHash: tx.hash
+      });
+
+      await recordPendingOperation({
+        type: "FLOWER_REVERSE_SWAP",
+        chain: "base",
+        txHash: tx.hash,
+        referenceId: orderId,
+        token: "FLOWER",
+      });
+
+      const receipt = await tx.wait();
+      return { receipt };
     });
-    const amountOutMin = ethers.parseUnits(
-      (approxFlowerOut * (1 - SLIPPAGE_BPS / 10000)).toFixed(18), 18
-    );
-
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
-    console.log(`[FlowerSwapBase] ${orderId} — swapping ${usdcAmount} USDC → FLOWER via UniV3`);
-    const tx = await router.exactInputSingle({
-      tokenIn:           USDC_TOKEN,
-      tokenOut:          FLOWER_TOKEN,
-      fee:               FEE_TIER,
-      recipient:         signer.address,
-      amountIn,
-      amountOutMinimum:  amountOutMin,
-      sqrtPriceLimitX96: 0n
-    });
-
-    inspector.info("swap", `Swap tx broadcast for ${orderId}`, {
-      orderId, chain: "BASE", step: "tx_broadcast", txHash: tx.hash
-    });
-
-    await recordPendingOperation({
-      type: "FLOWER_REVERSE_SWAP",
-      chain: "base",
-      txHash: tx.hash,
-      referenceId: orderId,
-      token: "FLOWER",
-    });
-
-    const receipt = await tx.wait();
 
     const flowerReceived = parseTokenFromReceipt(receipt, FLOWER_TOKEN, 18);
     console.log(`[FlowerSwapBase] ${orderId} — received ${flowerReceived} FLOWER (tx: ${receipt.hash})`);
