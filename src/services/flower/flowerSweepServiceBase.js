@@ -128,14 +128,29 @@ export async function sweepFlowerToTreasuryBase(orderId) {
 
   const decimals  = await flowerToken.decimals();
   const balance   = await flowerToken.balanceOf(order.depositAddress);
-  const amountWei = ethers.parseUnits(expected.toString(), decimals);
+  let amountWei   = ethers.parseUnits(expected.toString(), decimals);
 
+  // `expected` (order.receivedAmount) can be a JS float that round-tripped
+  // through ethers.formatUnits() -> parseFloat() -> ethers.parseUnits()
+  // (e.g. set from a live balance snapshot rather than a precise
+  // deposit-event amount). A double can't exactly represent an
+  // 18-decimal on-chain value, so amountWei can end up a few attowei
+  // ABOVE the real balance even though both represent the same
+  // underlying amount. Tolerate dust (<= 0.0001 FLOWER — far below any
+  // amount a real short deposit would ever produce) by clamping to the
+  // actual balance instead of refusing.
+  const DUST_TOLERANCE_WEI = ethers.parseUnits("0.0001", decimals);
   if (balance < amountWei) {
-    throw new Error(
-      `Address ${order.depositAddress} balance ` +
-      `(${ethers.formatUnits(balance, decimals)} FLOWER) is less than order ${orderId}'s ` +
-      `expected ${expected} FLOWER — refusing to sweep a short amount`
-    );
+    const shortfall = amountWei - balance;
+    if (shortfall <= DUST_TOLERANCE_WEI) {
+      amountWei = balance;
+    } else {
+      throw new Error(
+        `Address ${order.depositAddress} balance ` +
+        `(${ethers.formatUnits(balance, decimals)} FLOWER) is less than order ${orderId}'s ` +
+        `expected ${expected} FLOWER — refusing to sweep a short amount`
+      );
+    }
   }
 
   const treasuryAddress = getTreasuryAddress();
@@ -183,7 +198,12 @@ async function sweepViaForwarderBase({ order, depositRecord, orderId }) {
   const balance   = await flowerTokenReadOnly.balanceOf(order.depositAddress);
   const amountWei = ethers.parseUnits(order.receivedAmount.toString(), decimals);
 
-  if (balance < amountWei) {
+  // See identical float round-trip precision note in
+  // sweepFlowerToTreasuryBase() above. Forwarder deploy() sweeps whatever
+  // is present regardless of amountWei, so this is purely a guard check —
+  // tolerate dust the same way to avoid a false refusal.
+  const DUST_TOLERANCE_WEI = ethers.parseUnits("0.0001", decimals);
+  if (balance < amountWei && (amountWei - balance) > DUST_TOLERANCE_WEI) {
     throw new Error(
       `Address ${order.depositAddress} balance ` +
       `(${ethers.formatUnits(balance, decimals)} FLOWER) is less than order ${orderId}'s ` +
