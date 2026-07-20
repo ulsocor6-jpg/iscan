@@ -23,3 +23,5 @@ cache/
 wallets-backup-*.json
 .audit-backups/
 iscansystem-cleaned.zip
+.env.backup
+dist/
