@@ -221,16 +221,38 @@ function PhpWithdrawal() {
 
   return (
     <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {["MAYA","BANK","GCASH"].map(c => (
-          <button key={c} onClick={() => setChannel(c)} style={{
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          E-Wallets
+        </label>
+        <div style={{ display: "flex", gap: 8, marginTop: 4, marginBottom: 12 }}>
+          {["MAYA","GCASH"].map(c => {
+            const disabled = c === "GCASH";
+            return (
+              <button key={c} onClick={() => !disabled && setChannel(c)} disabled={disabled} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
+                cursor: disabled ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 13,
+                background: disabled ? "#151d30" : (channel === c ? "#3b82f6" : "#1d2942"),
+                color: disabled ? "#4b5563" : "white",
+                opacity: disabled ? 0.6 : 1,
+              }}>
+                {c === "MAYA" ? "🟣 Maya" : "💙 GCash"}{disabled ? " (Unavailable)" : ""}
+              </button>
+            );
+          })}
+        </div>
+        <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Bank
+        </label>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <button onClick={() => setChannel("BANK")} style={{
             flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
             cursor: "pointer", fontWeight: 600, fontSize: 13,
-            background: channel === c ? "#3b82f6" : "#1d2942", color: "white",
+            background: channel === "BANK" ? "#3b82f6" : "#1d2942", color: "white",
           }}>
-            {c === "MAYA" ? "🟣 Maya" : c === "BANK" ? "🏦 Bank" : "💙 GCash"}
+            🏦 Bank
           </button>
-        ))}
+        </div>
       </div>
       <label style={lbl}>Amount (PHP)</label>
       <input style={inp} type="number" placeholder="Min ₱100"

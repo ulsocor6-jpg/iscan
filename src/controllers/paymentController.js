@@ -12,6 +12,15 @@ import { createCashInLink, verifyWebhookSignature } from '../services/paymentSer
  */
 export const cashIn = async (req, res) => {
   try {
+    // PayMongo cash-in is currently unavailable — only Maya and MariBank
+    // are active providers right now. Remove this guard once PayMongo is
+    // re-enabled for production use.
+    return res.status(503).json({
+      error: 'This payment method is currently unavailable. Please use Maya or MariBank.',
+      code: 'PROVIDER_UNAVAILABLE',
+      provider: 'paymongo',
+    });
+
     const { amount } = req.body;
     const phpAmount = parseFloat(amount);
 
