@@ -121,6 +121,14 @@ export async function createCryptoWithdrawal(req, res) {
       status: "pending_review",
     });
 
+    // Backfill referenceId now that we have the generated _id — matches
+    // the WD-<id> format already used for ledger entries in
+    // withdrawalProcessor.js, and makes the model's unique index on
+    // referenceId actually enforce something for crypto withdrawals
+    // (previously only PHP withdrawals ever set this field).
+    withdrawal.referenceId = `WD-${withdrawal._id}`;
+    await withdrawal.save();
+
     // Same auto-settle rule as the other withdrawal path: settle
     // immediately unless it exceeds a configured AUTO_WITHDRAW_LIMIT_<ASSET>.
     if (!exceedsAutoApproveLimit(withdrawal)) {

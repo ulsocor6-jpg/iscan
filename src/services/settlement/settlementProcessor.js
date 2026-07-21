@@ -1,4 +1,6 @@
 import MayaProvider from "../../integrations/paymentProviders/mayaProvider.js";
+import brainBus from "../../brainbus/brainBus.js";
+import { Channels } from "../../brainbus/channels.js";
 import Transaction from "../../models/transactionModel.js";
 import { writeEntry } from "../ledgerWriter.js";
 
@@ -47,6 +49,14 @@ export async function processSettlement(job) {
   });
 
   // STEP 4: update transaction
+  brainBus.emit(Channels.ACTION_EXECUTED, {
+    pipeline: "SETTLEMENT",
+    action: "settled",
+    reference: job.referenceId,
+    amount: job.amount,
+    currency: job.currency,
+    timestamp: new Date().toISOString()
+  }, { source: "SettlementProcessor", correlationId: job.referenceId });
   tx.status = "settled";
   tx.settlementRef = result.referenceId;
   await tx.save();

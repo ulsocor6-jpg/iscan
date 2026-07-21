@@ -3,22 +3,17 @@
 // Shared logic for actually settling a crypto withdrawal on-chain:
 // debit ledger -> send -> mark completed (with txHash), or on failure,
 // credit the debit back and mark failed. Used by:
-//   - withdrawalController.js — automatic, immediately at request time,
-//     once the balance check has already confirmed sufficient funds
-//   - adminWithdrawalController.js — manual fallback / retry path for
-//     anything that didn't auto-process (e.g. non-crypto types, or a
-//     previously failed crypto withdrawal an admin wants to re-attempt)
+//   - withdrawalController.js — automatic, immediately at request time
+//   - adminWithdrawalController.js — manual fallback / retry path
 
 import walletService from "./walletService.js";
 import { sendCryptoToAddress } from "./treasury/treasurySendService.js";
 import eventStreamService from "./eventStreamService.js";
 import { sendTelegramAlert } from "./telegramAlertService.js";
 import inspector from "./blockchain/inspector/blockchainInspector.js";
+import brainBus from "../brainbus/brainBus.js";
+import { Channels } from "../brainbus/channels.js";
 
-// Optional safety valve: per-request cap above which a crypto withdrawal
-// is left as "pending_review" for manual approval instead of settling
-// automatically. Unset by default — no limit, matches "always auto if
-// balance is sufficient." Set e.g. AUTO_WITHDRAW_LIMIT_USDC=500 to enable.
 function autoApproveLimitFor(asset) {
   const raw = process.env[`AUTO_WITHDRAW_LIMIT_${asset}`];
   return raw ? parseFloat(raw) : null;
@@ -29,32 +24,56 @@ export function exceedsAutoApproveLimit(withdrawal) {
   return limit !== null && withdrawal.amount > limit;
 }
 
-/**
- * Debits the ledger, sends the real on-chain transaction, and updates
- * the withdrawal's status accordingly. Caller is responsible for having
- * already confirmed balance is sufficient and (if relevant) that this
- * withdrawal isn't over any configured auto-approve limit.
- */
 export async function settleCryptoWithdrawal(withdrawal) {
+  const flowId = `WD-${withdrawal._id}`;
+
+  // ── BrainBus: flow started ──────────────────────────────────────────
+  brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, {
+    flowId,
+    pipeline: "WITHDRAWAL",
+    source: withdrawal.asset,
+    amount: withdrawal.amount,
+    currency: withdrawal.asset,
+    status: "RUNNING",
+    stages: []
+  }, { source: "WithdrawalProcessor", correlationId: flowId });
+
   try {
+    // ── BrainBus: stage DEBIT ─────────────────────────────────────────
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "DEBIT",
+      data: { status: "RUNNING" }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+
     await walletService.debit(
       withdrawal.userId,
       withdrawal.asset,
       withdrawal.amount,
       {
-        referenceId: `WD-${withdrawal._id}`,
+        referenceId: flowId,
         description: "Withdrawal settled"
       }
     );
+
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "DEBIT",
+      data: { status: "SUCCESS" }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+
   } catch (debitErr) {
-    // Nothing was ever moved here — no ledger reversal needed, unlike the
-    // send-failure path below. Most common cause: a race where two
-    // requests both passed the controller's balance pre-check, but only
-    // one debit can win the atomic $gte guard in walletService.debit.
     withdrawal.status = "failed";
     withdrawal.failReason = debitErr.message;
     await withdrawal.save();
-    inspector.error("withdrawal", `Debit failed for WD-${withdrawal._id}: ${debitErr.message}`, {
+
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "DEBIT",
+      data: { status: "FAILED", error: debitErr.message }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+      flowId, result: { status: "FAILED", error: debitErr.message }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+
+    inspector.error("withdrawal", `Debit failed for ${flowId}: ${debitErr.message}`, {
       orderId: withdrawal._id.toString(),
       userId: withdrawal.userId,
       asset: withdrawal.asset,
@@ -69,43 +88,47 @@ export async function settleCryptoWithdrawal(withdrawal) {
       error: debitErr.message,
       stage: "debit",
     });
-
     sendTelegramAlert(
       `\u26a0\ufe0f <b>Crypto withdrawal FAILED (debit)</b>\n` +
       `Asset: ${withdrawal.asset} (${withdrawal.network})\n` +
       `Amount: ${withdrawal.amount}\n` +
       `User: <code>${withdrawal.userId}</code>\n` +
-      `Ref: <code>WD-${withdrawal._id}</code>\n` +
-      `Error: ${debitErr.message}\n` +
-      `No funds were moved \u2014 balance check failed at settle time.`
-    ).catch(alertErr => {
-      console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message);
-    });
-
+      `Ref: <code>${flowId}</code>\n` +
+      `Error: ${debitErr.message}`
+    ).catch(alertErr => console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message));
     return { success: false, error: debitErr.message, withdrawal, stage: "debit" };
   }
 
   try {
-    // Send netAmount (amount minus fees) on-chain, not the full debited
-    // amount — the fee difference simply stays in the treasury wallet
-    // rather than going out to the user. Fall back to the full amount for
-    // any withdrawal created before fee tracking existed (netAmount will
-    // be the schema default of 0 in that case, not a real "send nothing").
-    const sendAmount = withdrawal.netAmount > 0 ? withdrawal.netAmount : withdrawal.amount;
+    // ── BrainBus: stage SEND ──────────────────────────────────────────
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "SEND",
+      data: { status: "RUNNING" }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
 
+    const sendAmount = withdrawal.netAmount > 0 ? withdrawal.netAmount : withdrawal.amount;
     const result = await sendCryptoToAddress({
       chain: withdrawal.network,
       currency: withdrawal.asset,
       amount: sendAmount,
       toAddress: withdrawal.destinationAddress,
-      txRef: `WD-${withdrawal._id}`,
+      txRef: flowId,
     });
 
     withdrawal.status = "completed";
     withdrawal.txHash = result.txHash;
     withdrawal.approvedAt = new Date();
     await withdrawal.save();
-    inspector.success("withdrawal", `WD-${withdrawal._id} settled`, {
+
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "SEND",
+      data: { status: "SUCCESS", txHash: result.txHash }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+      flowId, result: { status: "SUCCESS", txHash: result.txHash }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+
+    inspector.success("withdrawal", `${flowId} settled`, {
       orderId: withdrawal._id.toString(),
       userId: withdrawal.userId,
       asset: withdrawal.asset,
@@ -121,19 +144,15 @@ export async function settleCryptoWithdrawal(withdrawal) {
       fee: withdrawal.fee || 0,
       txHash: result.txHash,
     });
-
     return { success: true, withdrawal };
 
   } catch (sendErr) {
-    // Ledger debit already happened above — reverse it so the user isn't
-    // out the amount with nothing sent, and mark this failed for manual
-    // review rather than leaving it stuck with no transaction.
     await walletService.credit(
       withdrawal.userId,
       withdrawal.asset,
       withdrawal.amount,
       {
-        referenceId: `WD-${withdrawal._id}-REVERSAL`,
+        referenceId: `${flowId}-REVERSAL`,
         description: "Withdrawal send failed — reversed"
       }
     );
@@ -141,7 +160,16 @@ export async function settleCryptoWithdrawal(withdrawal) {
     withdrawal.status = "failed";
     withdrawal.failReason = sendErr.message;
     await withdrawal.save();
-    inspector.error("withdrawal", `Send failed for WD-${withdrawal._id}: ${sendErr.message}`, {
+
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+      flowId, pipeline: "WITHDRAWAL", stage: "SEND",
+      data: { status: "FAILED", error: sendErr.message }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+      flowId, result: { status: "FAILED", error: sendErr.message }
+    }, { source: "WithdrawalProcessor", correlationId: flowId });
+
+    inspector.error("withdrawal", `Send failed for ${flowId}: ${sendErr.message}`, {
       orderId: withdrawal._id.toString(),
       userId: withdrawal.userId,
       asset: withdrawal.asset,
@@ -155,18 +183,15 @@ export async function settleCryptoWithdrawal(withdrawal) {
       amount: withdrawal.amount,
       error: sendErr.message,
     });
-
     sendTelegramAlert(
       `🚨 <b>Crypto withdrawal FAILED</b>\n` +
       `Asset: ${withdrawal.asset} (${withdrawal.network})\n` +
       `Amount: ${withdrawal.amount}\n` +
       `User: <code>${withdrawal.userId}</code>\n` +
-      `Ref: <code>WD-${withdrawal._id}</code>\n` +
+      `Ref: <code>${flowId}</code>\n` +
       `Error: ${sendErr.message}\n` +
       `Ledger debit reversed — needs manual review.`
-    ).catch(alertErr => {
-      console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message);
-    });
+    ).catch(alertErr => console.error("[withdrawalProcessor] Telegram alert failed:", alertErr.message));
     return { success: false, error: sendErr.message, withdrawal, stage: "send" };
   }
 }

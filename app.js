@@ -34,6 +34,10 @@ app.use(cookieParser());
 
 import eventStreamService from "./src/services/eventStreamService.js";
 
+// ── BrainBus: system-wide message bus ───────────────────────────────────
+import { wireBrainBus } from "./src/brainbus/subscribers.js";
+wireBrainBus();
+
 /**
  * System-wide request logger ("CCTV camera" for the codebase).
  * Persists every state-changing API call (POST/PUT/PATCH/DELETE) and every
@@ -110,8 +114,10 @@ import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
+import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js";
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
+import userToolsRoutes from "./src/routes/userToolsRoutes.js";
 
 /* ===========================
    Health
@@ -143,10 +149,14 @@ app.use(
  operatorRoutes
 );
 
+app.use("/api/v1/operator/actions", operatorActionsRoute);
+
 app.use(
  "/api/v1/support",
  supportRoutes
 );
+
+app.use("/api/v1/user/tools", userToolsRoutes);
 
 app.use("/api/v1/ledger", ledgerRoutes);
 app.use("/api/v1/transactions", transactionRoutes);

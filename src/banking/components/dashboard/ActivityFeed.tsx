@@ -183,7 +183,18 @@ export default function ActivityFeed({ data = [] }: Props) {
                 {style.label}
               </div>
               <div style={{ fontSize: 12, marginTop: 4 }}>
-                <strong>{toast.channel === "PHP" || !toast.channel ? "PHP" : toast.channel} {toast.amount?.toLocaleString()}</strong> — Ref: {toast.referenceId}
+                <strong>{toast.channel === "PHP" || !toast.channel ? "PHP" : toast.channel} {toast.amount?.toLocaleString()}</strong> — Ref:{" "}
+                {toast.type === "FLAGGED" ? (
+                  <a href={`/admin/deposits?review=${toast.referenceId}`} style={{ color: "#ffd93d", textDecoration: "underline", cursor: "pointer" }}>
+                    {toast.referenceId}
+                  </a>
+                ) : toast.type === "CREDITED" || toast.type === "WITHDRAWAL" ? (
+                  <a href={`/inspector?flow=${toast.referenceId}`} style={{ color: "#a5f3fc", textDecoration: "underline", cursor: "pointer" }}>
+                    {toast.referenceId}
+                  </a>
+                ) : (
+                  <span>{toast.referenceId}</span>
+                )}
               </div>
               {(toast.userName || toast.userEmail) && (
                 <div style={{ fontSize: 12, marginTop: 4 }}>

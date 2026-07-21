@@ -1,6 +1,7 @@
 import blockchainInspector from "../blockchain/inspector/blockchainInspector.js";
 import eventStreamService from "../eventStreamService.js";
 import incidentEngine from "./incidentEngine.js";
+import remediationEngine from "./remediationEngine.js";
 
 class OperatorSubscriber {
 
@@ -62,6 +63,17 @@ class OperatorSubscriber {
                 );
 
             }
+
+            // Fire-and-forget: attemptRemediation() is a no-op for any
+            // code not in remediationEngine's WHITELIST, and it already
+            // catches its own handler errors internally. Never let this
+            // block or crash the event loop.
+            remediationEngine.attemptRemediation(incident).catch((err) => {
+                console.error(
+                    "[Operator] Remediation attempt threw unexpectedly:",
+                    err.message
+                );
+            });
 
         });
 

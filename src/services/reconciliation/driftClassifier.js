@@ -25,6 +25,10 @@ const DEBIT_SAFETY_FACTOR = Number(process.env.RECON_DEBIT_SAFETY_FACTOR ?? 0.2)
 export function classifyDrift(result) {
   const { currency, drift, status } = result;
 
+  if (status === 'rpc_unavailable') {
+    return { riskLevel: 'RISK_DRIFT', reason: 'on-chain data unavailable — cannot confirm balance, treat as needing review' };
+  }
+
   if (status === 'in_sync') {
     return { riskLevel: 'NO_DRIFT', reason: 'drift within epsilon tolerance' };
   }

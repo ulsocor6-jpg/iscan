@@ -23,6 +23,7 @@ import ledgerWorker from "./workers/ledgerWorker.js";
 import dashboardWorker from "./workers/dashboardWorker.js";
 import flowerInboxWorker from "./workers/flowerInboxWorker.js";
 import flowerBaseRetryWorker from "./workers/flowerBaseRetryWorker.js";
+import flowerDepositWatcher from "./workers/flowerDepositWatcher.js";
 import flowerRoninRetryWorker from "./workers/flowerRoninRetryWorker.js";
 import flowerOrderCleanupWorker from "./workers/flowerOrderCleanupWorker.js";
 
@@ -189,6 +190,10 @@ class BlockchainBootstrap {
         );
         workScheduler.register(
             flowerInboxWorker
+        );
+
+        workScheduler.register(
+            flowerDepositWatcher
         );
 
         workScheduler.register(

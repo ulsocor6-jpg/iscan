@@ -1,0 +1,629 @@
+===== BOOT =====
+server.js:17:import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
+server.js:92:    await blockchainBootstrap.start();
+src/bootstrap/startServices.js:3:export function startServices() {
+src/services/blockchain/bootstrap/executorBootstrap.js:8:export function startExecutors() {
+src/services/blockchain/bootstrap/executorBootstrap.js:18:    console.log("[ExecutorBootstrap] Starting Executors...");
+src/services/blockchain/bootstrap/executorBootstrap.js:28:    console.log("[ExecutorBootstrap] Ready.");
+src/services/blockchain/bootstrap.js:15:import { startExecutors } from "./bootstrap/executorBootstrap.js";
+src/services/blockchain/bootstrap.js:29:class BlockchainBootstrap {
+src/services/blockchain/bootstrap.js:99:                    `[Bootstrap] Skipping ${token.chain} ${token.symbol}`
+src/services/blockchain/bootstrap.js:109:                `[Bootstrap] Registered ${token.chain} ${token.symbol}`
+src/services/blockchain/bootstrap.js:226:startExecutors();
+src/services/blockchain/bootstrap.js:239:            "[Bootstrap] Blockchain Engine Ready."
+src/services/blockchain/bootstrap.js:246:export default new BlockchainBootstrap();
+src/services/blockchain/inspector/inspectorBridge.js:14: * Import this once, anywhere early in the boot sequence (bootstrap.js is
+
+===== WORKERS =====
+src/services/blockchain/workers/walletCreditWorker.js:5:class WalletCreditWorker {
+src/services/blockchain/workers/walletCreditWorker.js:29:                    "WalletCreditWorker",
+src/services/blockchain/workers/walletCreditWorker.js:105:        job.currentStage = "LedgerWorker";
+src/services/blockchain/workers/walletCreditWorker.js:108:        // "wallet" flag done — not "ledger". LedgerWorker's own query
+src/services/blockchain/workers/walletCreditWorker.js:120:            "WalletCreditWorker",
+src/services/blockchain/workers/walletCreditWorker.js:146:export default new WalletCreditWorker();
+src/services/blockchain/workers/flowerStageHandlers.js.bak.1784080008:3:// Handlers the OperationCorrelator dispatches to for flower-order stages.
+src/services/blockchain/workers/depositProcessor.js:68:                "WalletCreditWorker";
+src/services/blockchain/workers/depositProcessor.js:112:            "WalletCreditWorker";
+src/services/blockchain/workers/confirmationWorker.js:5:class ConfirmationWorker {
+src/services/blockchain/workers/confirmationWorker.js:35:                "ConfirmationWorker",
+src/services/blockchain/workers/confirmationWorker.js:85:                "ConfirmationWorker",
+src/services/blockchain/workers/confirmationWorker.js:105:                "ConfirmationWorker",
+src/services/blockchain/workers/confirmationWorker.js:125:export default new ConfirmationWorker();
+src/services/blockchain/workers/operationCorrelator.js:7:class OperationCorrelator {
+src/services/blockchain/workers/operationCorrelator.js:31:                    "OperationCorrelator",
+src/services/blockchain/workers/operationCorrelator.js:213:            "OperationCorrelator",
+src/services/blockchain/workers/operationCorrelator.js:231:export default new OperationCorrelator();
+src/services/blockchain/workers/flowerStageHandlers.js:3:// Handlers the OperationCorrelator dispatches to for flower-order stages.
+src/services/blockchain/workers/ledgerWorker.js:5:class LedgerWorker {
+src/services/blockchain/workers/ledgerWorker.js:11:            currentStage: "LedgerWorker",
+src/services/blockchain/workers/ledgerWorker.js:29:                    "LedgerWorker",
+src/services/blockchain/workers/ledgerWorker.js:113:            "LedgerWorker",
+src/services/blockchain/workers/ledgerWorker.js:139:export default new LedgerWorker();
+src/services/blockchain/workers/flowerDepositWatcher.js:7:// OperationCorrelator's txHash-based claim logic.
+src/services/blockchain/pipeline/transactionPipeline.js:56:                case "ConfirmationWorker":
+src/services/blockchain/pipeline/transactionPipeline.js:74:                case "WalletCreditWorker":
+src/services/blockchain/pipeline/transactionPipeline.js:83:                case "LedgerWorker":
+src/services/blockchain/journal/blockchainInbox.js:35:                    currentStage: event.currentStage ?? "ConfirmationWorker",
+src/services/blockchain/bootstrap.js:18:import confirmationWorker from "./workers/confirmationWorker.js";
+src/services/blockchain/bootstrap.js:19:import operationCorrelator from "./workers/operationCorrelator.js";
+src/services/blockchain/bootstrap.js:21:import walletCreditWorker from "./workers/walletCreditWorker.js";
+src/services/blockchain/bootstrap.js:22:import ledgerWorker from "./workers/ledgerWorker.js";
+src/services/blockchain/bootstrap.js:163:            confirmationWorker
+src/services/blockchain/bootstrap.js:172:            operationCorrelator
+src/services/blockchain/bootstrap.js:180:            walletCreditWorker
+src/services/blockchain/bootstrap.js:184:            ledgerWorker
+src/services/blockchain/inspector/inspectorBridge.js:24:  ConfirmationWorker: "deposit",
+src/services/blockchain/inspector/inspectorBridge.js:25:  WalletCreditWorker: "deposit",
+src/services/blockchain/inspector/inspectorBridge.js:26:  LedgerWorker: "deposit",
+
+===== PIPELINE =====
+src/services/blockchain/workers/flowerInboxWorker.js:86:        currentStage: "DEPOSIT"
+src/services/blockchain/workers/flowerInboxWorker.js:96:        currentStage: "DashboardWorker"
+src/services/blockchain/workers/walletCreditWorker.js:105:        job.currentStage = "LedgerWorker";
+src/services/blockchain/workers/flowerStageHandlers.js.bak.1784080008:3:// Handlers the OperationCorrelator dispatches to for flower-order stages.
+src/services/blockchain/workers/depositProcessor.js:66:            job.currentStage =
+src/services/blockchain/workers/depositProcessor.js:110:        job.currentStage =
+src/services/blockchain/workers/confirmationWorker.js:75:            job.currentStage =
+src/services/blockchain/workers/operationCorrelator.js:145:        await executorRouter.dispatch(
+src/services/blockchain/workers/recoveryWorker.js:2:import consumerDispatcher from "../pipeline/consumerDispatcher.js";
+src/services/blockchain/workers/recoveryWorker.js:83:                consumerDispatcher.dispatch(job);
+src/services/blockchain/workers/flowerStageHandlers.js:3:// Handlers the OperationCorrelator dispatches to for flower-order stages.
+src/services/blockchain/workers/flowerStageHandlers.js:26:    if (!order.currentStage || order.currentStage === "SWEEP") {
+src/services/blockchain/workers/flowerStageHandlers.js:29:            pipeline: "FLOWER_SWAP",
+src/services/blockchain/workers/flowerStageHandlers.js:46:    order.currentStage = "SWAP";
+src/services/blockchain/workers/flowerStageHandlers.js:50:        pipeline: "FLOWER_SWAP",
+src/services/blockchain/workers/flowerStageHandlers.js:67:    order.currentStage = "SETTLE";
+src/services/blockchain/workers/flowerStageHandlers.js:71:        pipeline: "FLOWER_SWAP",
+src/services/blockchain/workers/flowerStageHandlers.js:90:    // land. Only touch currentStage here, never status.
+src/services/blockchain/workers/flowerStageHandlers.js:91:    order.currentStage = "SETTLE";
+src/services/blockchain/workers/flowerStageHandlers.js:106:    order.currentStage = "SETTLE";
+src/services/blockchain/workers/flowerStageHandlers.js:111:        pipeline: "FLOWER_SWAP",
+src/services/blockchain/workers/ledgerWorker.js:11:            currentStage: "LedgerWorker",
+src/services/blockchain/workers/ledgerWorker.js:59:            job.currentStage = "DashboardWorker";
+src/services/blockchain/workers/ledgerWorker.js:107:        job.currentStage = "DashboardWorker";
+src/services/blockchain/workers/flowerInboxWorker.js.bak.1784027852:80:        currentStage: "DEPOSIT"
+src/services/blockchain/workers/flowerInboxWorker.js.bak.1784027852:90:        currentStage: "DashboardWorker"
+src/services/blockchain/workers/dashboardWorker.js:10:            currentStage: "DashboardWorker",
+src/services/blockchain/workers/dashboardWorker.js:62:        job.currentStage = "Completed";
+src/services/blockchain/workers/dashboardWorker.js:70:            "Pipeline completed",
+src/services/blockchain/pipeline/transactionPipeline.js:2:import consumerDispatcher from "./consumerDispatcher.js";
+src/services/blockchain/pipeline/transactionPipeline.js:5:class TransactionPipeline {
+src/services/blockchain/pipeline/transactionPipeline.js:19:        console.log("[TransactionPipeline] Started");
+src/services/blockchain/pipeline/transactionPipeline.js:21:        consumerDispatcher.on(
+src/services/blockchain/pipeline/transactionPipeline.js:37:            Every blockchain event enters the pipeline here.
+src/services/blockchain/pipeline/transactionPipeline.js:54:            switch (inbox.currentStage) {
+src/services/blockchain/pipeline/transactionPipeline.js:58:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:67:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:76:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:85:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:94:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:105:                        "Pipeline",
+src/services/blockchain/pipeline/transactionPipeline.js:107:                        `Idle at ${inbox.currentStage}`,
+src/services/blockchain/pipeline/transactionPipeline.js:125:                "Pipeline",
+src/services/blockchain/pipeline/transactionPipeline.js:137:export default new TransactionPipeline();
+src/services/blockchain/pipeline/consumerDispatcher.js:7:class ConsumerDispatcher extends EventEmitter {
+src/services/blockchain/pipeline/consumerDispatcher.js:29:        console.log("[ConsumerDispatcher] Started");
+src/services/blockchain/pipeline/consumerDispatcher.js:37:                this.dispatch(event);
+src/services/blockchain/pipeline/consumerDispatcher.js:45:    dispatch(event) {
+src/services/blockchain/pipeline/consumerDispatcher.js:49:        Single entry point into the pipeline.
+src/services/blockchain/pipeline/consumerDispatcher.js:65:export default new ConsumerDispatcher();
+src/services/blockchain/executors/executorRouter.js:15:    | Dispatch
+src/services/blockchain/executors/executorRouter.js:19:    async dispatch(type, payload) {
+src/services/blockchain/baseStableListener.js:3:// Detection only. The deposit pipeline is responsible for sweeping,
+src/services/blockchain/baseStableListener.js:8:import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
+src/services/blockchain/router/pipelineRouter.js:3:class PipelineRouter extends EventEmitter {
+src/services/blockchain/router/pipelineRouter.js:81:export default new PipelineRouter();
+src/services/blockchain/baseStableListener.js.bak.1784097445:7:import { createDetectedDeposit } from "../cryptoDepositPipeline.js";
+src/services/blockchain/journal/blockchainInbox.js:2:import consumerDispatcher from "../pipeline/consumerDispatcher.js";
+src/services/blockchain/journal/blockchainInbox.js:35:                    currentStage: event.currentStage ?? "ConfirmationWorker",
+src/services/blockchain/bootstrap.js:10:import transactionPipeline from "./pipeline/transactionPipeline.js";
+src/services/blockchain/bootstrap.js:11:import consumerDispatcher from "./pipeline/consumerDispatcher.js";
+src/services/blockchain/bootstrap.js:208:Pipeline
+src/services/blockchain/bootstrap.js:212:consumerDispatcher.start();
+src/services/blockchain/bootstrap.js:214:transactionPipeline.start();
+src/services/blockchain/inspector/inspectorBridge.js:10: * blockchain pipeline (collector, confirmation worker, deposit processor,
+src/services/blockchain/inspector/inspectorBridge.js:45:      // Never let a logging failure break the blockchain pipeline itself
+
+===== BRAINBUS =====
+src/routes/remittanceRoutes.js:22:// POST send remittance
+src/routes/remittanceRoutes.js:46:      type:             'remittance',
+src/routes/remittanceRoutes.js:56:      action:    'REMITTANCE_SENT',
+src/routes/remittanceRoutes.js:67:    res.status(500).json({ message: 'Failed to process remittance.' });
+src/routes/directDepositRoutes.js:30:    const validChannels = ['GCASH', 'MAYA', 'BANK'];
+src/routes/directDepositRoutes.js:31:    if (!validChannels.includes(channel)) {
+src/routes/directDepositRoutes.js:32:      return res.status(400).json({ error: `Invalid channel. Must be one of: ${validChannels.join(', ')}` });
+src/routes/paymentRoutes.js:44:    const validChannels = ['MAYA', 'GCASH', 'BANK'];
+src/routes/paymentRoutes.js:46:    if (!validChannels.includes(normalizedChannel)) {
+src/routes/paymentRoutes.js:47:      return res.status(400).json({ error: `Invalid channel. Must be one of: ${validChannels.join(', ')}` });
+src/routes/paymentRoutes.js:127:    eventStreamService.emit('withdrawal.verified', {
+src/routes/paymentRoutes.js:140:      console.error('[CASHOUT] System Inspector event emit failed:', err.message);
+src/routes/operator/operatorActionsRoute.js:12:import operatorActions from "../../brainbus/predictions/operatorActions.js";
+src/routes/operator/operatorActionsRoute.js:13:import anomalyDetector from "../../brainbus/predictions/anomalyDetector.js";
+src/routes/operator/operatorActionsRoute.js:14:import correlationEngine from "../../brainbus/predictions/correlationEngine.js";
+src/routes/operator/operatorActionsRoute.js:15:import liveMemoryStore from "../../brainbus/liveMemoryStore.js";
+src/brainbus/liveMemoryStore.js:1:// src/brainbus/liveMemoryStore.js
+src/brainbus/liveMemoryStore.js:12:// All writes also emit a "memory.snapshot" event onto BrainBus so
+src/brainbus/liveMemoryStore.js:13:// downstream subscribers (audit, explanation, dashboard) can react.
+src/brainbus/liveMemoryStore.js:16:import brainBus from "./brainBus.js";
+src/brainbus/liveMemoryStore.js:17:import { Channels } from "./channels.js";
+src/brainbus/liveMemoryStore.js:69:        this._emitSnapshot("flow", flowId, this._flows.get(flowId));
+src/brainbus/liveMemoryStore.js:86:        this._emitSnapshot("flow", flowId, flow);
+src/brainbus/liveMemoryStore.js:92:        brainBus.emit(Channels.MEMORY_SNAPSHOT, {
+src/brainbus/liveMemoryStore.js:144:        this._emitSnapshot("decision", decisionId, decision);
+src/brainbus/liveMemoryStore.js:188:    _emitSnapshot(entity, entityId, data) {
+src/brainbus/liveMemoryStore.js:189:        brainBus.emit(Channels.MEMORY_SNAPSHOT, {
+src/brainbus/liveMemory.js:1:// src/brainbus/liveMemory.js
+src/brainbus/liveMemory.js:3:// Live Memory — subscribes to BrainBus and keeps the in-process state store
+src/brainbus/liveMemory.js:10:import brainBus from "./brainBus.js";
+src/brainbus/liveMemory.js:11:import { Channels } from "./channels.js";
+src/brainbus/liveMemory.js:24:        brainBus.on(Channels.INSPECTOR_FLOW_STARTED, (envelope) => {
+src/brainbus/liveMemory.js:29:        brainBus.on(Channels.INSPECTOR_FLOW_STAGE, (envelope) => {
+src/brainbus/liveMemory.js:34:        brainBus.on(Channels.INSPECTOR_FLOW_COMPLETED, (envelope) => {
+src/brainbus/liveMemory.js:40:        brainBus.on(Channels.BLOCKCHAIN_EVENT, (envelope) => {
+src/brainbus/liveMemory.js:46:        brainBus.on(Channels.KNOWLEDGE_RULE_MATCHED, (envelope) => {
+src/brainbus/liveMemory.js:54:        brainBus.on(Channels.DECISION_DISPATCHED, (envelope) => {
+src/brainbus/liveMemory.js:58:        brainBus.on(Channels.DECISION_EXECUTED, (envelope) => {
+src/brainbus/liveMemory.js:72:        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
+src/brainbus/liveMemory.js:84:            brainBus.emit(Channels.SYSTEM_HEALTH, {
+src/brainbus/liveMemory.js:91:        console.log("[LiveMemory] ✅ Subscribed to BrainBus — caching active flows, events, decisions, incidents");
+src/brainbus/explanationEngine.js:1:// src/brainbus/explanationEngine.js
+src/brainbus/explanationEngine.js:5:// Listens for explanation.generated events on BrainBus and produces
+src/brainbus/explanationEngine.js:16:import brainBus from "./brainBus.js";
+src/brainbus/explanationEngine.js:17:import { Channels } from "./channels.js";
+src/brainbus/explanationEngine.js:28:        brainBus.on(Channels.EXPLANATION_GENERATED, async (envelope) => {
+src/brainbus/explanationEngine.js:35:        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
+src/brainbus/explanationEngine.js:37:            // Decision Engine already re-emits these as explanation.generated for
+src/brainbus/explanationEngine.js:64:            brainBus.emit(Channels.SYSTEM_HEALTH, {
+src/brainbus/explanationEngine.js:162:            eventStreamService.emit("explanation.generated", {
+src/brainbus/brainBus.js:1:import { EventEmitter } from "events";
+src/brainbus/brainBus.js:3:class BrainBus {
+src/brainbus/brainBus.js:5:        this._emitter = new EventEmitter();
+src/brainbus/brainBus.js:6:        this._emitter.setMaxListeners(200);
+src/brainbus/brainBus.js:7:        this._subscriberCount = new Map();
+src/brainbus/brainBus.js:14:        console.log("[BrainBus] ⚡ System-wide message bus started");
+src/brainbus/brainBus.js:15:        this.emit("system.health", {
+src/brainbus/brainBus.js:16:            node: "BrainBus",
+src/brainbus/brainBus.js:24:        this._emitter.removeAllListeners();
+src/brainbus/brainBus.js:25:        this._subscriberCount.clear();
+src/brainbus/brainBus.js:26:        console.log("[BrainBus] ⏹  Bus stopped");
+src/brainbus/brainBus.js:29:    emit(channel, payload, meta = {}) {
+src/brainbus/brainBus.js:40:        this._emitter.emit(channel, envelope);
+src/brainbus/brainBus.js:45:            this._emitter.emit(wildcard, envelope);
+src/brainbus/brainBus.js:48:        this._emitter.emit("*", envelope);
+src/brainbus/brainBus.js:52:        this._emitter.on(channel, handler);
+src/brainbus/brainBus.js:53:        this._subscriberCount.set(channel, (this._subscriberCount.get(channel) || 0) + 1);
+src/brainbus/brainBus.js:58:        this._emitter.once(channel, handler);
+src/brainbus/brainBus.js:63:        this._emitter.off(channel, handler);
+src/brainbus/brainBus.js:64:        const count = this._subscriberCount.get(channel) || 0;
+src/brainbus/brainBus.js:66:            this._subscriberCount.delete(channel);
+src/brainbus/brainBus.js:68:            this._subscriberCount.set(channel, count - 1);
+src/brainbus/brainBus.js:72:    getChannels() {
+src/brainbus/brainBus.js:73:        const channels = [];
+src/brainbus/brainBus.js:74:        for (const [channel, count] of this._subscriberCount) {
+src/brainbus/brainBus.js:75:            channels.push({ channel, subscribers: count });
+src/brainbus/brainBus.js:77:        return channels.sort((a, b) => a.channel.localeCompare(b.channel));
+src/brainbus/brainBus.js:81:        console.log("\n[BrainBus] ── Subscription Map ──");
+src/brainbus/brainBus.js:82:        const channels = this.getChannels();
+src/brainbus/brainBus.js:83:        if (channels.length === 0) {
+src/brainbus/brainBus.js:86:            for (const { channel, subscribers } of channels) {
+src/brainbus/brainBus.js:87:                console.log(`  ${channel}  →  ${subscribers} listener(s)`);
+src/brainbus/brainBus.js:94:const brainBus = new BrainBus();
+src/brainbus/brainBus.js:95:export default brainBus;
+src/brainbus/subscribers.js:1:import brainBus from "./brainBus.js";
+src/brainbus/subscribers.js:2:import { Channels } from "./channels.js";
+src/brainbus/subscribers.js:4:export async function wireBrainBus() {
+src/brainbus/subscribers.js:5:    brainBus.start();
+src/brainbus/subscribers.js:11:        console.log("[BrainBus] ✓ Reasoning Bridge wired");
+src/brainbus/subscribers.js:13:        console.warn("[BrainBus] ⚠ Reasoning Bridge not available:", e.message);
+src/brainbus/subscribers.js:18:        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
+src/brainbus/subscribers.js:19:            console.log(`[BrainBus] → Operator: incident ${envelope.payload.type} for ${envelope.payload.flowId}`);
+src/brainbus/subscribers.js:21:        console.log("[BrainBus] ✓ Operator subscriber wired");
+src/brainbus/subscribers.js:23:        console.warn("[BrainBus] ⚠ Operator not available:", e.message);
+src/brainbus/subscribers.js:30:        console.log("[BrainBus] ✓ Knowledge Bridge wired");
+src/brainbus/subscribers.js:32:        console.warn("[BrainBus] ⚠ Knowledge Bridge not available:", e.message);
+src/brainbus/subscribers.js:39:        console.log("[BrainBus] ✓ Decision Engine wired");
+src/brainbus/subscribers.js:41:        console.warn("[BrainBus] ⚠ Decision Engine not available:", e.message);
+src/brainbus/subscribers.js:48:        console.log("[BrainBus] ✓ Explanation Engine wired");
+src/brainbus/subscribers.js:50:        console.warn("[BrainBus] ⚠ Explanation Engine not available:", e.message);
+src/brainbus/subscribers.js:57:        console.log("[BrainBus] ✓ Live Memory subscriber wired");
+src/brainbus/subscribers.js:63:        console.log("[BrainBus] ✓ Anomaly Detector wired");
+src/brainbus/subscribers.js:65:        console.warn("[BrainBus] ⚠ Anomaly Detector not available:", e.message);
+src/brainbus/subscribers.js:72:        console.log("[BrainBus] ✓ Correlation Engine wired");
+src/brainbus/subscribers.js:74:        console.warn("[BrainBus] ⚠ Correlation Engine not available:", e.message);
+src/brainbus/subscribers.js:77:        console.warn("[BrainBus] ⚠ Live Memory not available:", e.message);
+src/brainbus/subscribers.js:80:    if (process.env.BRAINBUS_DEBUG === "1") {
+src/brainbus/subscribers.js:81:        brainBus.on("*", (envelope) => {
+src/brainbus/subscribers.js:82:            console.log(`[BrainBus] 🔄 ${envelope.channel}  ← ${envelope.meta.source}  (corr: ${envelope.meta.correlationId || "none"})`);
+src/brainbus/subscribers.js:86:    console.log("[BrainBus] ✅ All subscribers wired");
+src/brainbus/subscribers.js:87:    brainBus.dump();
+src/brainbus/subscribers.js:90:export default wireBrainBus;
+src/brainbus/decisionEngine.js:1:// src/brainbus/decisionEngine.js
+src/brainbus/decisionEngine.js:5:// Subscribes to reasoning.verdict on BrainBus and decides what action to
+src/brainbus/decisionEngine.js:14:// Once a decision is made, it emits decision.dispatched.  The Intelligent
+src/brainbus/decisionEngine.js:19:import brainBus from "./brainBus.js";
+src/brainbus/decisionEngine.js:20:import { Channels } from "./channels.js";
+src/brainbus/decisionEngine.js:50:        brainBus.on(Channels.REASONING_VERDICT, (envelope) => {
+src/brainbus/decisionEngine.js:70:            // Emit on bus
+src/brainbus/decisionEngine.js:71:            brainBus.emit(Channels.DECISION_DISPATCHED, decision, {
+src/brainbus/decisionEngine.js:79:                    // Auto-executable — the operator subscriber will pick this up
+src/brainbus/decisionEngine.js:80:                    brainBus.emit(Channels.ACTION_EXECUTED, {
+src/brainbus/decisionEngine.js:90:                    // Human needs to see this — emit explanation event
+src/brainbus/decisionEngine.js:91:                    brainBus.emit(Channels.EXPLANATION_GENERATED, {
+src/brainbus/decisionEngine.js:106:                    brainBus.emit(Channels.DECISION_FAILED, {
+src/brainbus/decisionEngine.js:116:        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
+src/brainbus/decisionEngine.js:140:            brainBus.emit(Channels.DECISION_DISPATCHED, decision, {
+src/brainbus/decisionEngine.js:146:                brainBus.emit(Channels.ACTION_EXECUTED, {
+src/brainbus/decisionEngine.js:154:                brainBus.emit(Channels.EXPLANATION_GENERATED, {
+src/brainbus/knowledgeBridge.js:1:// src/brainbus/knowledgeBridge.js
+src/brainbus/knowledgeBridge.js:7:// Also listens for knowledge.lookup events on BrainBus and responds with
+src/brainbus/knowledgeBridge.js:11:import brainBus from "./brainBus.js";
+src/brainbus/knowledgeBridge.js:12:import { Channels } from "./channels.js";
+src/brainbus/knowledgeBridge.js:50:        brainBus.on(Channels.KNOWLEDGE_LOOKUP, (envelope) => {
+src/brainbus/knowledgeBridge.js:56:                    brainBus.emit(Channels.KNOWLEDGE_RULE_MATCHED, {
+src/brainbus/knowledgeBridge.js:67:                    brainBus.emit(Channels.KNOWLEDGE_RULE_MATCHED, {
+src/brainbus/channels.js:1:export const Channels = {
+src/brainbus/channels.js:30:    for (const [key, val] of Object.entries(Channels)) {
+src/brainbus/predictions/correlationEngine.js:1:// src/brainbus/predictions/correlationEngine.js
+src/brainbus/predictions/correlationEngine.js:7:import brainBus from "../brainBus.js";
+src/brainbus/predictions/correlationEngine.js:8:import { Channels } from "../channels.js";
+src/brainbus/predictions/correlationEngine.js:21:        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
+src/brainbus/predictions/correlationEngine.js:32:                        // Emit cluster summary before removing
+src/brainbus/predictions/correlationEngine.js:33:                        brainBus.emit("prediction.correlation", {
+src/brainbus/predictions/correlationEngine.js:69:            // If cluster grows, emit early warning
+src/brainbus/predictions/correlationEngine.js:71:                brainBus.emit("prediction.correlation", {
+src/brainbus/predictions/operatorActions.js:1:// src/brainbus/predictions/operatorActions.js
+src/brainbus/predictions/operatorActions.js:8:import brainBus from "../brainBus.js";
+src/brainbus/predictions/operatorActions.js:9:import { Channels } from "../channels.js";
+src/brainbus/predictions/operatorActions.js:29:        brainBus.emit("operator.action.executed", {
+src/brainbus/predictions/operatorActions.js:67:        brainBus.emit("operator.action.executed", {
+src/brainbus/predictions/operatorActions.js:74:        // Re-emit the flow stage to trigger re-processing
+src/brainbus/predictions/operatorActions.js:75:        brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/brainbus/predictions/operatorActions.js:113:        brainBus.emit(Channels.EXPLANATION_GENERATED, {
+src/brainbus/predictions/anomalyDetector.js:1:// src/brainbus/predictions/anomalyDetector.js
+src/brainbus/predictions/anomalyDetector.js:5:// all flows. When a pattern deviates from historical norms, emits a
+src/brainbus/predictions/anomalyDetector.js:9:import brainBus from "../brainBus.js";
+src/brainbus/predictions/anomalyDetector.js:10:import { Channels } from "../channels.js";
+src/brainbus/predictions/anomalyDetector.js:31:        brainBus.on(Channels.INSPECTOR_FLOW_STAGE, (envelope) => {
+src/brainbus/predictions/anomalyDetector.js:54:                    brainBus.emit("prediction.anomaly", anomaly, {
+src/brainbus/predictions/anomalyDetector.js:65:                    brainBus.emit("prediction.anomaly", {
+src/brainbus/predictions/anomalyDetector.js:82:        brainBus.on(Channels.INSPECTOR_FLOW_DEVIATION, (envelope) => {
+src/brainbus/predictions/anomalyDetector.js:99:                brainBus.emit("prediction.anomaly", {
+src/brainbus/reasoningBridge.js:1:// src/brainbus/reasoningBridge.js
+src/brainbus/reasoningBridge.js:3:// Connects the Reasoning Engine to BrainBus.
+src/brainbus/reasoningBridge.js:6:// and publishes verdicts back onto the bus.  Also feeds deviations to the
+src/brainbus/reasoningBridge.js:10:import brainBus from "./brainBus.js";
+src/brainbus/reasoningBridge.js:11:import { Channels } from "./channels.js";
+src/brainbus/reasoningBridge.js:20:        brainBus.on(Channels.INSPECTOR_FLOW_STAGE, (envelope) => {
+src/brainbus/reasoningBridge.js:46:            // Always publish the verdict
+src/brainbus/reasoningBridge.js:47:            brainBus.emit(Channels.REASONING_VERDICT, {
+src/brainbus/reasoningBridge.js:66:                brainBus.emit(Channels.OPERATOR_INCIDENT, {
+src/brainbus/reasoningBridge.js:83:        brainBus.on(Channels.INSPECTOR_FLOW_STARTED, (envelope) => {
+src/brainbus/reasoningBridge.js:89:                brainBus.emit(Channels.REASONING_VERDICT, {
+src/brainbus/reasoningBridge.js:103:        console.log("[ReasoningBridge] ✅ Listening on inspector.flow.* — publishing verdicts to reasoning.verdict");
+src/brainbus/inspectorBridge.js:1:import brainBus from "./brainBus.js";
+src/brainbus/inspectorBridge.js:2:import { Channels } from "./channels.js";
+src/brainbus/inspectorBridge.js:6:        brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, flow, {
+src/brainbus/inspectorBridge.js:13:        brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/brainbus/inspectorBridge.js:25:        brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+src/brainbus/inspectorBridge.js:36:        brainBus.emit(Channels.INSPECTOR_FLOW_DEVIATION, {
+src/brainbus/inspectorBridge.js:48:            brainBus.emit(Channels.OPERATOR_INCIDENT, {
+src/integrations/maya.js:26: *    → emits deposit.credited event for live dashboard update
+src/App.tsx:10:import Remittance   from "./pages/Remittance";
+src/App.tsx:60:        <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />
+src/banking/components/HeroBalance.tsx:105:          <button onClick={() => navigate("/remittance")}
+src/banking/components/HeroBalance.tsx:107:            Remit
+src/banking/components/Sidebar.tsx.bak.1782705250:16:    {label:"Remittance",path:"/remittance"},
+src/banking/components/Sidebar.tsx:16:    {label:"Remittance",path:"/remittance"},
+src/banking/components/dashboard/OperationsPanel.tsx:30:          Create Remittance
+src/App.tsx.bak.1782705250:10:import Remittance   from "./pages/Remittance";
+src/App.tsx.bak.1782705250:53:        <Route path="/remittance" element={<RequireAuth><Remittance /></RequireAuth>} />
+src/bootstrap/startServices.js:1:import operatorSubscriber from "../services/operator/operatorSubscriber.js";
+src/bootstrap/startServices.js:4:    operatorSubscriber.start();
+src/services/flower/flowerOrderRecovery.js:29:function emitFailure(order, err) {
+src/services/flower/flowerOrderRecovery.js:50:    emitFailure(order, err);
+src/services/flower/flowerOrderRecovery.js:112:    emitFailure(order, err);
+src/services/flower/flowerOrderRecovery.js:143:      emitFailure(order, err);
+src/services/flower/flowerOrderRecovery.js:157:    emitFailure(order, err);
+src/services/blockchain/filter/addressFilter.js:1:import EventEmitter from "events";
+src/services/blockchain/filter/addressFilter.js:3:class AddressFilter extends EventEmitter {
+src/services/blockchain/filter/addressFilter.js:39:        this.emit("watch_added", watch);
+src/services/blockchain/filter/addressFilter.js:52:        this.emit("watch_removed", address);
+src/services/blockchain/filter/addressFilter.js:72:        this.emit("reload");
+src/services/blockchain/workers/flowerStageHandlers.js:10:import brainBus     from "../../../brainbus/brainBus.js";
+src/services/blockchain/workers/flowerStageHandlers.js:11:import { Channels } from "../../../brainbus/channels.js";
+src/services/blockchain/workers/flowerStageHandlers.js:25:    // Emit flow start if this is the first stage
+src/services/blockchain/workers/flowerStageHandlers.js:27:        brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, {
+src/services/blockchain/workers/flowerStageHandlers.js:48:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/blockchain/workers/flowerStageHandlers.js:69:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/blockchain/workers/flowerStageHandlers.js:109:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/blockchain/pipeline/transactionPipeline.js:58:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:67:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:76:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:85:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/transactionPipeline.js:94:                    consumerDispatcher.emit(
+src/services/blockchain/pipeline/consumerDispatcher.js:1:import { EventEmitter } from "events";
+src/services/blockchain/pipeline/consumerDispatcher.js:7:class ConsumerDispatcher extends EventEmitter {
+src/services/blockchain/pipeline/consumerDispatcher.js:53:        this.emit(
+src/services/blockchain/executors/executorRouter.js:1:import { EventEmitter } from "events";
+src/services/blockchain/executors/executorRouter.js:3:class ExecutorRouter extends EventEmitter {
+src/services/blockchain/router/pipelineRouter.js:1:import { EventEmitter } from "events";
+src/services/blockchain/router/pipelineRouter.js:3:class PipelineRouter extends EventEmitter {
+src/services/blockchain/router/pipelineRouter.js:21:        this.emit(
+src/services/blockchain/router/pipelineRouter.js:34:    emitDeposit(operation, event) {
+src/services/blockchain/router/pipelineRouter.js:36:        this.emit(
+src/services/blockchain/router/pipelineRouter.js:46:    emitWithdrawal(operation, event) {
+src/services/blockchain/router/pipelineRouter.js:48:        this.emit(
+src/services/blockchain/router/pipelineRouter.js:58:    emitSwap(operation, event) {
+src/services/blockchain/router/pipelineRouter.js:60:        this.emit(
+src/services/blockchain/router/pipelineRouter.js:70:    emitUnknown(event) {
+src/services/blockchain/router/pipelineRouter.js:72:        this.emit(
+src/services/blockchain/journal/blockchainInbox.js:1:import { EventEmitter } from "events";
+src/services/blockchain/journal/blockchainInbox.js:11:export const blockchainInboxEvents = new EventEmitter();
+src/services/blockchain/journal/blockchainInbox.js:56:        blockchainInboxEvents.emit("new_event", document);
+src/services/blockchain/journal/blockchainInbox.js:58:        blockchainInboxEvents.emit(
+src/services/blockchain/journal/blockchainInbox.js:63:        blockchainInboxEvents.emit(
+src/services/blockchain/inspector/blockchainInspector.js:1:import { EventEmitter } from "events";
+src/services/blockchain/inspector/blockchainInspector.js:2:import brainBus from "../../../brainbus/brainBus.js";
+src/services/blockchain/inspector/blockchainInspector.js:3:import { Channels } from "../../../brainbus/channels.js";
+src/services/blockchain/inspector/blockchainInspector.js:5:class BlockchainInspector extends EventEmitter {
+src/services/blockchain/inspector/blockchainInspector.js:23:        this.emit("event", event);
+src/services/blockchain/inspector/blockchainInspector.js:24:        brainBus.emit(Channels.BLOCKCHAIN_EVENT, event, {
+src/services/blockchain/inspector/blockchainInspector.js:50:        brainBus.emit(Channels.BLOCKCHAIN_EVENT_FAILED, {
+src/services/blockchain/inspector/inspectorBridge.js:5: * Bridges the blockchain engine's live in-memory Inspector (an EventEmitter,
+src/services/blockchain/inspector/inspectorBridge.js:38:    .emit(`blockchain.${evt.stage}`, {
+src/services/settlement/settlementProcessor.js:2:import brainBus from "../../brainbus/brainBus.js";
+src/services/settlement/settlementProcessor.js:3:import { Channels } from "../../brainbus/channels.js";
+src/services/settlement/settlementProcessor.js:52:  brainBus.emit(Channels.ACTION_EXECUTED, {
+src/services/withdrawalExpiryService.js:6:// ledger, marks the request "expired", alerts, and emits an event so the
+src/services/withdrawalExpiryService.js:51:            eventStreamService.emit("withdrawal.expired", {
+src/services/withdrawalExpiryService.js:60:                console.error("[withdrawalExpiryService] Event emit failed:", err.message);
+src/services/inspectorService.js:4:import inspectorBridge from "../brainbus/inspectorBridge.js";
+src/services/inspectorService.js:60:        // ── BrainBus: notify all subscribers ──────────────────────────
+src/services/inspectorService.js:96:        // ── BrainBus: notify stage started ────────────────────────────
+src/services/inspectorService.js:144:        // ── BrainBus: notify stage completed ──────────────────────────
+src/services/inspectorService.js:202:        // ── BrainBus: notify stage failed ─────────────────────────────
+src/services/inspectorService.js:269:        // ── BrainBus: notify stage skipped ────────────────────────────
+src/services/inspectorService.js:295:        // ── BrainBus: notify flow completed ───────────────────────────
+src/services/support/llmSupportService.js:22:- If canRetry or canCancel is false and the user asks for that action anyway, explain briefly why not (based on its current status) — never emit an action marker in that case.
+src/services/eventStreamService.js:9:  // Auto-cleanup: set at write time based on event type (see emit()).
+src/services/eventStreamService.js:58:  async emit(type, data) {
+src/services/reconciliation/reconciliationEngine.js:2:import brainBus from "../../brainbus/brainBus.js";
+src/services/reconciliation/reconciliationEngine.js:3:import { Channels } from "../../brainbus/channels.js";
+src/services/reconciliation/reconciliationEngine.js:192:  brainBus.emit(Channels.DECISION_EXECUTED, {
+src/services/withdrawalProcessor.js:14:import brainBus from "../brainbus/brainBus.js";
+src/services/withdrawalProcessor.js:15:import { Channels } from "../brainbus/channels.js";
+src/services/withdrawalProcessor.js:30:  // ── BrainBus: flow started ──────────────────────────────────────────
+src/services/withdrawalProcessor.js:31:  brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, {
+src/services/withdrawalProcessor.js:42:    // ── BrainBus: stage DEBIT ─────────────────────────────────────────
+src/services/withdrawalProcessor.js:43:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:58:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:68:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:72:    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+src/services/withdrawalProcessor.js:83:    await eventStreamService.emit("withdrawal.failed", {
+src/services/withdrawalProcessor.js:103:    // ── BrainBus: stage SEND ──────────────────────────────────────────
+src/services/withdrawalProcessor.js:104:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:123:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:127:    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+src/services/withdrawalProcessor.js:138:    await eventStreamService.emit("withdrawal.completed", {
+src/services/withdrawalProcessor.js:164:    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+src/services/withdrawalProcessor.js:168:    brainBus.emit(Channels.INSPECTOR_FLOW_COMPLETED, {
+src/services/withdrawalProcessor.js:179:    await eventStreamService.emit("withdrawal.failed", {
+src/services/operator/incidentEngine.js:16:    // blockchainInspector emits level as "WARNING"/"ERROR" (uppercase) —
+src/services/operator/operatorSubscriber.js:6:class OperatorSubscriber {
+src/services/operator/operatorSubscriber.js:34:                await eventStreamService.emit(
+src/services/operator/operatorSubscriber.js:61:                    "[Operator] Failed to publish incident:",
+src/services/operator/operatorSubscriber.js:84:export default new OperatorSubscriber();
+src/services/operator/knowledgeBase.js:481:    recommendation: "Deposit completed and credited, but the realtime event failed to publish — cosmetic only, dashboard may be stale for this flow.",
+src/services/payoutService.js:113:  eventStreamService.emit("withdrawal.completed", {
+src/services/payoutService.js:120:  }).catch(err => console.error("[payoutService] Event emit failed:", err.message));
+src/services/payoutService.js:159:  eventStreamService.emit("withdrawal.rejected", {
+src/services/payoutService.js:167:  }).catch(err => console.error("[payoutService] Event emit failed:", err.message));
+src/pages/Remittance.tsx:4:export default function Remittance() {
+src/pages/Remittance.tsx:10:  useEffect(() => { fetch("/api/v1/remittance/rates").then(r=>r.json()).then(d=>setRates(d.rates)); }, []);
+src/pages/Remittance.tsx:14:      const res = await fetch("/api/v1/remittance/send", {method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,amount:parseFloat(form.amount)})});
+src/pages/Remittance.tsx:24:        <h2>Remittance</h2>
+src/pages/Remittance.tsx:27:          <h3>Send Remittance</h3>
+src/pages/Remittance.tsx:30:          <button className="auth-btn" onClick={handleSend} disabled={loading}>{loading?"Sending...":"Send Remittance"}</button>
+src/core/processTransaction.js:292:    await eventStreamService.emit("deposit.credited", {
+src/core/processTransaction.js:303:      result: { emitted: "deposit.credited" },
+src/core/processTransaction.js:323:    await eventStreamService.emit("deposit.flagged", {
+src/controllers/adminWithdrawalController.js:97:      eventStreamService.emit("withdrawal.completed", {
+src/controllers/adminWithdrawalController.js:104:      }).catch(err => console.error("[adminWithdrawalController] Event emit failed:", err.message));
+src/controllers/adminWithdrawalController.js:158:    eventStreamService.emit("withdrawal.rejected", {
+src/controllers/adminWithdrawalController.js:166:    }).catch(err => console.error("[adminWithdrawalController] Event emit failed:", err.message));
+src/controllers/adminUserController.js:77:    await eventStreamService.emit("admin.viewed_user_details", {
+src/controllers/adminUserController.js:161:    await eventStreamService.emit("admin.impersonation_start", {
+src/controllers/adminUserController.js:196:    await eventStreamService.emit("admin.user_promoted", {
+src/controllers/adminUserController.js:238:    await eventStreamService.emit("admin.user_demoted", {
+src/controllers/authController.js:204:    await eventStreamService.emit('auth.login', {
+src/controllers/authController.js:271:  eventStreamService.emit('admin.impersonation_end', {
+src/models/feeModel.js:12:    enum: ['flower_swap', 'crypto_swap', 'cashout', 'cashin', 'remittance', 'transfer'],
+src/models/transactionModel.js:59:        'remittance',
+src/models/CashoutRequest.js:32:    eventStreamService.emit("withdrawal.verified", {
+src/models/CashoutRequest.js:44:      console.error("[CashoutRequest] System Inspector event emit failed:", err.message);
+src/models/Beneficiary.js:28:            "REMITTANCE"
+src/models/ledgerModel.js:20:      'remittance', 'adjustment', 'rewards', 'swap',
+src/models/RemittancePickup.js:33:    "RemittancePickup",
+
+===== OPERATOR =====
+src/intelligence/reasoningEngine.js:80:        // incidentEngine separately.
+src/brainbus/subscribers.js:17:        const { default: incidentEngine } = await import("../services/operator/incidentEngine.js");
+src/bootstrap/startServices.js:1:import operatorSubscriber from "../services/operator/operatorSubscriber.js";
+src/bootstrap/startServices.js:4:    operatorSubscriber.start();
+src/services/inspectorService.js:212:        // PHP_DEPOSIT stage failures reach incidentEngine too.
+src/services/operator/diagnosisEngine.js:1:// src/services/operator/diagnosisEngine.js
+src/services/operator/incidentEngine.js:1:// src/services/operator/incidentEngine.js
+src/services/operator/incidentEngine.js:3:import { diagnose } from "./diagnosisEngine.js";
+src/services/operator/incidentEngine.js:5:class IncidentEngine {
+src/services/operator/incidentEngine.js:136:export default new IncidentEngine();
+src/services/operator/operatorSubscriber.js:3:import incidentEngine from "./incidentEngine.js";
+src/services/operator/operatorSubscriber.js:4:import remediationEngine from "./remediationEngine.js";
+src/services/operator/operatorSubscriber.js:6:class OperatorSubscriber {
+src/services/operator/operatorSubscriber.js:14:            const incident = incidentEngine.process(event);
+src/services/operator/operatorSubscriber.js:68:            // code not in remediationEngine's WHITELIST, and it already
+src/services/operator/operatorSubscriber.js:71:            remediationEngine.attemptRemediation(incident).catch((err) => {
+src/services/operator/operatorSubscriber.js:84:export default new OperatorSubscriber();
+src/services/operator/remediationEngine.js:1:// src/services/operator/remediationEngine.js
+src/services/operator/incidentRegistry.js:1:// src/services/operator/incidentEngine.js
+src/services/operator/incidentRegistry.js:3:import { diagnose } from "./diagnosisEngine.js";
+src/services/operator/incidentRegistry.js:6:class IncidentEngine {
+src/services/operator/incidentRegistry.js:84:export default new IncidentEngine();
+src/controllers/operatorController.js:4:import incidentEngine from "../services/operator/incidentEngine.js";
+src/controllers/operatorController.js:100:            data: incidentEngine.list()
+src/controllers/operatorController.js:126:            data: incidentEngine.listOpen()
+src/controllers/operatorController.js:149:            incidentEngine.get(req.params.id);
+src/controllers/operatorController.js:196:            incidentEngine.acknowledge(
+src/controllers/operatorController.js:239:            incidentEngine.resolveById(
+
+===== INTELLIGENCE =====
+src/intelligence/reasoningEngine.js:1:// src/intelligence/reasoningEngine.js
+src/intelligence/reasoningEngine.js:3:import systemKnowledge from "./systemKnowledge.js";
+src/intelligence/reasoningEngine.js:9:class ReasoningEngine {
+src/intelligence/reasoningEngine.js:15:        const pipeline = systemKnowledge.getPipeline(flow.pipeline);
+src/intelligence/reasoningEngine.js:29:            systemKnowledge.isTerminalExit(flow.pipeline, s.name)
+src/intelligence/reasoningEngine.js:38:        const fullSequence = systemKnowledge.getFullSequence(flow.pipeline);
+src/intelligence/reasoningEngine.js:125:export default new ReasoningEngine();
+src/intelligence/systemKnowledge.js:1:// src/intelligence/systemKnowledge.js
+src/intelligence/systemKnowledge.js:3:class SystemKnowledge {
+src/intelligence/systemKnowledge.js:117:export default new SystemKnowledge();
+src/intelligence/intelligenceCore.js:6:class IntelligenceCore {
+src/intelligence/intelligenceCore.js:35:            node:"intelligenceCore",
+src/intelligence/intelligenceCore.js:44:            node:"intelligenceCore",
+src/intelligence/intelligenceCore.js:181:export default new IntelligenceCore();
+src/routes/operator/operatorActionsRoute.js:15:import liveMemoryStore from "../../brainbus/liveMemoryStore.js";
+src/routes/operator/operatorActionsRoute.js:70:        const stats = liveMemoryStore.getStats();
+src/routes/operator/operatorActionsRoute.js:77:                activeFlows: liveMemoryStore.getActiveFlowCount(),
+src/routes/operator/operatorActionsRoute.js:78:                activeFlowIds: liveMemoryStore.getActiveFlowIds()
+src/brainbus/liveMemoryStore.js:1:// src/brainbus/liveMemoryStore.js
+src/brainbus/liveMemoryStore.js:19:class LiveMemoryStore {
+src/brainbus/liveMemoryStore.js:44:        console.log("[LiveMemory] Store initialized");
+src/brainbus/liveMemoryStore.js:96:        }, { source: "LiveMemory" });
+src/brainbus/liveMemoryStore.js:129:        console.log(`[LiveMemory] Loaded ${this._knowledgeRules.size} knowledge rules`);
+src/brainbus/liveMemoryStore.js:194:        }, { source: "LiveMemory" });
+src/brainbus/liveMemoryStore.js:207:const liveMemoryStore = new LiveMemoryStore();
+src/brainbus/liveMemoryStore.js:208:export default liveMemoryStore;
+src/brainbus/liveMemory.js:1:// src/brainbus/liveMemory.js
+src/brainbus/liveMemory.js:6:// Any component can also call liveMemoryStore directly for reads (the
+src/brainbus/liveMemory.js:12:import liveMemoryStore from "./liveMemoryStore.js";
+src/brainbus/liveMemory.js:14:class LiveMemory {
+src/brainbus/liveMemory.js:26:            liveMemoryStore.setFlow(flow.flowId, flow);
+src/brainbus/liveMemory.js:31:            liveMemoryStore.updateFlowStage(flowId, stage, data);
+src/brainbus/liveMemory.js:36:            liveMemoryStore.updateFlowStage(flowId, "_COMPLETED", { result, status: "SUCCESS" });
+src/brainbus/liveMemory.js:42:            liveMemoryStore.setBlockchainEvent(event.txHash, event);
+src/brainbus/liveMemory.js:49:                liveMemoryStore.loadKnowledgeRules([envelope.payload.rule]);
+src/brainbus/liveMemory.js:55:            liveMemoryStore.setDecision(envelope.meta.correlationId, envelope.payload);
+src/brainbus/liveMemory.js:60:            const existing = liveMemoryStore.getDecision(decisionId);
+src/brainbus/liveMemory.js:62:                liveMemoryStore.setDecision(decisionId, {
+src/brainbus/liveMemory.js:74:            liveMemoryStore.setIncident(incidentId, {
+src/brainbus/liveMemory.js:83:            const stats = liveMemoryStore.getStats();
+src/brainbus/liveMemory.js:85:                node: "LiveMemory",
+src/brainbus/liveMemory.js:88:            }, { source: "LiveMemory" });
+src/brainbus/liveMemory.js:91:        console.log("[LiveMemory] ✅ Subscribed to BrainBus — caching active flows, events, decisions, incidents");
+src/brainbus/liveMemory.js:96:const liveMemory = new LiveMemory();
+src/brainbus/liveMemory.js:97:export default liveMemory;
+src/brainbus/subscribers.js:55:        const { default: liveMemory } = await import("./liveMemory.js");
+src/brainbus/subscribers.js:56:        liveMemory.start();
+src/brainbus/decisionEngine.js:21:import liveMemoryStore from "./liveMemoryStore.js";
+src/brainbus/decisionEngine.js:68:            liveMemoryStore.setDecision(decision.decisionId, decision);
+src/brainbus/decisionEngine.js:138:            liveMemoryStore.setDecision(decision.decisionId, decision);
+src/brainbus/knowledgeBridge.js:13:import liveMemoryStore from "./liveMemoryStore.js";
+src/brainbus/knowledgeBridge.js:21:            liveMemoryStore.loadKnowledgeRules(knowledgeBase);
+src/brainbus/knowledgeBridge.js:29:            const { default: systemKnowledge } = await import("../intelligence/systemKnowledge.js");
+src/brainbus/knowledgeBridge.js:32:            for (const [name, def] of Object.entries(systemKnowledge.pipelines)) {
+src/brainbus/knowledgeBridge.js:43:            liveMemoryStore.loadKnowledgeRules(pipelineRules);
+src/brainbus/knowledgeBridge.js:46:            console.warn("[KnowledgeBridge] ⚠ Could not load systemKnowledge:", e.message);
+src/brainbus/knowledgeBridge.js:54:                const rule = liveMemoryStore.getKnowledgeRule(ruleId);
+src/brainbus/knowledgeBridge.js:65:                const pipelineRule = liveMemoryStore.getKnowledgeRule(`pipeline:${pipeline}`);
+src/brainbus/predictions/operatorActions.js:10:import liveMemoryStore from "../liveMemoryStore.js";
+src/brainbus/predictions/operatorActions.js:18:        const incident = liveMemoryStore.getIncident(incidentId);
+src/brainbus/predictions/operatorActions.js:56:        const flow = liveMemoryStore.getFlow(flowId);
+src/brainbus/predictions/operatorActions.js:102:        const flow = liveMemoryStore.getFlow(flowId);
+src/brainbus/predictions/operatorActions.js:147:        const incidents = liveMemoryStore.getActiveIncidents ? liveMemoryStore.getActiveIncidents() : [];
+src/brainbus/predictions/operatorActions.js:148:        const flows = liveMemoryStore.getActiveFlowIds ? liveMemoryStore.getActiveFlowIds() : [];
+src/brainbus/predictions/anomalyDetector.js:11:import liveMemoryStore from "../liveMemoryStore.js";
+src/brainbus/reasoningBridge.js:12:import reasoningEngine from "../intelligence/reasoningEngine.js";
+src/brainbus/reasoningBridge.js:13:import liveMemoryStore from "./liveMemoryStore.js";
+src/brainbus/reasoningBridge.js:24:            const flow = liveMemoryStore.getFlow(flowId);
+src/brainbus/reasoningBridge.js:42:            const verdict = reasoningEngine.analyzeFlow(flow);
+src/brainbus/reasoningBridge.js:56:                source: "ReasoningEngine",
+src/brainbus/reasoningBridge.js:76:                    source: "ReasoningEngine",
+src/brainbus/reasoningBridge.js:87:            const verdict = reasoningEngine.analyzeFlow(flow);
+src/brainbus/reasoningBridge.js:97:                    source: "ReasoningEngine",
+src/brainbus/inspectorBridge.js:41:            source: "ReasoningEngine",
+src/brainbus/inspectorBridge.js:55:                source: "ReasoningEngine",
+src/controllers/intelligence/intelligenceController.js:1:import intelligenceCore from "../../intelligence/intelligenceCore.js";
+src/controllers/intelligence/intelligenceController.js:8:            intelligenceCore.getHealth();
+src/controllers/admin/inspectorController.js:2:import reasoningEngine from "../../intelligence/reasoningEngine.js";
+src/controllers/admin/inspectorController.js:8:    flow.reasoning = reasoningEngine.analyzeFlow(flow);
+src/operator/operatorService.js:2:import intelligenceCore from "../intelligence/intelligenceCore.js";
+src/operator/operatorService.js:59:                intelligenceCore.getHealth(),
+src/operator/operatorService.js:90:            intelligenceCore.getHealth();
+
+===== INSPECTOR =====
+src/routes/directDepositRoutes.js:11:import inspector from '../services/blockchain/inspector/blockchainInspector.js';
+src/brainbus/inspectorBridge.js:4:class InspectorBridge {
+src/brainbus/inspectorBridge.js:62:const inspectorBridge = new InspectorBridge();
+src/brainbus/inspectorBridge.js:63:export default inspectorBridge;
+src/App.tsx:18:import BlockchainInspector from './pages/BlockchainInspector';
+src/App.tsx:69:        <Route path="/admin/blockchain-inspector" element={<RequireAdmin><BlockchainInspector /></RequireAdmin>} />
+src/services/flower/flowerSweepServiceBase.js:22:import inspector            from "../blockchain/inspector/blockchainInspector.js";
+src/services/flower/flowerOrderRecovery.js:15:import inspector        from "../blockchain/inspector/blockchainInspector.js";
+src/services/flower/flowerOrderCleanup.js:11:import inspector   from "../blockchain/inspector/blockchainInspector.js";
+src/services/flower/flowerUsdtSwapService.js:14:import inspector                     from "../blockchain/inspector/blockchainInspector.js";
+src/services/treasury/treasuryBalancer.js:2:import blockchainInspector from "../blockchain/inspector/blockchainInspector.js";
+src/services/treasury/treasuryBalancer.js:68:          blockchainInspector.error(
+src/services/treasury/treasuryBalancer.js:82:          blockchainInspector.error(
+src/services/treasury/treasuryBalancer.js:96:          blockchainInspector.warn(
+src/services/treasury/treasuryBalancer.js:112:          blockchainInspector.success(
+src/services/treasury/treasuryBalancer.js:130:    blockchainInspector.error(
+src/services/treasury/treasuryBalancer.js:155:  blockchainInspector.info(
+src/services/treasury/treasurySendService.js:8:import inspector from "../blockchain/inspector/blockchainInspector.js";
+src/services/blockchain/monitor/rpcUsageMonitor.js:1:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/walletCreditWorker.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/flowerStageHandlers.js.bak.1784080008:9:import inspector    from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/depositProcessor.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/confirmationWorker.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/operationCorrelator.js:4:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/recoveryWorker.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/flowerStageHandlers.js:9:import inspector    from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/ledgerWorker.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/flowerDepositWatcher.js:11:import inspector       from "../inspector/blockchainInspector.js";
+src/services/blockchain/workers/dashboardWorker.js:2:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/pipeline/transactionPipeline.js:3:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/executors/depositExecutor.js:8:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/baseStableListener.js:9:import inspector from "./inspector/blockchainInspector.js";
+src/services/blockchain/collector/blockchainEngine.js:10:import inspector from "../inspector/blockchainInspector.js";
+src/services/blockchain/bootstrap.js:1:import "./inspector/inspectorBridge.js"; // must load first so no early events are missed
+src/services/blockchain/inspector/blockchainInspector.js:5:class BlockchainInspector extends EventEmitter {
+src/services/blockchain/inspector/blockchainInspector.js:25:            source: "BlockchainInspector",
+src/services/blockchain/inspector/blockchainInspector.js:56:            source: "BlockchainInspector",
+src/services/blockchain/inspector/blockchainInspector.js:66:export default new BlockchainInspector();
+src/services/blockchain/inspector/inspectorBridge.js:1:import inspector from "./blockchainInspector.js";
+src/services/blockchain/inspector/inspectorBridge.js:46:      console.error("[InspectorBridge] Failed to forward event:", err.message);
+src/services/blockchain/inspector/inspectorBridge.js:50:console.log("[InspectorBridge] Blockchain Inspector wired to System Inspector.");
+src/services/blockchain/scheduler/workScheduler.js:1:import inspector from "../inspector/blockchainInspector.js";
+src/services/flowerSwapServiceBase.js.bak.1784080008:9:import inspector  from "./blockchain/inspector/blockchainInspector.js";
+src/services/flowerSwapServiceBase.js:9:import inspector  from "./blockchain/inspector/blockchainInspector.js";
+src/services/depositVerificationService.js:6:import inspector from "./blockchain/inspector/blockchainInspector.js";
+src/services/swap/phpSettlementService.js:9:import inspector from '../blockchain/inspector/blockchainInspector.js';
+src/services/inspectorService.js:3:import blockchainInspector from "./blockchain/inspector/blockchainInspector.js";
+src/services/inspectorService.js:4:import inspectorBridge from "../brainbus/inspectorBridge.js";
+src/services/inspectorService.js:61:        inspectorBridge.onFlowStarted(flow);
+src/services/inspectorService.js:97:        inspectorBridge.onFlowStage(flowId, stageName, { status: "RUNNING", input });
+src/services/inspectorService.js:145:        inspectorBridge.onFlowStage(flowId, stageName, {
+src/services/inspectorService.js:203:        inspectorBridge.onFlowStage(flowId, stageName, {
+src/services/inspectorService.js:213:        blockchainInspector.error(
+src/services/inspectorService.js:270:        inspectorBridge.onFlowStage(flowId, stageName, {
+src/services/inspectorService.js:296:        inspectorBridge.onFlowCompleted(flowId, { status: "SUCCESS" });
+src/services/reconciliationService.js:109:import inspector from './blockchain/inspector/blockchainInspector.js';
+src/services/reconciliation/notificationLayer.js:13:import inspector from '../blockchain/inspector/blockchainInspector.js';
+src/services/reconciliation/ledgerCorrectionEngine.js:30:import inspector from '../blockchain/inspector/blockchainInspector.js';
+src/services/withdrawalProcessor.js:13:import inspector from "./blockchain/inspector/blockchainInspector.js";
+src/services/operator/incidentEngine.js:16:    // blockchainInspector emits level as "WARNING"/"ERROR" (uppercase) —
+src/services/operator/incidentEngine.js:43:      // blockchainInspector.log() never sets top-level source/orderId —
+src/services/operator/incidentEngine.js:95:  // history lives in Mongo via inspectorBridge/eventStreamService).
+src/services/operator/operatorSubscriber.js:1:import blockchainInspector from "../blockchain/inspector/blockchainInspector.js";
+src/services/operator/operatorSubscriber.js:12:        blockchainInspector.on("event", async (event) => {
+src/pages/BlockchainInspector.tsx:52:export default function BlockchainInspector() {
+src/pages/SwapInspector.tsx:74:// (/api/v1/admin/dashboard/stream), which inspectorBridge.js already
+src/controllers/cryptoWithdrawalController.js:5:import inspector from "../services/blockchain/inspector/blockchainInspector.js";

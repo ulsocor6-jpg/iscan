@@ -105,7 +105,10 @@ class OperatorService {
                 node.lastSeen,
 
             error:
-                node.error
+                node.error,
+
+            metrics:
+                node.metrics
 
         }));
 

@@ -50,6 +50,7 @@ class IncidentEngine {
       severity: diagnosis.severity,
       confidence: diagnosis.confidence,
 
+      code: diagnosis.code,
       diagnosis: diagnosis.title,
       recommendation: diagnosis.recommendation,
       message: event.message,

@@ -30,6 +30,7 @@ const EPSILON = 1e-6; // floating point tolerance
 export async function getOnChainTotal(wallet, currency) {
   let total = 0;
   const perChain = {};
+  let incomplete = false; // true if ANY live chain failed to respond
 
   for (const ca of wallet.chainAddresses || []) {
     const chainKey = ca.chain?.toUpperCase();
@@ -44,10 +45,11 @@ export async function getOnChainTotal(wallet, currency) {
       }
     } catch (err) {
       perChain[chainKey] = { error: err.message };
+      incomplete = true; // an RPC failure must never look like a zero balance
     }
   }
 
-  return { total, perChain };
+  return { total, perChain, incomplete };
 }
 
 // Full report for one user across all tracked currencies.
@@ -58,7 +60,7 @@ export async function reconcileUser(userId) {
   const results = [];
   for (const currency of TRACKED_CURRENCIES) {
     const ledgerBalance = await walletService.getBalance(userId, currency);
-    const { total: onChainBalance, perChain } = await getOnChainTotal(wallet, currency);
+    const { total: onChainBalance, perChain, incomplete } = await getOnChainTotal(wallet, currency);
     const drift = ledgerBalance - onChainBalance;
 
     results.push({
@@ -72,7 +74,8 @@ export async function reconcileUser(userId) {
       // catches at swap time). Negative drift = chain has more than the
       // ledger credits (funds sitting unswept/uncredited - not dangerous,
       // but worth investigating separately; never auto-corrected here).
-      status: Math.abs(drift) < EPSILON ? 'in_sync'
+      status: incomplete ? 'rpc_unavailable'
+            : Math.abs(drift) < EPSILON ? 'in_sync'
             : drift > 0 ? 'ledger_ahead_of_chain'
             : 'chain_ahead_of_ledger',
     });

@@ -267,5 +267,4 @@ export async function getLiveBalancesForWallet(wallet) {
   return results;
 }
 
-export const SUPPORTED_LIVE_CHAINS =
-  Object.keys(CHAINS);
+export const SUPPORTED_LIVE_CHAINS = LIVE_CHAINS;

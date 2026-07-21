@@ -213,6 +213,38 @@ function PipelineProgress({ flow }) {
   );
 }
 
+const reasoningStyle = {
+  COMPLETE:         { bg: "#14532d", color: "#4ade80", icon: "✓" },
+  IN_PROGRESS:      { bg: "#1e3a5f", color: "#60a5fa", icon: "⟳" },
+  TERMINATED:       { bg: "#1e293b", color: "#94a3b8", icon: "–" },
+  FAILED_AT_STAGE:  { bg: "#7f1d1d", color: "#f87171", icon: "✗" },
+  STALLED:          { bg: "#422006", color: "#fbbf24", icon: "⚠" },
+  GAP_DETECTED:     { bg: "#422006", color: "#fbbf24", icon: "⚠" },
+  UNKNOWN_PIPELINE: { bg: "#1e293b", color: "#64748b", icon: "?" },
+  UNKNOWN:          { bg: "#1e293b", color: "#64748b", icon: "?" },
+};
+
+function ReasoningPanel({ reasoning }) {
+  if (!reasoning) return null;
+  const s = reasoningStyle[reasoning.verdict] || reasoningStyle.UNKNOWN;
+  return (
+    <div style={{
+      background: s.bg, border: `1px solid ${s.color}44`, borderRadius: 8,
+      padding: "10px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-start",
+    }}>
+      <span style={{ fontSize: 14, color: s.color }}>{s.icon}</span>
+      <div>
+        <div style={{ color: s.color, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, marginBottom: 2 }}>
+          {reasoning.verdict.replace(/_/g, " ")}
+        </div>
+        <div style={{ color: "#cbd5e1", fontSize: 12, lineHeight: 1.4 }}>
+          {reasoning.message}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FlowCard({ flow }) {
   const [expanded, setExpanded] = useState(flow.status !== "SUCCESS");
   const borderColor = flow.status === "SUCCESS" ? "#166534" : flow.status === "FAILED" ? "#7f1d1d" : "#1e3a5f";
@@ -265,6 +297,9 @@ function FlowCard({ flow }) {
               </div>
             </div>
           )}
+
+          {/* Reasoning verdict */}
+          <ReasoningPanel reasoning={flow.reasoning} />
 
           {/* Pipeline progress — now clickable per-stage */}
           <PipelineProgress flow={flow} />

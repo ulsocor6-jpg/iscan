@@ -83,6 +83,8 @@ export default function SwapInspector() {
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [intelData, setIntelData] = useState<Record<string, any>>({});
+  const [loadingIntel, setLoadingIntel] = useState<string | null>(null);
   const [tab, setTab] = useState("__failed__");
   const [loading, setLoading] = useState(true);
   const [liveLog, setLiveLog] = useState<Record<string, LiveLogEntry[]>>({});
@@ -155,6 +157,19 @@ export default function SwapInspector() {
 
     return () => es.close();
   }, []);
+
+  const loadIntelligence = async (orderId: string) => {
+    setLoadingIntel(orderId);
+    try {
+      const res = await api(`/api/v1/operator/actions/intelligence/${orderId}`);
+      if (res.success) {
+        setIntelData(prev => ({ ...prev, [orderId]: res.data }));
+      }
+    } catch (e) {
+      console.error("Failed to load intelligence", e);
+    }
+    setLoadingIntel(null);
+  };
 
   const retry = async (orderId: string) => {
     setRetrying(orderId);
@@ -244,7 +259,13 @@ export default function SwapInspector() {
                 return (
                   <div key={order.orderId} style={{ borderBottom: "1px solid var(--color-border)" }}>
                     <div
-                      onClick={() => setExpanded(isExpanded ? null : order.orderId)}
+                      onClick={() => {
+                      const willExpand = !isExpanded;
+                      setExpanded(willExpand ? order.orderId : null);
+                      if (willExpand && !intelData[order.orderId]) {
+                        loadIntelligence(order.orderId);
+                      }
+                    }}
                       style={{
                         padding: "10px 16px", display: "flex", gap: "12px", alignItems: "center",
                         cursor: "pointer", fontSize: "12px",
@@ -300,6 +321,45 @@ export default function SwapInspector() {
                             );
                           })}
                         </div>
+
+                        {/* ── Intelligence Panel ────────────────────────── */}
+                        {intelData[order.orderId] && (
+                          <div style={{ marginBottom: "12px" }}>
+                            {intelData[order.orderId].suggestion && (
+                              <div style={{
+                                background: "rgba(251,191,36,0.15)", color: "#fbbf24",
+                                padding: "8px 12px", borderRadius: "6px", fontSize: "11px", marginBottom: "8px",
+                              }}>
+                                💡 {intelData[order.orderId].suggestion}
+                              </div>
+                            )}
+                            {intelData[order.orderId].decisions?.length > 0 && (
+                              <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "4px" }}>
+                                Decisions: {intelData[order.orderId].decisions.map((d: any) => 
+                                  `${d.tier}/${d.action}`
+                                ).join(", ")}
+                              </div>
+                            )}
+                            {intelData[order.orderId].incidents?.length > 0 && (
+                              <div style={{ fontSize: "10px", color: "#f87171", marginBottom: "4px" }}>
+                                Incidents: {intelData[order.orderId].incidents.map((i: any) =>
+                                  `${i.severity}: ${i.diagnosis?.slice(0, 80)}`
+                                ).join(" | ")}
+                              </div>
+                            )}
+                            {intelData[order.orderId].stageStats && (
+                              <div style={{ fontSize: "10px", color: "#6b7280" }}>
+                                Stage health: {intelData[order.orderId].stageStats.failureRate} failure rate ({intelData[order.orderId].stageStats.total} total)
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {loadingIntel === order.orderId && (
+                          <div style={{ color: "#6b7280", fontSize: "11px", marginBottom: "12px" }}>
+                            ⏳ Loading intelligence...
+                          </div>
+                        )}
 
                         {liveLog[order.orderId]?.length > 0 && (
                           <div style={{

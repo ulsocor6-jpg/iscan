@@ -1,47 +1,78 @@
 import express from "express";
+import crypto from "crypto";
 import { parseMariBankEmail } from "../parsers/maribankEmailParser.js";
 import processTransaction from "../core/processTransaction.js";
+import phpDepositWatcher from "../services/php/PhpDepositWatcher.js";
 import deduplicationService from "../services/ingestion/deduplicationService.js";
 import inspectorService from "../services/inspectorService.js";
 import { InspectorStage } from "../inspector/inspectorConstants.js";
 
 const router = express.Router();
 
+// ── Static header secret ─────────────────────────────────────────
 if (!process.env.MAYA_SECRET) {
-  throw new Error(
-    "MAYA_SECRET is not set. Refusing to start with an insecure default — " +
-    "set MAYA_SECRET in your environment (Railway variables / .env)."
-  );
+  throw new Error("MAYA_SECRET is not set.");
 }
 const MAYA_SECRET = process.env.MAYA_SECRET;
 
+// ── HMAC secret (fallback for non‑operation mode) ────────────────
+if (!process.env.ANDROID_PHP_SECRET) {
+  throw new Error("ANDROID_PHP_SECRET is not set.");
+}
+const ANDROID_PHP_SECRET = process.env.ANDROID_PHP_SECRET;
+
+function verifyAndroidSignature(userId, title, text, timestamp, receivedSignature) {
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) > 300) return false;
+  const dataString = `${userId}|${title}|${text}|${timestamp}`;
+  const expected = crypto
+    .createHmac('sha256', ANDROID_PHP_SECRET)
+    .update(dataString)
+    .digest('hex');
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedSignature, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
 router.post("/notify", async (req, res) => {
+  // ── Header check ────────────────────────────────────────────────
   const secret = req.headers["x-maya-secret"];
   if (secret !== MAYA_SECRET) {
-    if (!secret) {
-      console.warn("[MariBank Webhook] Rejected — no x-maya-secret header sent");
-    } else {
-      console.warn("[MariBank Webhook] Rejected — secret mismatch");
-    }
+    console.warn("[MariBank Webhook] Rejected — secret mismatch");
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { title, text, timestamp } = req.body;
+  const { title, text, timestamp, userId, signature, operationId } = req.body;
+
   if (!title && !text) {
     return res.status(400).json({ error: "Missing notification content" });
+  }
+  if (!userId || !timestamp || !signature) {
+    console.warn("[MariBank Webhook] Rejected — missing userId, timestamp, or signature");
+    return res.status(401).json({ error: "Missing authentication fields" });
+  }
+
+  // ── Legacy HMAC check (ONLY for non‑operation requests) ────────
+  if (!operationId) {
+    const isValid = verifyAndroidSignature(userId, title, text, timestamp, signature);
+    if (!isValid) {
+      console.warn(`[MariBank Webhook] Rejected — invalid signature for userId=${userId}`);
+      return res.status(401).json({ error: "Invalid signature" });
+    }
   }
 
   console.log(`[MariBank Webhook] Received — title: "${title}" | text: "${text}"`);
 
-  // Combine title + text into a single string the email parser can work with
+  // ── Parse notification ──────────────────────────────────────────
   const combined = `${title || ""}\n${text || ""}`.trim();
   const transaction = parseMariBankEmail(combined);
 
   if (!transaction) {
-    // FIX: this ignored-event hash still only uses {title, text} — kept as
-    // is here since non-financial notifications (promos, balance pings)
-    // are expected to legitimately repeat verbatim, so exact-match dedup
-    // is the correct behavior for this branch specifically.
     const ignoredEventId = deduplicationService.createHash({ title, text });
     const ignoredCreated = await deduplicationService.createEvent(
       "MARIBANK",
@@ -58,7 +89,9 @@ router.post("/notify", async (req, res) => {
     return res.status(200).json({ status: "ignored", reason: "Not a financial transaction" });
   }
 
-  // ── Link to existing deposit-request flow if referenceId matches ──
+  transaction.userId = userId;
+
+  // ── Start Inspector flow ────────────────────────────────────────
   let flow = null;
   if (transaction.referenceId) {
     flow = await inspectorService.findRunningByReference(transaction.referenceId);
@@ -71,6 +104,8 @@ router.post("/notify", async (req, res) => {
       referenceId: transaction.referenceId || null,
       amount: transaction.amount,
       rawNotification: { title, text },
+      userId,
+      operationId,
     });
   }
   const flowId = flow.flowId;
@@ -92,27 +127,11 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "PARSED_OK" },
   });
 
-  // ── DEDUP stage ──────────────────────────────────────────────────────
-  // FIX: this stage previously had zero Inspector instrumentation — a
-  // duplicate (real or false-positive) caused the route to silently
-  // return 200 "duplicate" with the flow left permanently stuck at
-  // RUNNING and no indication anywhere of what happened or why.
-  //
-  // FIX: the hash previously was createHash({ title, text }) with no
-  // time component. Two genuinely separate transfers with identical
-  // phrasing (e.g. two ₱20 test transfers with the same notification
-  // text) hash identically and collide on the eventId unique index,
-  // so the second real transaction was silently dropped as a "duplicate"
-  // forever. Bucketing on the transaction's actual identifying fields
-  // plus a coarse time window (5 minutes) preserves real dedup — a
-  // notification genuinely redelivered by Android within the window
-  // still collides and is correctly dropped — while letting legitimate
-  // repeat transfers with the same amount through once the window
-  // passes.
+  // ── Dedup stage ──────────────────────────────────────────────────
   await inspectorService.startStage(flowId, "DEDUP", { transaction });
 
-  const notificationTime = timestamp ? new Date(timestamp) : new Date();
-  const timeBucket = Math.floor(notificationTime.getTime() / (5 * 60 * 1000)); // 5-min buckets
+  const notificationTime = timestamp ? new Date(timestamp * 1000) : new Date();
+  const timeBucket = Math.floor(notificationTime.getTime() / (5 * 60 * 1000));
   const eventId = deduplicationService.createHash({
     amount: transaction.amount,
     referenceId: transaction.referenceId,
@@ -121,7 +140,6 @@ router.post("/notify", async (req, res) => {
   });
 
   const created = await deduplicationService.createEvent("MARIBANK", eventId, transaction);
-
   if (!created) {
     await inspectorService.failStage(flowId, "DEDUP", "Duplicate event within time window", {
       result: { eventId, timeBucket },
@@ -144,23 +162,34 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "NEW_EVENT" },
   });
 
-  try {
-    await processTransaction({ ...transaction, _flowId: flowId });
-    await deduplicationService.markProcessed("MARIBANK", eventId);
-    await inspectorService.finishFlow(flowId);
-    console.log(`[MariBank Webhook] processed ${eventId}`);
-    return res.status(200).json({ status: "ok", transaction });
-  } catch (err) {
-    await deduplicationService.markFailed("MARIBANK", eventId, err.message);
-    await inspectorService.failStage(flowId, "PROCESS_TRANSACTION", err.message).catch(() => {});
+  // ── Process using the dedicated watcher ─────────────────────────
+  const watcherResult = await phpDepositWatcher.processNotification({
+    source: "MARIBANK",
+    userId,
+    operationId,
+    amount: transaction.amount,
+    reference: transaction.referenceId || transaction.senderName,
+    title,
+    text,
+    timestamp,
+    signature,
+    parsedTransaction: transaction,
+    flowId,
+    eventId,
+  });
 
-    // Respond with a clean error instead of rethrowing — an uncaught
-    // throw here would escape as an unhandled rejection with nothing
-    // above this route to catch it, risking a full process crash for
-    // what should be an isolated, single-request failure.
-    console.error(`[MariBank Webhook] processing failed for ${eventId}:`, err.message);
-    return res.status(500).json({ status: "error", error: err.message });
+  if (!watcherResult.success) {
+    if (watcherResult.status === "verification_failed") {
+      return res.status(400).json({ status: "verification_failed", reason: watcherResult.message });
+    }
+    if (watcherResult.status === "operation_not_found" || watcherResult.status === "no_matching_operation") {
+      return res.status(404).json({ status: "not_found", message: watcherResult.message });
+    }
+    return res.status(500).json({ status: "error", message: watcherResult.message });
   }
+
+  console.log(`[MariBank Webhook] processed ${eventId}`);
+  return res.status(200).json({ status: "ok", transaction: watcherResult.transaction });
 });
 
 export default router;

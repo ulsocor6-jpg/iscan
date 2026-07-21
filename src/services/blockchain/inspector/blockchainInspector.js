@@ -1,4 +1,6 @@
 import { EventEmitter } from "events";
+import brainBus from "../../../brainbus/brainBus.js";
+import { Channels } from "../../../brainbus/channels.js";
 
 class BlockchainInspector extends EventEmitter {
 
@@ -19,6 +21,10 @@ class BlockchainInspector extends EventEmitter {
         };
 
         this.emit("event", event);
+        brainBus.emit(Channels.BLOCKCHAIN_EVENT, event, {
+            source: "BlockchainInspector",
+            correlationId: event.metadata?.flowId || event.metadata?.txHash || null
+        });
 
     }
 
@@ -41,6 +47,15 @@ class BlockchainInspector extends EventEmitter {
     }
 
     error(stage, message, metadata = {}) {
+        brainBus.emit(Channels.BLOCKCHAIN_EVENT_FAILED, {
+            stage,
+            message,
+            metadata,
+            timestamp: new Date()
+        }, {
+            source: "BlockchainInspector",
+            correlationId: metadata?.flowId || metadata?.txHash || null
+        });
 
         this.log(stage, "ERROR", message, metadata);
 

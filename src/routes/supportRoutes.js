@@ -1,6 +1,11 @@
 import express from "express";
 import { requireAuth } from "../middleware/authMiddleware.js";
-import { lookupWithdrawal, retryWithdrawal, cancelWithdrawal } from "../controllers/supportController.js";
+import {
+  lookupWithdrawal,
+  retryWithdrawal,
+  cancelWithdrawal,
+  chatSupport,
+} from "../controllers/supportController.js";
 
 const router = express.Router();
 
@@ -10,5 +15,6 @@ const router = express.Router();
 router.post("/withdrawals/lookup", requireAuth, lookupWithdrawal);
 router.post("/withdrawals/retry", requireAuth, retryWithdrawal);
 router.post("/withdrawals/cancel", requireAuth, cancelWithdrawal);
+router.post("/chat", requireAuth, chatSupport);
 
 export default router;

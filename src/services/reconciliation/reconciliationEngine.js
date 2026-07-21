@@ -1,4 +1,6 @@
 // src/services/reconciliation/reconciliationEngine.js
+import brainBus from "../../brainbus/brainBus.js";
+import { Channels } from "../../brainbus/channels.js";
 //
 // The orchestrator behind the "Run Full Correction" button. Wires together
 // every box in the architecture diagram, reusing what already exists
@@ -187,6 +189,14 @@ export async function runForUser(userId, { mode = 'AUTO_CORRECT', maxAutoRisk = 
     }
   }
 
+  brainBus.emit(Channels.DECISION_EXECUTED, {
+    pipeline: "RECONCILIATION",
+    action: "correction_run",
+    runId,
+    mode,
+    outcomes,
+    timestamp: new Date().toISOString()
+  }, { source: "ReconciliationEngine", correlationId: runId });
   return { userId: String(userId), runId, mode, outcomes };
 }
 

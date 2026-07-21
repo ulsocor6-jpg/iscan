@@ -13,11 +13,13 @@ import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js"
 import { startWalletBalanceSyncWorker } from "./src/services/blockchain/workers/walletBalanceSyncWorker.js";
 import withdrawalExpiryService from "./src/services/withdrawalExpiryService.js";
 import eventRetentionService from "./src/services/eventRetentionService.js";
-import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
 import intelligenceCore from "./src/intelligence/intelligenceCore.js";
 import operatorSubscriber from "./src/services/operator/operatorSubscriber.js";
+import maribankNotifyRoute from './src/routes/maribankNotifyRoute.js';
+import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
+
 
 
 
@@ -206,6 +208,8 @@ intelligenceCore.report({
     operatorSubscriber.start();
 
     const PORT = process.env.PORT || 3000;
+    app.use('/api/v1/maya', mayaNotifyRoute);
+    app.use('/api/v1/maribank', maribankNotifyRoute);
     app.listen(PORT, () => {
 
   console.log("ISCAN running on port", PORT);

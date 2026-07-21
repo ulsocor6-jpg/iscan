@@ -31,8 +31,8 @@ export default async function processTransaction(raw) {
     flowId = flow.flowId;
   } else {
     // Update existing flow with parsed transaction data
-    await inspectorService.startStage(flowId, "PROCESS_TRANSACTION", { amount, source, channel });
-    await inspectorService.finishStage(flowId, "PROCESS_TRANSACTION", {
+    await inspectorService.startStage(flowId, InspectorStage.PROCESS_TRANSACTION, { amount, source, channel });
+    await inspectorService.finishStage(flowId, InspectorStage.PROCESS_TRANSACTION, {
       result: { amount, channel, senderPhone, senderName },
       decision: { reason: "HANDED_OFF_FROM_WATCHER" },
     });

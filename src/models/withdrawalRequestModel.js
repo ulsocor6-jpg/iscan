@@ -28,6 +28,7 @@ status: {
     enum: [
       "pending_review",
       "approved",
+      "processing",
       "rejected",
       "completed",
       "failed"

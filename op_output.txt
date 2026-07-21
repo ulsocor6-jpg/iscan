@@ -1,0 +1,4 @@
+◇ injected env (5) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+operationId: OP-1784588257220-c1c3ca30
+depositSecret: a4df616958274ba3779371d0005b9abb87a4929c417f75e835060691e00c643d
+expectedAmount: 1000

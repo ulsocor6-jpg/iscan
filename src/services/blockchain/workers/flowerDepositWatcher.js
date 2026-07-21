@@ -31,7 +31,7 @@ class FlowerDepositWatcher {
     const order = await FlowerOrder.findOne({
       depositAddress: (job.toAddress || "").toLowerCase(),
       chain: (job.chain || "").toLowerCase(),
-      stage: "AWAITING_DEPOSIT",
+      currentStage: "DEPOSIT",
     });
 
     if (!order) {

@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import Inspector from "../models/inspectorModel.js";
+import blockchainInspector from "./blockchain/inspector/blockchainInspector.js";
+import inspectorBridge from "../brainbus/inspectorBridge.js";
 
 class InspectorService {
 
@@ -55,13 +57,16 @@ class InspectorService {
 
         });
 
+        // ── BrainBus: notify all subscribers ──────────────────────────
+        inspectorBridge.onFlowStarted(flow);
+
         return flow;
 
     }
 
     async startStage(flowId, stageName, input = {}) {
 
-        return Inspector.findOneAndUpdate(
+        const flow = await Inspector.findOneAndUpdate(
 
             { flowId },
 
@@ -87,6 +92,11 @@ class InspectorService {
             { new: true }
 
         );
+
+        // ── BrainBus: notify stage started ────────────────────────────
+        inspectorBridge.onFlowStage(flowId, stageName, { status: "RUNNING", input });
+
+        return flow;
 
     }
 
@@ -130,6 +140,14 @@ class InspectorService {
         stage.decision = decision;
 
         await flow.save();
+
+        // ── BrainBus: notify stage completed ──────────────────────────
+        inspectorBridge.onFlowStage(flowId, stageName, {
+            status: "SUCCESS",
+            output,
+            decision,
+            durationMs: stage.durationMs
+        });
 
         return flow;
 
@@ -181,6 +199,28 @@ class InspectorService {
 
         await flow.save();
 
+        // ── BrainBus: notify stage failed ─────────────────────────────
+        inspectorBridge.onFlowStage(flowId, stageName, {
+            status: "FAILED",
+            error,
+            output,
+            decision,
+            durationMs: stage.durationMs
+        });
+
+        // Bridge into the same event stream blockchain incidents use, so
+        // PHP_DEPOSIT stage failures reach incidentEngine too.
+        blockchainInspector.error(
+            stageName,
+            error,
+            {
+                flowId,
+                pipeline: flow.pipeline,
+                referenceId: flow.referenceId,
+                source: flow.source
+            }
+        );
+
         return flow;
 
     }
@@ -191,7 +231,7 @@ class InspectorService {
         reason = ""
     ) {
 
-        return Inspector.findOneAndUpdate(
+        const flow = await Inspector.findOneAndUpdate(
 
             { flowId },
 
@@ -226,11 +266,19 @@ class InspectorService {
 
         );
 
+        // ── BrainBus: notify stage skipped ────────────────────────────
+        inspectorBridge.onFlowStage(flowId, stageName, {
+            status: "SKIPPED",
+            decision: { reason }
+        });
+
+        return flow;
+
     }
 
     async finishFlow(flowId) {
 
-        return Inspector.findOneAndUpdate(
+        const flow = await Inspector.findOneAndUpdate(
 
             { flowId },
 
@@ -243,6 +291,11 @@ class InspectorService {
             { new: true }
 
         );
+
+        // ── BrainBus: notify flow completed ───────────────────────────
+        inspectorBridge.onFlowCompleted(flowId, { status: "SUCCESS" });
+
+        return flow;
 
     }
 

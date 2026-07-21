@@ -7,6 +7,8 @@
 
 import FlowerOrder from "../../../models/flower/flowerOrderModel.js";
 import inspector    from "../inspector/blockchainInspector.js";
+import brainBus     from "../../../brainbus/brainBus.js";
+import { Channels } from "../../../brainbus/channels.js";
 
 async function loadOrder(referenceId) {
   const order = await FlowerOrder.findOne({ orderId: referenceId });
@@ -20,6 +22,18 @@ export const flowerStageHandlers = {
 
   async FLOWER_SWEEP(pending, job) {
     const order = await loadOrder(pending.referenceId);
+    // Emit flow start if this is the first stage
+    if (!order.currentStage || order.currentStage === "SWEEP") {
+        brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, {
+            flowId: order.orderId,
+            pipeline: "FLOWER_SWAP",
+            source: "FLOWER",
+            amount: pending.actualAmount || order.expectedAmount,
+            currency: "USDC",
+            status: "RUNNING",
+            stages: []
+        }, { source: "FlowerStageHandler", correlationId: order.orderId });
+    }
     // actualAmount must be attached by the sweep service when it calls
     // recordPendingOperation() — read back here rather than trusting the
     // order's pre-existing "expected" field.
@@ -31,7 +45,13 @@ export const flowerStageHandlers = {
     };
     order.currentStage = "SWAP";
     await order.save();
-    inspector.success("FlowerStage", `SWEEP confirmed for ${order.orderId}`, {
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+        flowId: order.orderId,
+        pipeline: "FLOWER_SWAP",
+        stage: "FLOWER_SWEEP",
+        data: { status: "SUCCESS", txHash: job.txHash, amount: pending.actualAmount }
+    }, { source: "FlowerStageHandler", correlationId: order.orderId });
+        inspector.success("FlowerStage", `SWEEP confirmed for ${order.orderId}`, {
       txHash: job.txHash, amount: pending.actualAmount,
     });
   },
@@ -46,7 +66,13 @@ export const flowerStageHandlers = {
     };
     order.currentStage = "SETTLE";
     await order.save();
-    inspector.success("FlowerStage", `SWAP confirmed for ${order.orderId}`, {
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+        flowId: order.orderId,
+        pipeline: "FLOWER_SWAP",
+        stage: "FLOWER_SWAP",
+        data: { status: "SUCCESS", txHash: job.txHash, amount: pending.actualAmount }
+    }, { source: "FlowerStageHandler", correlationId: order.orderId });
+        inspector.success("FlowerStage", `SWAP confirmed for ${order.orderId}`, {
       txHash: job.txHash, amount: pending.actualAmount,
     });
   },
@@ -80,7 +106,13 @@ export const flowerStageHandlers = {
     order.currentStage = "SETTLE";
     order.status = "COMPLETED";
     await order.save();
-    inspector.success("FlowerStage", `SETTLE confirmed for ${order.orderId}`, {
+    brainBus.emit(Channels.INSPECTOR_FLOW_STAGE, {
+        flowId: order.orderId,
+        pipeline: "FLOWER_SWAP",
+        stage: "FLOWER_SETTLE",
+        data: { status: "SUCCESS", txHash: job.txHash, amount: pending.actualAmount }
+    }, { source: "FlowerStageHandler", correlationId: order.orderId });
+        inspector.success("FlowerStage", `SETTLE confirmed for ${order.orderId}`, {
       txHash: job.txHash, amount: pending.actualAmount,
     });
   },

@@ -1,50 +1,87 @@
 import express from "express";
+import crypto from "crypto";
 import { parseMayaNotification } from "../parsers/mayaNotificationParser.js";
 import processTransaction from "../core/processTransaction.js";
+import verificationEngine from "../services/verification/VerificationEngine.js";
+import phpDepositWatcher from "../services/php/PhpDepositWatcher.js";
 import deduplicationService from "../services/ingestion/deduplicationService.js";
 import inspectorService from "../services/inspectorService.js";
 import { InspectorStage } from "../inspector/inspectorConstants.js";
+import brainBus from "../brainbus/brainBus.js";
+import Channels from "../brainbus/channels.js";
 
 const router = express.Router();
 
+// ── Static header secret ─────────────────────────────────────────
 if (!process.env.MAYA_SECRET) {
-  throw new Error(
-    "MAYA_SECRET is not set. Refusing to start with an insecure default — " +
-    "set MAYA_SECRET in your environment (Railway variables / .env)."
-  );
+  throw new Error("MAYA_SECRET is not set.");
 }
 const MAYA_SECRET = process.env.MAYA_SECRET;
 
+// ── HMAC secret (fallback for non‑operation mode) ────────────────
+if (!process.env.ANDROID_PHP_SECRET) {
+  throw new Error("ANDROID_PHP_SECRET is not set.");
+}
+const ANDROID_PHP_SECRET = process.env.ANDROID_PHP_SECRET;
+
+function verifyAndroidSignature(userId, title, text, timestamp, receivedSignature) {
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) > 300) return false;
+  const dataString = `${userId}|${title}|${text}|${timestamp}`;
+  const expected = crypto
+    .createHmac('sha256', ANDROID_PHP_SECRET)
+    .update(dataString)
+    .digest('hex');
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedSignature, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
 router.post("/notify", async (req, res) => {
+  // ── Header check ────────────────────────────────────────────────
   const secret = req.headers["x-maya-secret"];
   if (secret !== MAYA_SECRET) {
-    if (!secret) {
-      console.warn("[Maya Webhook] Rejected — no x-maya-secret header sent");
-    } else {
-      console.warn("[Maya Webhook] Rejected — secret mismatch");
-    }
+    console.warn("[Maya Webhook] Rejected — secret mismatch");
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { title, text, timestamp } = req.body;
+  const { title, text, timestamp, userId, signature, operationId } = req.body;
+
   if (!title && !text) {
     return res.status(400).json({ error: "Missing notification content" });
+  }
+  if (!userId || !timestamp || !signature) {
+    console.warn("[Maya Webhook] Rejected — missing userId, timestamp, or signature");
+    return res.status(401).json({ error: "Missing authentication fields" });
+  }
+
+  // ── Legacy HMAC check (ONLY for non‑operation requests) ────────
+  // If operationId is provided, skip this – the watcher will verify using
+  // the operation‑specific secret.
+  if (!operationId) {
+    const isValid = verifyAndroidSignature(userId, title, text, timestamp, signature);
+    if (!isValid) {
+      console.warn(`[Maya Webhook] Rejected — invalid signature for userId=${userId}`);
+      return res.status(401).json({ error: "Invalid signature" });
+    }
   }
 
   console.log(`[Maya Webhook] Received — title: "${title}" | text: "${text}"`);
 
+  // ── Parse notification ──────────────────────────────────────────
   const transaction = parseMayaNotification({
     title: title || "",
     text: text || "",
     subText: "",
-    timestamp: timestamp ? new Date(timestamp) : new Date(),
+    timestamp: timestamp ? new Date(timestamp * 1000) : new Date(),
   });
 
   if (!transaction) {
-    // Not a deposit-related notification at all — same as MariBank's
-    // non-financial branch. No Inspector flow: there's nothing here for
-    // an admin to act on, and the WATCHER/PARSER stages exist to trace
-    // real deposit attempts, not every push notification Maya sends.
     const ignoredEventId = deduplicationService.createHash({ title, text });
     const ignoredCreated = await deduplicationService.createEvent(
       "MAYA",
@@ -61,7 +98,9 @@ router.post("/notify", async (req, res) => {
     return res.status(200).json({ status: "ignored", reason: "Not a financial transaction" });
   }
 
-  // ── Create the Inspector flow now that we know this is a real deposit ──
+  transaction.userId = userId;
+
+  // ── Start Inspector flow ────────────────────────────────────────
   const flow = await inspectorService.startFlow({
     pipeline: "PHP_DEPOSIT",
     source: "MAYA",
@@ -72,6 +111,8 @@ router.post("/notify", async (req, res) => {
     senderLastFour: transaction.senderLastFour || null,
     rawNotification: { title, text },
     parsedNotification: transaction,
+    userId,
+    operationId,
   });
   const flowId = flow.flowId;
 
@@ -81,9 +122,7 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "NOTIFICATION_RECEIVED" },
   });
 
-  await inspectorService.startStage(flowId, InspectorStage.PARSER, {
-    title, text,
-  });
+  await inspectorService.startStage(flowId, InspectorStage.PARSER, { title, text });
   await inspectorService.finishStage(flowId, InspectorStage.PARSER, {
     result: {
       amount: transaction.amount,
@@ -95,19 +134,12 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "PARSED_OK" },
   });
 
-  // ── DEDUP stage ──────────────────────────────────────────────────────
-  // Note: this still hashes on {title, text} only, same as before this
-  // patch — unlike MariBank's dedup it has no time-bucket component, so
-  // it carries the same "two identical-text transfers collide" risk that
-  // MariBank's dedup had before that was fixed. Left as-is here since the
-  // ask was Inspector visibility, not a dedup-key change — flag separately
-  // if you want that ported over too.
+  // ── Dedup stage ──────────────────────────────────────────────────
   await inspectorService.startStage(flowId, "DEDUP", { transaction });
 
   const eventId = deduplicationService.createHash({ title, text });
 
   const created = await deduplicationService.createEvent("MAYA", eventId, transaction);
-
   if (!created) {
     await inspectorService.failStage(flowId, "DEDUP", "Duplicate event", {
       result: { eventId },
@@ -130,32 +162,35 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "NEW_EVENT" },
   });
 
-  try {
-    await processTransaction({ ...transaction, _flowId: flowId });
+  // ── Process using the dedicated watcher ─────────────────────────
+  const watcherResult = await phpDepositWatcher.processNotification({
+    source: "MAYA",
+    userId,
+    operationId,
+    amount: transaction.amount,
+    reference: transaction.referenceId || transaction.senderPhone,
+    title,
+    text,
+    timestamp,
+    signature,
+    parsedTransaction: transaction,
+    flowId,
+    eventId,
+  });
 
-    await deduplicationService.markProcessed("MAYA", eventId);
-    await inspectorService.finishFlow(flowId);
-
-    console.log(`[Maya] processed ${eventId}`);
-
-    return res.status(200).json({
-      status: "ok",
-      transaction,
-    });
-
-  } catch (err) {
-
-    await deduplicationService.markFailed("MAYA", eventId, err.message);
-    await inspectorService.failStage(flowId, "PROCESS_TRANSACTION", err.message).catch(() => {});
-
-    // Respond with a clean error instead of rethrowing — an uncaught
-    // throw here would escape as an unhandled rejection with nothing
-    // above this route to catch it, risking a full process crash for
-    // what should be an isolated, single-request failure.
-    console.error(`[Maya] processing failed for ${eventId}:`, err.message);
-    return res.status(500).json({ status: "error", error: err.message });
-
+  if (!watcherResult.success) {
+    // Map status to HTTP response
+    if (watcherResult.status === "verification_failed") {
+      return res.status(400).json({ status: "verification_failed", reason: watcherResult.message });
+    }
+    if (watcherResult.status === "operation_not_found" || watcherResult.status === "no_matching_operation") {
+      return res.status(404).json({ status: "not_found", message: watcherResult.message });
+    }
+    return res.status(500).json({ status: "error", message: watcherResult.message });
   }
+
+  console.log(`[Maya] processed ${eventId}`);
+  return res.status(200).json({ status: "ok", transaction: watcherResult.transaction });
 });
 
 export default router;

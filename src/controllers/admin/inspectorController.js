@@ -1,4 +1,13 @@
 import InspectorFlow from "../../models/inspectorModel.js";
+import reasoningEngine from "../../intelligence/reasoningEngine.js";
+
+// Mongoose documents need to become plain objects before we can attach
+// a computed "reasoning" field that isn't part of the schema.
+function withReasoning(flowDoc) {
+    const flow = flowDoc.toObject ? flowDoc.toObject() : flowDoc;
+    flow.reasoning = reasoningEngine.analyzeFlow(flow);
+    return flow;
+}
 
 export async function getFlows(req, res) {
 
@@ -9,7 +18,7 @@ export async function getFlows(req, res) {
             .sort({ createdAt: -1 })
             .limit(50);
 
-        res.json(flows);
+        res.json(flows.map(withReasoning));
 
     } catch (err) {
 
@@ -39,7 +48,7 @@ export async function getFlow(req, res) {
 
         }
 
-        res.json(flow);
+        res.json(withReasoning(flow));
 
     } catch (err) {
 

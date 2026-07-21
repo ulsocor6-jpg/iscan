@@ -67,6 +67,30 @@ export const createOrder = async (req, res) => {
     // two orders race to claim the same incoming deposit.
     await assertAddressAvailable(depositAddress);
 
+    // ── Check user has sufficient balance ────────────────────────────
+    const { getLiveBalancesForWallet } = await import("../services/onchainBalanceService.js");
+    const { getPendingSweepTotalsByChain } = await import("../services/flower/flowerPendingSweepService.js");
+    const Wallet = (await import("../models/walletModel.js")).default;
+    const wallet = await Wallet.findOne({ userId: req.user.id });
+    if (wallet) {
+      const onchain = await getLiveBalancesForWallet(wallet).catch(() => ({}));
+      const pendingSweep = await getPendingSweepTotalsByChain(req.user.id);
+      let availableFLOWER = 0;
+      for (const [chainKey, data] of Object.entries(onchain)) {
+        if (data.FLOWER) availableFLOWER += data.FLOWER;
+      }
+      for (const [chainKey, amount] of Object.entries(pendingSweep)) {
+        availableFLOWER = Math.max(0, availableFLOWER - amount);
+      }
+      if (availableFLOWER < expectedAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient FLOWER balance. You have ${availableFLOWER.toFixed(6)} FLOWER available (on-chain minus pending sweeps). Need ${expectedAmount} FLOWER.`,
+          balance: { available: availableFLOWER, required: expectedAmount, onchain, pendingSweep }
+        });
+      }
+    }
+
     const orderId = "FLW-" + crypto.randomBytes(6).toString("hex");
 
     const order = await FlowerOrder.create({
@@ -76,7 +100,8 @@ export const createOrder = async (req, res) => {
       depositAddress,
       chain,
       source:         "GENERIC",
-      status:         "WAITING_DEPOSIT"
+      status:         "WAITING_DEPOSIT",
+      currentStage:   "DEPOSIT"
     });
 
     res.json({
