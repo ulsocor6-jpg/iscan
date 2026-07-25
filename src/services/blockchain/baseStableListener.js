@@ -1,3 +1,4 @@
+import brainBus from "../../brainbus/brainBus.js";
 // src/services/blockchain/baseStableListener.js
 // Watches Base chain deposit addresses for USDC/USDT deposits.
 // Detection only. The deposit pipeline is responsible for sweeping,
@@ -41,10 +42,39 @@ const provider = new ethers.JsonRpcProvider(BASE_RPC);
 
 const LOOKBACK_BLOCKS = 150;
 
+// Most free-tier RPC providers (Alchemy, etc.) cap eth_getLogs at a 10
+// block range per call. blockchainEngine.js already chunks for this
+// reason — this listener never did, so every scan over LOOKBACK_BLOCKS
+// (150) was failing outright with "Under the Free tier plan, you can
+// make eth_getLogs requests with up to a 10 block range." on every
+// single cycle. Chunking here mirrors that same fix.
+const BLOCK_CHUNK = 10;
+
 const lastScannedBlock = {
   USDC: null,
   USDT: null,
 };
+
+async function getLogsChunked(tokenAddress, paddedAddresses, fromBlock, toBlock) {
+  const allLogs = [];
+
+  let from = fromBlock;
+  while (from <= toBlock) {
+    const to = Math.min(from + BLOCK_CHUNK - 1, toBlock);
+
+    const logs = await provider.getLogs({
+      address: tokenAddress,
+      topics: [TRANSFER_TOPIC, null, paddedAddresses],
+      fromBlock: from,
+      toBlock: to,
+    });
+
+    allLogs.push(...logs);
+    from = to + 1;
+  }
+
+  return allLogs;
+}
 
 async function scanToken(
   symbol,
@@ -79,16 +109,12 @@ async function scanToken(
           0
         );
 
-  const logs = await provider.getLogs({
-    address: tokenAddress,
-    topics: [
-      TRANSFER_TOPIC,
-      null,
-      paddedAddresses,
-    ],
+  const logs = await getLogsChunked(
+    tokenAddress,
+    paddedAddresses,
     fromBlock,
-    toBlock: latest,
-  });
+    latest
+  );
 
   lastScannedBlock[symbol] = latest;
 
