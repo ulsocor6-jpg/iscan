@@ -1,5 +1,6 @@
 import DashboardLayout from "../banking/components/DashboardLayout";
 import { useState, useEffect, useCallback } from "react";
+import { useSystemStream } from "../hooks/useSystemStream";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -291,10 +292,14 @@ export default function AdminDeposits() {
   }, []);
 
   useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 30000); // auto-refresh every 30s
-    return () => clearInterval(interval);
+    fetchAll(); // initial load only — no timer after this
   }, [fetchAll]);
+
+  // Wake on call: refetch only when the shared event stream reports a
+  // deposit-related event, instead of polling on a fixed interval.
+  useSystemStream("deposit", useCallback(() => {
+    fetchAll();
+  }, [fetchAll]));
 
   const totalPending = phpDeps.length + cryptoDeps.length;
 

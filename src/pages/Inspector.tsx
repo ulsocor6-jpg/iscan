@@ -1,5 +1,6 @@
 import DashboardLayout from "../banking/components/DashboardLayout";
 import { useState, useEffect, useCallback } from "react";
+import { useSystemStream } from "../hooks/useSystemStream";
 
 interface IngressEvent {
   _id: string;
@@ -118,9 +119,13 @@ export default function Inspector() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
   }, [load]);
+
+  // Wake on call: these ingress events are the deposit-source watchers
+  // (MAYA/MariBank etc.), so refetch when the deposit category fires —
+  // idle otherwise, no timer. Confirm this category assumption if watcher
+  // sources ever expand beyond deposit ingestion.
+  useSystemStream("deposit", useCallback(() => { load(); }, [load]));
 
   const mayaEvents = events
     .filter(e => e.source === "MAYA")

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSystemStream } from "../../hooks/useSystemStream";
 
 interface PendingItem {
   referenceNumber: string;
@@ -18,10 +19,7 @@ function timeLeft(expiresAt: string | null) {
 export default function PendingWithdrawals() {
   const [items, setItems] = useState<PendingItem[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
+  const load = useCallback(async (cancelledRef?: { current: boolean }) => {
       try {
         const res = await fetch("/api/v1/transactions", { credentials: "include" });
         const data = await res.json();
@@ -44,7 +42,7 @@ export default function PendingWithdrawals() {
           })
         );
 
-        if (!cancelled) {
+        if (!cancelledRef?.current) {
           const pending = checked
             .filter((c: any) => c && c.s?.status === "pending_review")
             .map((c: any) => ({
@@ -58,15 +56,18 @@ export default function PendingWithdrawals() {
       } catch {
         // silent — background check, no need to surface fetch errors
       }
-    }
-
-    load();
-    const interval = setInterval(load, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
   }, []);
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    load(cancelledRef);
+    return () => { cancelledRef.current = true; };
+  }, [load]);
+
+  // Wake on call: refetch only when a withdrawal-related event actually
+  // fires (verified/completed/failed) — idle otherwise, no timer.
+  useSystemStream("withdrawal", useCallback(() => { load(); }, [load]));
+
 
   if (items.length === 0) return null;
 

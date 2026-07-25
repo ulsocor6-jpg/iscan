@@ -1,6 +1,8 @@
 // src/intelligence/reasoningEngine.js
 
 import systemKnowledge from "./systemKnowledge.js";
+import { buildStageTimeline } from "./stageTimeline.js";
+import { explainFailure } from "./rootCauseClassifier.js";
 
 // A flow with no new stage activity for this long, while still RUNNING,
 // is considered stalled rather than "just about to continue."
@@ -78,13 +80,34 @@ class ReasoningEngine {
         // Flow is FAILED — the failed stage itself is the root cause, no
         // further gap reasoning needed; failStage() already routes this to
         // incidentEngine separately.
+        //
+        // NEW: beyond just echoing the raw error, classify it (funding gap /
+        // schema bug / config / contract revert / network / state conflict)
+        // and state plainly which downstream stages never ran as a result,
+        // so a flat FAILED status doesn't read the same as three unrelated
+        // failure classes.
         if (flow.status === "FAILED") {
             const failedStage = observed.find(s => s.status === "FAILED");
+
+            if (!failedStage) {
+                return {
+                    verdict: "FAILED_AT_STAGE",
+                    message: "Flow marked FAILED but no failed stage entry found — inconsistent state, worth checking manually."
+                };
+            }
+
+            const timeline = buildStageTimeline(flow.pipeline, observed, flow.status);
+            const rootCause = explainFailure(
+                timeline,
+                failedStage.name,
+                failedStage.error || "no error message recorded"
+            );
+
             return {
                 verdict: "FAILED_AT_STAGE",
-                message: failedStage
-                    ? `Flow failed at "${failedStage.name}": ${failedStage.error || "no error message recorded"}.`
-                    : "Flow marked FAILED but no failed stage entry found — inconsistent state, worth checking manually."
+                message: `Flow failed at "${failedStage.name}": ${failedStage.error || "no error message recorded"}.`,
+                timeline,
+                rootCause
             };
         }
 

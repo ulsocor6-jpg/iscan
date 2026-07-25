@@ -79,6 +79,56 @@ class SystemKnowledge {
                     "CANCELLED"
                 ]
 
+            },
+
+            // NEW — settleStablecoinToPHP() in phpSettlementService.js.
+            // User's on-chain USDC/USDT -> platform treasury -> PHP ledger credit.
+            // Stage names match the actual inspector.*() step labels already
+            // logged in that function (see "step:" metadata in each call),
+            // so this reads directly off existing log lines with no
+            // renaming needed on the logging side.
+            STABLECOIN_TO_PHP: {
+
+                description:
+                    "Converts a user's on-chain USDC/USDT to PHP. Verifies live on-chain balance, sweeps the stablecoin to treasury, then credits PHP to the user's ledger only after the sweep is confirmed.",
+
+                entryStages: [],
+
+                stages: [
+                    "BALANCE_CHECK",
+                    "SWEEP",
+                    "SWEEP_CONFIRM",
+                    "SETTLE"
+                ],
+
+                terminalExits: [
+                    "CANCELLED",
+                    "FAILED"
+                ]
+
+            },
+
+            // NEW — settlePHPToStablecoin() in phpSettlementService.js.
+            // User's PHP ledger balance -> debit -> treasury sends real
+            // USDC/USDT out to the user's on-chain address -> settle.
+            PHP_TO_STABLECOIN: {
+
+                description:
+                    "Converts a user's PHP ledger balance to USDC/USDT. Debits PHP first, then sends the stablecoin from treasury to the user's on-chain address, then settles pool balances.",
+
+                entryStages: [],
+
+                stages: [
+                    "DEBIT",
+                    "SEND",
+                    "SETTLE"
+                ],
+
+                terminalExits: [
+                    "CANCELLED",
+                    "FAILED"
+                ]
+
             }
 
         };

@@ -14,11 +14,25 @@ export async function wireBrainBus() {
     }
 
     try {
-        const { default: incidentEngine } = await import("../services/operator/incidentEngine.js");
-        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
-            console.log(`[BrainBus] → Operator: incident ${envelope.payload.type} for ${envelope.payload.flowId}`);
+        const { default: eventStreamService } = await import("../services/eventStreamService.js");
+        brainBus.on(Channels.OPERATOR_INCIDENT, async (envelope) => {
+            const p = envelope.payload || {};
+            console.log(`[BrainBus] -> Operator: incident ${p.type || p.code || "unknown"} for ${p.flowId || p.address || p.orderId || "unknown"}`);
+
+            try {
+                await eventStreamService.emit("operator.incident", {
+                    severity: p.severity || "WARNING",
+                    diagnosis: p.diagnosis || p.title || p.summary || p.message || "No details provided",
+                    recommendation: p.recommendation || "Review in Inspector dashboard.",
+                    source: p.source || envelope.meta?.source || "brainBus",
+                    orderId: p.orderId || p.address || p.flowId || null,
+                    createdAt: new Date(),
+                });
+            } catch (err) {
+                console.error("[BrainBus] Failed to forward incident to eventStreamService:", err.message);
+            }
         });
-        console.log("[BrainBus] ✓ Operator subscriber wired");
+        console.log("[BrainBus] ✓ Operator subscriber wired (forwarding to eventStreamService)");
     } catch (e) {
         console.warn("[BrainBus] ⚠ Operator not available:", e.message);
     }

@@ -3,6 +3,9 @@ import walletService from "../services/walletService.js";
 import { settleCryptoWithdrawal, exceedsAutoApproveLimit } from "../services/withdrawalProcessor.js";
 import { estimateNetworkFee } from "../services/treasury/gasEstimationService.js";
 import inspector from "../services/blockchain/inspector/blockchainInspector.js";
+import Wallet from "../models/walletModel.js";
+import { scanAddress } from "../services/compliance/BlockchainObserver.js";
+import { isAddressHalted } from "../services/compliance/RiskScoreConsumer.js";
 
 // Only assets/chains we actually have treasury infrastructure for right
 // now (real private keys + contract addresses in treasurySendService.js).
@@ -109,6 +112,27 @@ export async function createCryptoWithdrawal(req, res) {
         error: `Withdrawal amount too small to cover fees. Amount: ${parsedAmount} ${asset}, fees: ${totalFee.toFixed(6)} ${asset} (network: ${networkFee.toFixed(6)}, platform: ${platformFee.toFixed(6)}).`
       });
 
+    // ── Compliance scan for sender and receiver ──────────────────────
+    const walletDoc = await Wallet.findOne({ userId: req.user.id });
+    const senderAddress = walletDoc?.chainAddresses?.find(c => c.chain === network)?.address;
+
+    // ── Halt check before proceeding ──────────────────────────────
+    // senderAddress must be resolved above before this check runs — it
+    // was previously referenced here before its declaration, which threw
+    // "Cannot access 'senderAddress' before initialization" on every
+    // single crypto withdrawal request.
+    if (isAddressHalted(senderAddress) || isAddressHalted(normalizedAddress)) {
+      return res.status(403).json({
+        success: false,
+        error: "Transaction blocked by compliance – address flagged for review."
+      });
+    }
+    // ──────────────────────────────────────────────────────────────
+    if (senderAddress) {
+      scanAddress(senderAddress).catch(err => console.error("[Compliance] scanAddress sender failed:", err.message));
+    }
+    scanAddress(normalizedAddress).catch(err => console.error("[Compliance] scanAddress receiver failed:", err.message));
+    // ─────────────────────────────────────────────────────────────────
     const withdrawal = await WithdrawalRequest.create({
       userId: req.user.id,
       type: "crypto",
