@@ -98,7 +98,6 @@ import remittanceRoutes from "./src/routes/remittanceRoutes.js";
 import p2pRoutes from "./src/routes/p2pRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import internalWalletRoutes from "./src/routes/internalWalletRoutes.js";
-import webhookRoutes from "./src/routes/webhookRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
 import payoutRoutes from "./src/routes/payoutRoutes.js";
 import backgroundRoutes from "./src/routes/backgroundRoutes.js";
@@ -190,7 +189,6 @@ app.use("/api/v1/maribank", maribankNotifyRoute);
 
 app.use("/api/v1/internal-wallets", internalWalletRoutes);
 
-app.use("/api/v1/webhooks", webhookRoutes);
 
 app.use("/api/v1/maya", mayaNotifyRoute);
 
@@ -239,6 +237,18 @@ app.get("/login", (req, res) => {
 const distIndex = path.join(__dirname, "dist", "index.html");
 
 app.use("/api/history", historyRoute);
+
+// Hashed build assets (JS/CSS chunks) must 404 as real 404s, never fall
+// through to the SPA shell. Without this, a stale index.html referencing
+// an asset hash that no longer exists in dist/assets/ gets "fixed" by
+// silently serving index.html with a JS/CSS content-type mismatch —
+// which is exactly the "Expected a JavaScript module but server
+// responded with text/html" MIME error. Failing loud here turns that
+// into a visible 404 instead of a blank white page.
+app.get(/^\/assets\/.*/, (req, res) => {
+    res.status(404).end();
+});
+
 app.get("/{*path}", (req, res) => {
     if (existsSync(distIndex)) {
         return res.sendFile(distIndex);
