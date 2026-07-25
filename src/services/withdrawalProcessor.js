@@ -27,6 +27,18 @@ export function exceedsAutoApproveLimit(withdrawal) {
 export async function settleCryptoWithdrawal(withdrawal) {
   const flowId = `WD-${withdrawal._id}`;
 
+  // ── BrainBus: wake event-driven watchers (recoveryWorker, blockchainEngine)
+  // — plain channel name, separate from the Inspector's structured
+  // INSPECTOR_FLOW_* channels below, which power the UI timeline but are
+  // not what those watchers listen for.
+  brainBus.emit("withdrawal.started", {
+    withdrawalId: withdrawal._id.toString(),
+    userId: withdrawal.userId,
+    asset: withdrawal.asset,
+    network: withdrawal.network,
+    amount: withdrawal.amount
+  }, { source: "WithdrawalProcessor", correlationId: flowId });
+
   // ── BrainBus: flow started ──────────────────────────────────────────
   brainBus.emit(Channels.INSPECTOR_FLOW_STARTED, {
     flowId,

@@ -12,6 +12,7 @@ import { KATANA_ROUTER_ABI, ERC20_ABI,
 import { verifyOrder, calcMinOutput }           from "./flowerVerificationService.js";
 import { recordPendingOperation, setPendingOperationAmount } from "../blockchain/pendingOperationService.js";
 import { withLock } from "../utils/asyncMutex.js";
+import brainBus from "../../brainbus/brainBus.js";
 
 
 import { settle }                               from "./flowerSettlementService.js";
@@ -26,6 +27,10 @@ const {
 
 // ── Main entry — called by watcher after VERIFIED ────────────────────────────
 export async function processSwap(orderId) {
+  // ── BrainBus: wake event-driven watchers (recoveryWorker, blockchainEngine)
+  // — they listen for this plain channel name specifically.
+  brainBus.emit("swap.created", { orderId, direction: "FLOWER_TO_USDC" }, { source: "FlowerSwapService" });
+
   // 1. Verify order state + get live quote
   const { order, receivedAmount, quote, minOutputRaw } =
     await verifyOrder(orderId);
@@ -134,6 +139,10 @@ export async function processSwap(orderId) {
 }
 
 export async function processReverseSwap(orderId) {
+  // ── BrainBus: wake event-driven watchers — same channel as the forward
+  // swap; watchers just need to know a swap is in flight, not which direction.
+  brainBus.emit("swap.created", { orderId, direction: "USDC_TO_FLOWER" }, { source: "FlowerSwapService" });
+
   const order = await FlowerOrder.findOne({ orderId });
   if (!order) throw new Error(`Order not found: ${orderId}`);
   if (order.status !== "SWAPPING") {
@@ -166,7 +175,12 @@ export async function processReverseSwap(orderId) {
     if (expectedFlowerOut <= 0n) throw new Error("Katana returned zero quote for reverse swap");
     const minOutputRaw = calcMinOutput(expectedFlowerOut);
 
-    const bal = await usdc.balanceOf(signer.address);
+    let bal = await usdc.balanceOf(signer.address);
+    for (let attempt = 1; bal < amountInWei && attempt <= 3; attempt++) {
+      console.warn(`[FlowerSwap] ${orderId} - treasury USDC read short, retry ${attempt}/3 in 1.5s`);
+      await new Promise((r) => setTimeout(r, 1500));
+      bal = await usdc.balanceOf(signer.address);
+    }
     if (bal < amountInWei) {
       throw new Error(`Treasury USDC balance ${ethers.formatUnits(bal, 6)} < ${usdcAmount}`);
     }

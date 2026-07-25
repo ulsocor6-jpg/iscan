@@ -118,6 +118,8 @@ import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js"
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
 import userToolsRoutes from "./src/routes/userToolsRoutes.js";
+import historyRoute from "./src/routes/historyRoute.js";
+import debugRoute from "./debugRoute.js";
 
 /* ===========================
    Health
@@ -126,6 +128,11 @@ import userToolsRoutes from "./src/routes/userToolsRoutes.js";
 app.get("/__health", (req, res) => {
     res.json({ ok: true });
 });
+
+// TODO: move behind adminAuthGuard before this goes anywhere near
+// production traffic — currently unauthenticated, fine for local
+// debugging only.
+app.get("/api/debug/brainbus-dump", debugRoute);
 
 /* ===========================
    API
@@ -231,6 +238,7 @@ app.get("/login", (req, res) => {
 
 const distIndex = path.join(__dirname, "dist", "index.html");
 
+app.use("/api/history", historyRoute);
 app.get("/{*path}", (req, res) => {
     if (existsSync(distIndex)) {
         return res.sendFile(distIndex);

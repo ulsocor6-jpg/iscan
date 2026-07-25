@@ -88,6 +88,12 @@ class BrainBus {
             }
         }
         console.log("");
+
+        return {
+            started: this._started,
+            channelCount: channels.length,
+            channels
+        };
     }
 }
 
