@@ -11,7 +11,6 @@ import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.
 // import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
 import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
 import { startWalletBalanceSyncWorker } from "./src/services/blockchain/workers/walletBalanceSyncWorker.js";
-import { startBaseStableListener } from "./src/services/blockchain/baseStableListener.js";
 import { startTronListener } from "./src/services/blockchain/tronListener.js";
 import withdrawalExpiryService from "./src/services/withdrawalExpiryService.js";
 import eventRetentionService from "./src/services/eventRetentionService.js";
@@ -195,15 +194,8 @@ intelligenceCore.report({
       console.error("Wallet balance sync worker failed to start (continuing anyway):", err.message);
     }
 
-    // Without this, Base USDT deposits are not detected by anything —
-    // the general blockchainEngine collector only has BASE_USDC_TOKEN and
-    // BASE_DEPOSIT_TOKEN (FLOWER) registered in bootstrap.js. USDT on Base
-    // is this listener's job alone.
-    try {
-      startBaseStableListener();
-    } catch (err) {
-      console.error("Base stable listener failed to start (continuing anyway):", err.message);
-    }
+    // baseStableListener retired — USDT now covered by blockchainEngine.js
+    // (see bootstrap.js). USDC was always duplicated between the two.
 
     // Only Tron USDT detection path in the codebase — was never called
     // anywhere despite being fully implemented (see tronListener.js).

@@ -26,6 +26,7 @@ import flowerBaseRetryWorker from "./workers/flowerBaseRetryWorker.js";
 import flowerDepositWatcher from "./workers/flowerDepositWatcher.js";
 import flowerRoninRetryWorker from "./workers/flowerRoninRetryWorker.js";
 import flowerOrderCleanupWorker from "./workers/flowerOrderCleanupWorker.js";
+import healthRegistry from "../../intelligence/healthRegistry.js";
 
 class BlockchainBootstrap {
 
@@ -74,6 +75,13 @@ class BlockchainBootstrap {
                 address: process.env.BASE_DEPOSIT_TOKEN,
                 symbol: "FLOWER",
                 decimals: 18
+            },
+
+            {
+                chain: "base",
+                address: process.env.BASE_USDT_TOKEN,
+                symbol: "USDT",
+                decimals: 6
             },
 
             {
@@ -130,7 +138,9 @@ class BlockchainBootstrap {
 
                 process.env.BASE_USDC_TOKEN,
 
-                process.env.BASE_DEPOSIT_TOKEN
+                process.env.BASE_DEPOSIT_TOKEN,
+
+                process.env.BASE_USDT_TOKEN
 
             ].filter(Boolean)
 
@@ -153,6 +163,10 @@ class BlockchainBootstrap {
             ].filter(Boolean)
 
         });
+
+        // baseStableListener.js retired — USDT coverage folded into
+        // blockchainEngine.js above (was the only gap it filled; USDC
+        // was always duplicated). No longer imported in server.js.
 
         /*
         ----------------------------------------
