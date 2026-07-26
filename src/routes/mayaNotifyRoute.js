@@ -1,24 +1,20 @@
 import express from "express";
 import crypto from "crypto";
+import brainBus from "../brainbus/brainBus.js";
 import { parseMayaNotification } from "../parsers/mayaNotificationParser.js";
 import processTransaction from "../core/processTransaction.js";
-import verificationEngine from "../services/verification/VerificationEngine.js";
 import phpDepositWatcher from "../services/php/PhpDepositWatcher.js";
 import deduplicationService from "../services/ingestion/deduplicationService.js";
 import inspectorService from "../services/inspectorService.js";
 import { InspectorStage } from "../inspector/inspectorConstants.js";
-import brainBus from "../brainbus/brainBus.js";
-import Channels from "../brainbus/channels.js";
 
 const router = express.Router();
 
-// ── Static header secret ─────────────────────────────────────────
 if (!process.env.MAYA_SECRET) {
   throw new Error("MAYA_SECRET is not set.");
 }
 const MAYA_SECRET = process.env.MAYA_SECRET;
 
-// ── HMAC secret (fallback for non‑operation mode) ────────────────
 if (!process.env.ANDROID_PHP_SECRET) {
   throw new Error("ANDROID_PHP_SECRET is not set.");
 }
@@ -43,7 +39,6 @@ function verifyAndroidSignature(userId, title, text, timestamp, receivedSignatur
 }
 
 router.post("/notify", async (req, res) => {
-  // ── Header check ────────────────────────────────────────────────
   const secret = req.headers["x-maya-secret"];
   if (secret !== MAYA_SECRET) {
     console.warn("[Maya Webhook] Rejected — secret mismatch");
@@ -60,9 +55,7 @@ router.post("/notify", async (req, res) => {
     return res.status(401).json({ error: "Missing authentication fields" });
   }
 
-  // ── Legacy HMAC check (ONLY for non‑operation requests) ────────
-  // If operationId is provided, skip this – the watcher will verify using
-  // the operation‑specific secret.
+  // ── Legacy HMAC check (ONLY if operationId is NOT provided) ──────
   if (!operationId) {
     const isValid = verifyAndroidSignature(userId, title, text, timestamp, signature);
     if (!isValid) {
@@ -73,7 +66,6 @@ router.post("/notify", async (req, res) => {
 
   console.log(`[Maya Webhook] Received — title: "${title}" | text: "${text}"`);
 
-  // ── Parse notification ──────────────────────────────────────────
   const transaction = parseMayaNotification({
     title: title || "",
     text: text || "",
@@ -100,7 +92,6 @@ router.post("/notify", async (req, res) => {
 
   transaction.userId = userId;
 
-  // ── Start Inspector flow ────────────────────────────────────────
   const flow = await inspectorService.startFlow({
     pipeline: "PHP_DEPOSIT",
     source: "MAYA",
@@ -115,6 +106,7 @@ router.post("/notify", async (req, res) => {
     operationId,
   });
   const flowId = flow.flowId;
+  brainBus.emit("deposit.created", { flowId, userId, source: "MAYA" });
 
   await inspectorService.startStage(flowId, InspectorStage.WATCHER, { title, text });
   await inspectorService.finishStage(flowId, InspectorStage.WATCHER, {
@@ -134,7 +126,6 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "PARSED_OK" },
   });
 
-  // ── Dedup stage ──────────────────────────────────────────────────
   await inspectorService.startStage(flowId, "DEDUP", { transaction });
 
   const eventId = deduplicationService.createHash({ title, text });
@@ -162,7 +153,6 @@ router.post("/notify", async (req, res) => {
     decision: { reason: "NEW_EVENT" },
   });
 
-  // ── Process using the dedicated watcher ─────────────────────────
   const watcherResult = await phpDepositWatcher.processNotification({
     source: "MAYA",
     userId,
@@ -179,7 +169,6 @@ router.post("/notify", async (req, res) => {
   });
 
   if (!watcherResult.success) {
-    // Map status to HTTP response
     if (watcherResult.status === "verification_failed") {
       return res.status(400).json({ status: "verification_failed", reason: watcherResult.message });
     }
