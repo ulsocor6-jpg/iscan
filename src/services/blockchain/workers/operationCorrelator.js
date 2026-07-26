@@ -1,5 +1,5 @@
 import BlockchainInbox from "../../../models/blockchain/blockchainInboxModel.js";
-import PendingOperation from "../../../models/blockchain/pendingOperationModel.js";
+import PendingOperation from "../../../models/blockchain/operationTaskModel.js";
 
 import inspector from "../inspector/blockchainInspector.js";
 import executorRouter from "../executors/executorRouter.js";

@@ -1,4 +1,4 @@
-import PendingOperation from "../../models/blockchain/pendingOperationModel.js";
+import PendingOperation from "../../models/blockchain/operationTaskModel.js";
 
 /*
 |--------------------------------------------------------------------------
