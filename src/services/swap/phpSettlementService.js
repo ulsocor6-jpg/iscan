@@ -7,6 +7,7 @@ import Wallet from '../../models/walletModel.js';
 import walletService from '../walletService.js';
 import Transaction from '../../models/transactionModel.js';
 import inspector from '../blockchain/inspector/blockchainInspector.js';
+import inspectorService from '../inspectorService.js';
 
 // Treasury wallets checked for real-time on-chain reconciliation. PHP has
 // no on-chain equivalent and is intentionally excluded — its pool is
@@ -70,6 +71,20 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     throw new Error('chain is required for stablecoin swaps (base|ronin) — refusing to guess where the user\'s balance lives');
   }
 
+  // flowId reuses txRef (already shared with FeeRecord/Transaction on this
+  // same swap) so Swap Inspector, reasoningEngine, and rootCauseClassifier
+  // all key off the one id an operator already sees elsewhere, instead of
+  // a second parallel "INS-..." id for the same swap attempt.
+  await inspectorService.startFlow({
+    flowId: txRef,
+    pipeline: "STABLECOIN_TO_PHP",
+    source: "PHP_SWAP",
+    transactionType: "swap",
+    referenceId: txRef,
+    amount: stablecoinAmount,
+    currency,
+  });
+
   const rate   = await getUSDPHPRate(chain, stablecoinAmount);
   const phpOut = stablecoinAmount * rate;
 
@@ -79,14 +94,24 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
   if (!phpPool.canFulfill(phpOut))
     throw new Error(`Insufficient PHP liquidity. Available: ₱${phpPool.available.toFixed(2)}`);
 
-  if (stablePool.balance < stablecoinAmount)
-    throw new Error(`Insufficient ${currency} in pool`);
+  // NOTE: no stablePool.balance pre-check here on purpose. In this
+  // direction (Crypto -> PHP) the user's stablecoin is INCOMING — it
+  // gets swept into treasury later in this function (SWEEP /
+  // SWEEP_CONFIRM), and stablePool.balance is only credited with
+  // += stablecoinAmount after that sweep confirms. Requiring the pool
+  // to already hold that balance before the sweep happens blocked
+  // legitimate swaps whenever on-chain treasury stablecoin was
+  // temporarily low, unrelated to this swap's own ability to succeed.
+  // The only balance that legitimately gates this direction is PHP
+  // liquidity, checked above via phpPool.canFulfill(phpOut).
 
   // Lock PHP reserve
   phpPool.reserved += phpOut;
   await phpPool.save();
 
   try {
+    await inspectorService.startStage(txRef, "BALANCE_CHECK", { userId, currency, chain, claimedAmount: stablecoinAmount });
+
     // No internal-ledger pre-check here on purpose. The only balance that
     // matters for a real crypto sweep is what's actually on-chain — the
     // check right below this does that. An internal ledger figure can be
@@ -95,16 +120,24 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     // (e.g. a user with 0.91 USDC on-chain but a near-zero internal
     // ledger number was refused before the on-chain check ever ran).
     const wallet = await Wallet.findOne({ userId });
-    if (!wallet) throw new Error(`No wallet found for user ${userId}`);
+    if (!wallet) {
+      const err = new Error(`No wallet found for user ${userId}`);
+      await inspectorService.failStage(txRef, "BALANCE_CHECK", err.message);
+      throw err;
+    }
     const chainEntry = wallet.chainAddresses?.find(
       c => c.chain?.toLowerCase() === chain.toLowerCase()
     );
     if (!chainEntry?.address) {
-      throw new Error(`No ${chain} address on file for user ${userId}`);
+      const err = new Error(`No ${chain} address on file for user ${userId}`);
+      await inspectorService.failStage(txRef, "BALANCE_CHECK", err.message);
+      throw err;
     }
     const onChainBalance = await getTokenBalance(chain.toUpperCase(), chainEntry.address, currency);
     if (onChainBalance === null) {
-      throw new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
+      const err = new Error(`${currency} not supported on ${chain} — cannot verify on-chain balance`);
+      await inspectorService.failStage(txRef, "BALANCE_CHECK", err.message);
+      throw err;
     }
     if (onChainBalance < stablecoinAmount) {
       inspector.error("php-settlement", `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency}, claims ${stablecoinAmount}`, {
@@ -113,10 +146,14 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
         onChainBalance, claimedAmount: stablecoinAmount,
         step: "balance-check",
       });
-      throw new Error(
+      const err = new Error(
         `On-chain balance mismatch for user ${userId}: has ${onChainBalance} ${currency} on-chain, claims ${stablecoinAmount}. Refusing to credit PHP against unbacked balance.`
       );
+      await inspectorService.failStage(txRef, "BALANCE_CHECK", err.message, { output: { onChainBalance, claimedAmount: stablecoinAmount } });
+      throw err;
     }
+
+    await inspectorService.finishStage(txRef, "BALANCE_CHECK", { output: { onChainBalance } });
 
     // Sweep FIRST. PHP must never be ledger-credited until the user's
     // real stablecoin has actually landed in treasury on-chain. This used
@@ -124,8 +161,12 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     // let PHP get paid out against stablecoin that was never actually
     // collected (e.g. Ronin sweeps silently no-op'ing on a bad chain
     // default). Now: no confirmed sweep => no PHP, nothing settled.
+    await inspectorService.startStage(txRef, "SWEEP", { chain, currency, amount: stablecoinAmount });
+
     if (wallet.walletIndex === undefined || wallet.walletIndex === null) {
-      throw new Error(`No walletIndex on file for user ${userId} — cannot sweep`);
+      const err = new Error(`No walletIndex on file for user ${userId} — cannot sweep`);
+      await inspectorService.failStage(txRef, "SWEEP", err.message);
+      throw err;
     }
 
     let sweepResult;
@@ -140,8 +181,13 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
       inspector.error("php-settlement", `Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`, {
         orderId: txRef, userId, chain, currency, amount: stablecoinAmount, step: "sweep",
       });
-      throw new Error(`Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`);
+      const err = new Error(`Sweep failed for ${userId} on ${chain}: ${sweepErr.message}`);
+      await inspectorService.failStage(txRef, "SWEEP", err.message);
+      throw err;
     }
+
+    await inspectorService.finishStage(txRef, "SWEEP", { output: { txHash: sweepResult?.txHash, swept: sweepResult?.swept } });
+    await inspectorService.startStage(txRef, "SWEEP_CONFIRM", { expected: stablecoinAmount });
 
     if (!sweepResult?.txHash || sweepResult.swept < stablecoinAmount) {
       inspector.error("php-settlement", `Sweep did not confirm expected amount for ${userId} on ${chain}: swept ${sweepResult?.swept ?? 0}, expected ${stablecoinAmount}`, {
@@ -149,9 +195,11 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
         swept: sweepResult?.swept ?? 0, expected: stablecoinAmount,
         step: "sweep-confirm",
       });
-      throw new Error(
+      const err = new Error(
         `Sweep did not confirm expected amount for ${userId} on ${chain}: swept ${sweepResult?.swept ?? 0}, expected ${stablecoinAmount}. Refusing to credit PHP.`
       );
+      await inspectorService.failStage(txRef, "SWEEP_CONFIRM", err.message, { output: { swept: sweepResult?.swept ?? 0, expected: stablecoinAmount } });
+      throw err;
     }
 
     inspector.success("php-settlement", `Sweep confirmed for ${userId}`, {
@@ -159,7 +207,10 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
       swept: sweepResult.swept, txHash: sweepResult.txHash,
       step: "sweep-confirm",
     });
+    await inspectorService.finishStage(txRef, "SWEEP_CONFIRM", { output: { txHash: sweepResult.txHash } });
     console.log(`[swap] sweep confirmed for ${userId}:`, sweepResult);
+
+    await inspectorService.startStage(txRef, "SETTLE", { phpOut, rate });
 
     // Only now that the on-chain sweep is confirmed do we touch ledgers.
     await walletService.debit(userId, currency, stablecoinAmount);
@@ -192,6 +243,9 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
     });
     console.log(`[swap] ${stablecoinAmount} ${currency} → ₱${phpOut.toFixed(2)} for ${userId}`);
 
+    await inspectorService.finishStage(txRef, "SETTLE", { output: { phpOut } });
+    await inspectorService.finishFlow(txRef);
+
     return { phpOut, rate, txRef, sweepTxHash: sweepResult.txHash };
 
   } catch (err) {
@@ -203,6 +257,16 @@ export async function settleStablecoinToPHP({ userId, stablecoinAmount, currency
 
 // PHP → USDT/USDC
 export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USDT', txRef, chain = 'base' }) {
+  await inspectorService.startFlow({
+    flowId: txRef,
+    pipeline: "PHP_TO_STABLECOIN",
+    source: "PHP_SWAP",
+    transactionType: "swap",
+    referenceId: txRef,
+    amount: phpAmount,
+    currency: "PHP",
+  });
+
   // Rough USD size of this swap (no gas adjustment) just to scale the
   // gas cost proportionally — small swaps shouldn't eat a flat gas fee.
   const baseRate = await getPHPUSDRate();
@@ -216,19 +280,33 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
   const phpPool    = await getPool('PHP');
   const stablePool = await getPool(currency);
 
-  if (stablePool.balance < usdtOut)
-    throw new Error(`Insufficient ${currency} liquidity. Available: ${stablePool.balance.toFixed(2)}`);
+  await inspectorService.startStage(txRef, "DEBIT", { phpAmount, currency, usdtOut });
+
+  if (stablePool.balance < usdtOut) {
+    const err = new Error(`Insufficient ${currency} liquidity. Available: ${stablePool.balance.toFixed(2)}`);
+    await inspectorService.failStage(txRef, "DEBIT", err.message);
+    throw err;
+  }
 
   // Deduct PHP from user
   const phpBal = await walletService.getBalance(userId, "PHP");
-  if (phpBal < phpAmount)
-    throw new Error('Insufficient PHP balance');
+  if (phpBal < phpAmount) {
+    const err = new Error('Insufficient PHP balance');
+    await inspectorService.failStage(txRef, "DEBIT", err.message, { output: { phpBal, phpAmount } });
+    throw err;
+  }
 
   await walletService.debit(userId, "PHP", phpAmount);
+  await inspectorService.finishStage(txRef, "DEBIT", { output: { phpBal, phpAmount } });
 
   try {
+    await inspectorService.startStage(txRef, "SEND", { currency, usdtOut, chain });
+
     // Credit stablecoin to user
-    await sendStablecoinToUser({ userId, amount: usdtOut, currency, txRef });
+    const sendResult = await sendStablecoinToUser({ userId, amount: usdtOut, currency, txRef });
+
+    await inspectorService.finishStage(txRef, "SEND", { output: { txHash: sendResult?.txHash, toAddress: sendResult?.toAddress } });
+    await inspectorService.startStage(txRef, "SETTLE", { phpAmount, usdtOut });
 
     // Settle pools
     phpPool.balance          += phpAmount;
@@ -256,10 +334,27 @@ export async function settlePHPToStablecoin({ userId, phpAmount, currency = 'USD
       step: "settled",
     });
     console.log(`[swap] ₱${phpAmount} → ${usdtOut.toFixed(6)} ${currency} for ${userId}`);
+
+    await inspectorService.finishStage(txRef, "SETTLE", { output: { usdtOut } });
+    await inspectorService.finishFlow(txRef);
+
     return { usdtOut, rate, txRef };
 
   } catch (err) {
-    await walletService.credit(userId, "PHP", phpAmount);
+    // SEND is the risky stage here — if sendStablecoinToUser threw AFTER
+    // broadcasting a tx (e.g. timeout waiting for confirmation, not a
+    // real failure to send), blindly refunding PHP here could double-pay
+    // the user once the original send confirms late. failStage records
+    // the real error either way; only refund if SEND never produced a
+    // txHash we'd be refunding against.
+    const flow = await inspectorService.getFlow(txRef);
+    const sendStage = flow?.stages?.find(s => s.name === "SEND");
+    if (!sendStage?.output?.txHash) {
+      await inspectorService.failStage(txRef, sendStage?.status === "RUNNING" ? "SEND" : "DEBIT", err.message);
+      await walletService.credit(userId, "PHP", phpAmount);
+    } else {
+      await inspectorService.failStage(txRef, "SETTLE", err.message);
+    }
     throw err;
   }
 }
