@@ -6,20 +6,18 @@ import inspectorBridge from "../brainbus/inspectorBridge.js";
 class InspectorService {
 
     async startFlow({
+        flowId = null,
         pipeline,
         source,
         transactionType,
         referenceId = null,
         amount = null,
         currency = null,
-        sender = null,
-        senderPhone = null,
-        senderLastFour = null,
-        rawNotification = null,
-        parsedNotification = null
+        ...rest
     }) {
 
-        const flowId =
+        const finalFlowId =
+            flowId ||
             "INS-" +
             Date.now() +
             "-" +
@@ -27,7 +25,7 @@ class InspectorService {
 
         const flow = await Inspector.create({
 
-            flowId,
+            flowId: finalFlowId,
 
             pipeline,
 
@@ -41,15 +39,7 @@ class InspectorService {
 
             currency,
 
-            sender,
-
-            senderPhone,
-
-            senderLastFour,
-
-            rawNotification,
-
-            parsedNotification,
+            ...rest,
 
             status: "RUNNING",
 
