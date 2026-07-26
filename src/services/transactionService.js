@@ -1,4 +1,4 @@
-import Ledger from '../models/ledgerModel.js';import Transaction from '../models/transactionModel.js';import Wallet from '../models/walletModel.js';import WalletService from './walletService.js';import crypto from 'crypto';import { ethers } from 'ethers';import { deriveBaseAddress, deriveRoninAddress } from './hdWalletService.js';import { getTokenBalance } from './onchainBalanceService.js';import { estimateGasCostUSD } from './fx/gasEstimator.js';import FeeRecord from '../models/feeModel.js';
+import Ledger from '../models/ledgerModel.js';import Transaction from '../models/transactionModel.js';import Wallet from '../models/walletModel.js';import WalletService from './walletService.js';import crypto from 'crypto';import { ethers } from 'ethers';import { deriveBaseAddress, deriveRoninAddress } from './hdWalletService.js';import { getTokenBalance } from './onchainBalanceService.js';import { estimateGasCostUSD } from './fx/gasEstimator.js';import FeeRecord from '../models/feeModel.js';import { isAddressHalted } from './compliance/RiskScoreConsumer.js';import brainBus from '../brainbus/brainBus.js';
 
 const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)','function decimals() view returns (uint8)',];
 
@@ -15,6 +15,13 @@ const treasurySigner = new ethers.Wallet(privateKey, provider);const topUpWei = 
 async function transferStablecoinOnChain({ senderWallet, receiverWallet, amount, asset, chain }) {const config = CHAIN_NATIVE_CONFIG[chain?.toLowerCase()];if (!config) throw new Error('Unsupported chain for on-chain transfer: ' + chain);
 
 const senderEntry = senderWallet.chainAddresses?.find(c => c.chain?.toLowerCase() === chain.toLowerCase());const receiverEntry = receiverWallet.chainAddresses?.find(c => c.chain?.toLowerCase() === chain.toLowerCase());if (!senderEntry?.address) throw new Error('Sender has no ' + chain + ' address');if (!receiverEntry?.address) throw new Error('Receiver has no ' + chain + ' address');
+
+// Compliance halt check — same isAddressHalted() enforcement as
+// withdrawals and sweeps. A flagged address's tokens must not move
+// anywhere, including peer-to-peer between two ISCAN users on-chain.
+if (isAddressHalted(senderEntry.address) || isAddressHalted(receiverEntry.address)) {
+  throw new Error('Transfer blocked by compliance \u2014 address flagged for review.');
+}
 
 const onChainBalance = await getTokenBalance(chain.toUpperCase(), senderEntry.address, asset);if (onChainBalance === null) throw new Error(asset + ' not supported on ' + chain);if (onChainBalance < amount) {throw new Error('On-chain balance mismatch: sender has ' + onChainBalance + ' ' + asset + ' on-chain, claims ' + amount);}
 
@@ -35,6 +42,7 @@ return { txHash: receipt.hash, amountToReceiver, gasCostUSD, chain };}
 class TransactionService {
 
 async transfer({senderId,receiverId,amount,asset = 'USDT',referenceId,chain = 'base'}) {
+  brainBus.emit("transaction.started", { referenceId, amount, asset });
 
 const txRef = referenceId || crypto.randomUUID();
 
@@ -217,6 +225,7 @@ async transitionTo(txId, newStatus, meta = {}) {
 }
 
 async markSettled(txId) {
+  brainBus.emit("transaction.settled", { txId });
   console.warn(
     `[TransactionService.markSettled] STUB CALLED - not implemented. txId=${txId}`
   );
@@ -224,6 +233,7 @@ async markSettled(txId) {
 }
 
 async markFailed(txId) {
+  brainBus.emit("transaction.failed", { txId });
   console.warn(
     `[TransactionService.markFailed] STUB CALLED - not implemented. txId=${txId}`
   );

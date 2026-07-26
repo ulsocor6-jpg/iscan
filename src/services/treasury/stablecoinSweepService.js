@@ -10,6 +10,7 @@
 
 import { ethers } from 'ethers';
 import { deriveRoninAddress, deriveBaseAddress } from '../hdWalletService.js';
+import { isAddressHalted } from '../compliance/RiskScoreConsumer.js';
 
 const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
@@ -96,6 +97,15 @@ export async function sweepStablecoinToTreasury({ chain, token, walletIndex, amo
   const derived = await config.deriveAddress(walletIndex);
   if (!derived?.privateKey) {
     throw new Error(`Could not derive private key for walletIndex ${walletIndex} on ${chain}`);
+  }
+
+  // Compliance halt check — a flagged address's funds must not move
+  // anywhere, including into treasury via sweep. This is the same
+  // isAddressHalted() check the withdrawal path already enforces.
+  if (isAddressHalted(derived.address)) {
+    throw new Error(
+      `Sweep blocked by compliance: ${derived.address} is flagged for review \u2014 funds cannot be moved until cleared.`
+    );
   }
 
   const provider = new ethers.JsonRpcProvider(config.rpcUrl());

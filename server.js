@@ -11,13 +11,13 @@ import { startTreasuryBalancer } from './src/services/treasury/treasuryBalancer.
 // import { startMariBankListener } from './src/services/ingestion/maribankEmailListener.js';
 import { startDepositExpiryWorker } from "./src/services/depositExpiryWorker.js";
 import { startWalletBalanceSyncWorker } from "./src/services/blockchain/workers/walletBalanceSyncWorker.js";
+import { startServices } from "./src/bootstrap/startServices.js";
 import { startTronListener } from "./src/services/blockchain/tronListener.js";
 import withdrawalExpiryService from "./src/services/withdrawalExpiryService.js";
 import eventRetentionService from "./src/services/eventRetentionService.js";
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
 import intelligenceCore from "./src/intelligence/intelligenceCore.js";
-import operatorSubscriber from "./src/services/operator/operatorSubscriber.js";
 import maribankNotifyRoute from './src/routes/maribankNotifyRoute.js';
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
 
@@ -194,6 +194,17 @@ intelligenceCore.report({
       console.error("Wallet balance sync worker failed to start (continuing anyway):", err.message);
     }
 
+    // Starts BlockchainObserver, OperationCorrelator, ComplianceInspector,
+    // and RiskScoreConsumer. Without this, isAddressHalted() (already
+    // checked in cryptoWithdrawalController.js) never has anything in its
+    // halt list — every withdrawal silently passes compliance regardless
+    // of actual risk. This is not optional infrastructure.
+    try {
+      startServices();
+    } catch (err) {
+      console.error("Compliance services failed to start (continuing anyway):", err.message);
+    }
+
     // baseStableListener retired — USDT now covered by blockchainEngine.js
     // (see bootstrap.js). USDC was always duplicated between the two.
 
@@ -217,7 +228,10 @@ intelligenceCore.report({
       console.error("Event retention service failed to start (continuing anyway):", err.message);
     }
     
-    operatorSubscriber.start();
+    // operatorSubscriber.start() now happens inside startServices() above —
+    // was previously called twice (here + inside startServices), which
+    // risks double-registered listeners depending on whether start() is
+    // idempotent.
 
     const PORT = process.env.PORT || 3000;
     app.use('/api/v1/maya', mayaNotifyRoute);
