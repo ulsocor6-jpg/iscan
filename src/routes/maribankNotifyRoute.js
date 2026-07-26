@@ -109,6 +109,7 @@ router.post("/notify", async (req, res) => {
     });
   }
   const flowId = flow.flowId;
+  brainBus.emit("deposit.created", { flowId, userId, source: "MARIBANK_ANDROID" });
 
   await inspectorService.startStage(flowId, InspectorStage.WATCHER, { title, text });
   await inspectorService.finishStage(flowId, InspectorStage.WATCHER, {

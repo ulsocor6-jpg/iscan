@@ -1,3 +1,4 @@
+import brainBus from '../brainbus/brainBus.js';
 import express from 'express';
 import crypto from 'crypto';
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
@@ -273,6 +274,7 @@ router.post('/cancel', requireAuth, async (req, res) => {
     try {
       const flow = await inspectorService.findRunningByReference(referenceId);
       if (flow) {
+        brainBus.emit("deposit.direct.flow_linked", { depositId: deposit._id, flowId: flow.flowId });
         await inspectorService.startStage(flow.flowId, "CANCELLED", { by: req.user.id });
         await inspectorService.finishStage(flow.flowId, "CANCELLED", {
           decision: { reason: "USER_CANCELLED" },
