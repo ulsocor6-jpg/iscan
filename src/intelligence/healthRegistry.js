@@ -1,3 +1,5 @@
+import { alertNodeStatusChange } from "../services/telegramAlertService.js";
+
 class HealthRegistry {
 
     constructor(){
@@ -47,6 +49,9 @@ class HealthRegistry {
         const current =
             this.nodes.get(node) || {};
 
+        const previousStatus =
+            current.status || null;
+
 
         const updated={
 
@@ -75,6 +80,12 @@ class HealthRegistry {
             node,
             updated
         );
+
+        if (previousStatus && previousStatus !== status) {
+            alertNodeStatusChange(updated, previousStatus).catch(err =>
+                console.error("[HealthRegistry] Failed to send status-change alert:", err.message)
+            );
+        }
 
 
         return updated;

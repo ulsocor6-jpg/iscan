@@ -18,8 +18,11 @@ import eventRetentionService from "./src/services/eventRetentionService.js";
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
 import intelligenceCore from "./src/intelligence/intelligenceCore.js";
+import inspectorRoutes from './src/routes/admin/inspectorRoutes.js';
 import maribankNotifyRoute from './src/routes/maribankNotifyRoute.js';
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
+import operatorRoutes from './src/routes/operator/operatorRoutes.js';
+import operatorActionsRoute from './src/routes/operator/operatorActionsRoute.js';
 
 
 
@@ -234,8 +237,11 @@ intelligenceCore.report({
     // idempotent.
 
     const PORT = process.env.PORT || 3000;
+    app.use('/api/v1/operator', operatorRoutes);
+    app.use('/api/v1/operator/actions', operatorActionsRoute);
     app.use('/api/v1/maya', mayaNotifyRoute);
     app.use('/api/v1/maribank', maribankNotifyRoute);
+    app.use('/api/admin/inspector', inspectorRoutes);
     app.listen(PORT, () => {
 
   console.log("ISCAN running on port", PORT);

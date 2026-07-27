@@ -43,4 +43,14 @@ export async function alertCashoutAwaitingRelease(cashout) {
   return sendTelegramAlert(text);
 }
 
-export default { sendTelegramAlert, alertCashoutAwaitingRelease };
+export async function alertNodeStatusChange(node, previousStatus) {
+  const icon = node.status === "ONLINE" ? "✅" : node.status === "WARNING" ? "⚠️" : "🚨";
+  const text =
+    `${icon} <b>${node.node}</b> ${previousStatus} → ${node.status}\n` +
+    (node.error ? `Error: ${node.error}\n` : "") +
+    `Type: ${node.type}\n` +
+    `Time: ${node.lastSeen.toLocaleString("en-PH")}`;
+  return sendTelegramAlert(text);
+}
+
+export default { sendTelegramAlert, alertCashoutAwaitingRelease, alertNodeStatusChange };
