@@ -6,11 +6,12 @@ import { Channels } from "../../brainbus/channels.js";
 const addressWindows = new Map();
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
-// Cleanup expired windows every 2 minutes
-setInterval(() => {
+let lastCleanup = 0;
+function cleanupWindows() {
   const now = Date.now();
+  if (now - lastCleanup < 120_000) return; // at most every 2 minutes
+  lastCleanup = now;
   for (const [addr, events] of addressWindows.entries()) {
-    // Keep only events within window
     const recent = events.filter(e => now - e.timestamp < WINDOW_MS);
     if (recent.length === 0) {
       addressWindows.delete(addr);
@@ -18,7 +19,7 @@ setInterval(() => {
       addressWindows.set(addr, recent);
     }
   }
-}, 120_000);
+}
 
 function correlateAndEmit(addr) {
   const events = addressWindows.get(addr);
@@ -76,6 +77,7 @@ brainBus.on(Channels.COMPLIANCE_TRANSACTION, (tx) => {
 
   // Emit correlated event immediately after adding (or we could debounce)
   correlateAndEmit(address);
+  cleanupWindows();
 });
 
 // Also handle 'from' addresses (outgoing)
@@ -90,6 +92,7 @@ brainBus.on(Channels.COMPLIANCE_TRANSACTION, (tx) => {
     direction: 'out',
   });
   correlateAndEmit(address);
+  cleanupWindows();
 });
 
 console.log("[OperationCorrelator] Listening on compliance:transaction");

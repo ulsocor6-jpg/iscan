@@ -1,5 +1,7 @@
+import brainBus from "../brainbus/brainBus.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import { archiveDeposit } from "./depositArchiveService.js";
+import healthRegistry from "../intelligence/healthRegistry.js";
 
 export async function expireDeposits() {
   const expired = await DirectDeposit.find({
@@ -34,10 +36,22 @@ export function startDepositExpiryWorker() {
     "[DepositExpiry] Worker started"
   );
 
-  expireDeposits();
+  healthRegistry.registerNode({ node: "depositExpiry", type: "worker" });
 
-  setInterval(
-    expireDeposits,
-    60 * 1000
-  );
+  healthRegistry.report({ node: "depositExpiry", status: "ONLINE" });
+
+  function tick() {
+    expireDeposits()
+      .then(() => {
+        healthRegistry.report({ node: "depositExpiry", status: "ONLINE", metrics: { lastRunAt: new Date() } });
+      })
+      .catch((err) => {
+        console.error("[DepositExpiry] Failed:", err.message);
+        healthRegistry.report({ node: "depositExpiry", status: "WARNING", error: err.message });
+      });
+  }
+
+  tick();
+
+  setInterval(tick, 60 * 1000);
 }

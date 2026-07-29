@@ -1,6 +1,8 @@
 import User from "../models/userModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import walletService from "../services/walletService.js";
+import brainBus from "../brainbus/brainBus.js";
+import Channels from "../brainbus/channels.js";
 import eventStreamService from "../services/eventStreamService.js";
 import DepositReview from "../models/depositReviewModel.js";
 import BankAccount from "../models/BankAccount.js";
@@ -30,7 +32,6 @@ export default async function processTransaction(raw) {
     });
     flowId = flow.flowId;
   } else {
-    // Update existing flow with parsed transaction data
     await inspectorService.startStage(flowId, InspectorStage.PROCESS_TRANSACTION, { amount, source, channel });
     await inspectorService.finishStage(flowId, InspectorStage.PROCESS_TRANSACTION, {
       result: { amount, channel, senderPhone, senderName },
@@ -96,15 +97,11 @@ export default async function processTransaction(raw) {
       };
       const bankAccount = await BankAccount.findOne(query).lean();
       if (bankAccount) { user = await User.findById(bankAccount.userId).lean(); matchMethod = "SENDER_NAME_LAST_FOUR"; }
+      brainBus.emit("deposit.matched", { flowId, userId: user._id, source });
     }
 
     let ambiguousAnonymous = false;
     if (!user && !senderPhone && !senderName) {
-      // Anonymous Maya deposit — fall back to amount matching against
-      // currently open MAYA deposit requests. Only ambiguous when two
-      // different users have an open request for the identical amount
-      // within the same ~3-minute window (requests are capped at one
-      // PENDING per user per channel by POST /deposit/request).
       const candidates = await DirectDeposit.find({
         status: "PENDING", channel: "MAYA", amount, expiresAt: { $gt: new Date() },
       }).lean();
@@ -184,17 +181,6 @@ export default async function processTransaction(raw) {
   const deposit = pendingDeposits[0];
 
   // ── Reconnect the original request-flow, if this one is an orphan ──────
-  // Android notifications almost never carry a referenceId (that's only
-  // ever present in the full email format), so the webhook/listener that
-  // received this event had nothing to match findRunningByReference()
-  // against up front and had to start a brand-new flow. Now that
-  // DEPOSIT_MATCH has told us the real deposit.referenceId, check whether
-  // a separate, still-RUNNING flow exists for it — the one created back
-  // when the user hit "Generate Deposit Reference" in the UI — and close
-  // it out too. Without this, that original flow sits stuck at RUNNING
-  // forever in the Inspector even though the deposit was actually
-  // credited correctly through this other flow, which reads as "nothing
-  // happened" when in fact everything worked.
   if (deposit.referenceId) {
     try {
       const originalFlow = await inspectorService.findRunningByReference(deposit.referenceId);
@@ -207,17 +193,11 @@ export default async function processTransaction(raw) {
         await inspectorService.finishFlow(originalFlow.flowId);
       }
     } catch (reconcileErr) {
-      // Purely cosmetic/observability — never let a failure here block
-      // the actual credit that's about to happen below.
       console.error("[processTransaction] Failed to reconcile original flow:", reconcileErr.message);
     }
   }
 
   // ── Step 3: VERIFIER ────────────────────────────────────────────────────
-  // Re-checks the specific deposit record right before we commit to it.
-  // DEPOSIT_MATCH already filtered on status/amount/expiry at query time,
-  // but time has passed since (DB round trip, event loop), so we verify
-  // the exact record is still eligible immediately before claiming it.
   await inspectorService.startStage(flowId, InspectorStage.VERIFIER, { depositId: deposit._id, expectedAmount: amount });
   const stillValid = deposit.status === "PENDING" && deposit.expiresAt > new Date() && deposit.amount === amount;
   if (!stillValid) {
@@ -255,9 +235,42 @@ export default async function processTransaction(raw) {
       transactionType: "cashin",
     });
     await archiveDeposit(claimed, "CREDITED", { creditedAt: new Date(), senderName, senderPhone });
+
+    // ── Treasury sync: add incoming amount to the matching provider account ──
+    try {
+      const treasuryCoordinator = (await import('../services/treasury/treasuryCoordinator.js')).default;
+      const providerMap = { MAYA: 'maya', MARI_BANK: 'maribank', GCASH: 'gcash' };
+      const provider = providerMap[source] || 'maya';
+      const accounts = await treasuryCoordinator.getLiveState('PHP');
+      const target = accounts.find(a => a.provider === provider && a.isActive !== false);
+      if (target) {
+        await treasuryCoordinator.updatePhysicalBalance(
+          target.id,
+          target.physicalBalance + claimed.amount,
+          'deposit'
+        );
+      }
+    } catch (treasuryErr) {
+      console.error('[processTransaction] Treasury sync failed:', treasuryErr.message);
+    }
+
     await inspectorService.finishStage(flowId, InspectorStage.LEDGER, {
       result: { credited: claimed.amount, referenceId: claimed.referenceId, userId: user._id },
       decision: { reason: "CREDITED" },
+    });
+
+    // Feed ConsensusService's android-side proof. NOTE: this file still
+    // credits directly above rather than waiting on consensus — this
+    // emission is currently for tracking/cross-checking only. If the
+    // intent is to gate crediting on dual-proof consensus, that requires
+    // a separate, deliberate change to the flow above (flagging for
+    // review, not silently changing money-movement behavior).
+    brainBus.emit(Channels.DEPOSIT_VERIFIED, {
+      depositId: claimed._id,
+      userId: user._id,
+      amount: claimed.amount,
+      reference: claimed.referenceId,
+      pool: channel,
     });
   } catch (creditErr) {
     await DirectDeposit.findOneAndUpdate({ _id: claimed._id }, { status: "PENDING" });
@@ -266,10 +279,6 @@ export default async function processTransaction(raw) {
   }
 
   // ── Step 6: WALLET ──────────────────────────────────────────────────────
-  // walletService.credit() writes the Ledger entry (source of truth for
-  // balance, via aggregation) and ensures the user's Wallet document
-  // exists. This stage makes that visible in the Inspector instead of it
-  // being an invisible side effect of the LEDGER step.
   await inspectorService.startStage(flowId, InspectorStage.WALLET, { userId: user._id });
   try {
     const newBalance = await walletService.getBalance(user._id.toString(), "PHP");
@@ -278,9 +287,6 @@ export default async function processTransaction(raw) {
       decision: { reason: "WALLET_BALANCE_CONFIRMED" },
     });
   } catch (walletErr) {
-    // Non-fatal: the credit already succeeded and is durable in the
-    // Ledger. This only means we couldn't confirm/display the resulting
-    // balance right now — surface it without failing the whole flow.
     await inspectorService.failStage(flowId, InspectorStage.WALLET, walletErr.message, {
       decision: { reason: "BALANCE_CONFIRM_FAILED_NON_FATAL" },
     });
@@ -313,6 +319,7 @@ export default async function processTransaction(raw) {
 }
 
 async function flagForReview(raw, reason, userId = null) {
+  brainBus.emit("deposit.flagged", { raw, reason, userId });
   try {
     await DepositReview.create({
       userId, chain: raw.source || "PHP", asset: "PHP",

@@ -1,5 +1,5 @@
 import express from "express";
-import { requireAuth as authGuard } from "../../middleware/authMiddleware.js";
+import { requireAuth as authGuard } from "../../auth/middleware/authMiddleware.js";
 import { quoteFlowerUsdtSwap, executeFlowerUsdtSwap } from "../../controllers/flower/flowerUsdtController.js";
 import {
   getFlowerWallet,

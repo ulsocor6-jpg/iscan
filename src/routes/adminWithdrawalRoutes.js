@@ -6,7 +6,7 @@ import {
   rejectWithdrawal,
   verifyCashout
 } from "../controllers/adminWithdrawalController.js";
-import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../auth/middleware/authMiddleware.js";
 
 const router = express.Router();
 

@@ -17,6 +17,7 @@ const STATUS_BG: Record<string,string> = {
 const STATUS_ICON: Record<string,string> = {
   HEALTHY:"✅", WARNING:"🟡", CRITICAL:"🔴", DEADLOCK:"⛔",
 };
+
 const CURRENCY_COLOR: Record<string,string> = {
   PHP:"#3b82f6", USDT:"#26a17b", USDC:"#2775ca",
 };
@@ -33,122 +34,214 @@ function sumByCurrency(arr: any[]) {
 }
 
 // ── Pool card ─────────────────────────────────────────────────────────────────
-function PoolCard({ pool, onTopup }: { pool: any; onTopup: (currency: string, amount: number) => void }) {
-  const [topupAmount, setTopupAmount] = useState("");
-  const [topping,     setTopping]     = useState(false);
-  const color = STATUS_COLOR[pool.status] ?? "#94a3b8";
-  const bg    = STATUS_BG[pool.status]    ?? "transparent";
-  const pct   = pool.ratio ?? 0;
 
-  async function handleTopup() {
-    const amt = parseFloat(topupAmount);
+// ── PoolCard with editable min threshold and accounts management ─────────
+function PoolCard({
+  pool,
+  accounts,
+  onAccountTopup,
+  onUpdateThreshold,
+  onUpdateAccount,
+}: {
+  pool: any;
+  accounts: any[];
+  onAccountTopup: (accountId: string, amount: number) => Promise<void>;
+  onUpdateThreshold: (currency: string, minThreshold: number) => Promise<void>;
+  onUpdateAccount: (accountId: string, data: any) => Promise<void>;
+}) {
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [topupAmounts, setTopupAmounts] = useState<Record<string, string>>({});
+  const [topping, setTopping] = useState<Record<string, boolean>>({});
+  const [editingThreshold, setEditingThreshold] = useState(false);
+  const [thresholdValue, setThresholdValue] = useState(pool.minThreshold);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editSafetyReserve, setEditSafetyReserve] = useState("");
+  const [editPhysicalBalance, setEditPhysicalBalance] = useState("");
+
+  const color = STATUS_COLOR[pool.status] ?? "#94a3b8";
+  const bg = STATUS_BG[pool.status] ?? "transparent";
+  const pct = pool.ratio ?? 0;
+
+  const handleAccountTopup = async (accountId: string) => {
+    const amt = parseFloat(topupAmounts[accountId] || "0");
     if (!amt || amt <= 0) return;
-    setTopping(true);
-    await onTopup(pool.currency, amt);
-    setTopupAmount("");
-    setTopping(false);
-  }
+    setTopping(prev => ({ ...prev, [accountId]: true }));
+    try {
+      await onAccountTopup(accountId, amt);
+      setTopupAmounts(prev => ({ ...prev, [accountId]: "" }));
+    } finally {
+      setTopping(prev => ({ ...prev, [accountId]: false }));
+    }
+  };
+
+  const saveThreshold = async () => {
+    const val = parseFloat(thresholdValue);
+    if (!isNaN(val) && val >= 0) {
+      await onUpdateThreshold(pool.currency, val);
+      setEditingThreshold(false);
+    }
+  };
+
+  const startEditAccount = (acc: any) => {
+    setEditingAccountId(acc._id);
+    setEditSafetyReserve(acc.safetyReserve.toString());
+    setEditPhysicalBalance(acc.physicalBalance.toString());
+  };
+
+  const saveAccount = async (accountId: string) => {
+    const data: any = {};
+    const sr = parseFloat(editSafetyReserve);
+    const pb = parseFloat(editPhysicalBalance);
+    if (!isNaN(sr)) data.safetyReserve = sr;
+    if (!isNaN(pb)) data.physicalBalance = pb;
+    if (Object.keys(data).length > 0) {
+      await onUpdateAccount(accountId, data);
+      setEditingAccountId(null);
+    }
+  };
 
   return (
-    <div style={{ background:"#0d1526", border:`1px solid ${color}40`, borderRadius:14, padding:24 }}>
+    <div style={{ background: "#0d1526", border: `1px solid ${color}40`, borderRadius: 14, padding: 24 }}>
       {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:10, height:10, borderRadius:"50%",
-            background: CURRENCY_COLOR[pool.currency] ?? "#94a3b8" }} />
-          <span style={{ fontSize:18, fontWeight:700, color:"white" }}>{pool.currency}</span>
-          <span style={{ fontSize:11, color:"#64748b" }}>Liquidity Pool</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: CURRENCY_COLOR[pool.currency] ?? "#94a3b8" }} />
+          <span style={{ fontSize: 18, fontWeight: 700, color: "white" }}>{pool.currency}</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Liquidity Pool</span>
         </div>
-        <div style={{ padding:"4px 12px", borderRadius:99, fontSize:12, fontWeight:700,
-          color, background:bg, border:`1px solid ${color}40` }}>
+        <div style={{ padding: "4px 12px", borderRadius: 99, fontSize: 12, fontWeight: 700, color, background: bg, border: `1px solid ${color}40` }}>
           {STATUS_ICON[pool.status]} {pool.status}
         </div>
       </div>
 
       {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
         {[
-          { label:"Total Balance", value: pool.balance?.toFixed(2),   color:"white"   },
-          { label:"Reserved",      value: pool.reserved?.toFixed(2),  color:"#f59e0b" },
-          { label:"Available",     value: pool.available?.toFixed(2), color:"#22c55e" },
+          { label: "Total Balance", value: pool.balance?.toFixed(2), color: "white" },
+          { label: "Reserved", value: pool.reserved?.toFixed(2), color: "#f59e0b" },
+          { label: "Available", value: pool.available?.toFixed(2), color: "#22c55e" },
         ].map(({ label, value, color: c }) => (
-          <div key={label} style={{ background:"#121b2f", borderRadius:10, padding:"10px 12px" }}>
-            <div style={{ fontSize:10, color:"#64748b", marginBottom:3,
-              textTransform:"uppercase" as const, letterSpacing:"0.06em" }}>{label}</div>
-            <div style={{ fontSize:16, fontWeight:700, color:c, fontFamily:"monospace" }}>{value ?? "—"}</div>
+          <div key={label} style={{ background: "#121b2f", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: c, fontFamily: "monospace" }}>{value ?? "—"}</div>
           </div>
         ))}
       </div>
 
-      {/* On-chain balance (live) — only for USDC/USDT, PHP has no chain equivalent */}
       {pool.onChainBalance !== null && pool.onChainBalance !== undefined && (
-        <div style={{ background:"#121b2f", borderRadius:10, padding:"10px 12px", marginBottom:14,
-          display:"flex", justifyContent:"space-between", alignItems:"center",
-          border: Math.abs(pool.onChainDiff ?? 0) > 0.01 ? "1px solid #f59e0b60" : "1px solid transparent" }}>
+        <div style={{ background: "#121b2f", borderRadius: 10, padding: "10px 12px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", border: Math.abs(pool.onChainDiff ?? 0) > 0.01 ? "1px solid #f59e0b60" : "1px solid transparent" }}>
           <div>
-            <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase" as const, letterSpacing:"0.06em" }}>
-              On-Chain Balance (live)
-            </div>
-            <div style={{ fontSize:15, fontWeight:700, color:"#60a5fa", fontFamily:"monospace" }}>
-              {pool.onChainBalance?.toFixed(6)}
-            </div>
+            <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>On-Chain Balance (live)</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#60a5fa", fontFamily: "monospace" }}>{pool.onChainBalance?.toFixed(6)}</div>
           </div>
           {Math.abs(pool.onChainDiff ?? 0) > 0.01 && (
-            <div style={{ fontSize:11, color:"#f59e0b", fontWeight:700 }}>
-              ⚠️ Δ {pool.onChainDiff > 0 ? "+" : ""}{pool.onChainDiff.toFixed(6)}
-            </div>
+            <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700 }}>⚠️ Δ {pool.onChainDiff > 0 ? "+" : ""}{pool.onChainDiff.toFixed(6)}</div>
           )}
         </div>
       )}
 
-      {/* Progress bar */}
-      <div style={{ marginBottom:14 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-          <span style={{ fontSize:11, color:"#64748b" }}>Available</span>
-          <span style={{ fontSize:11, color, fontWeight:700 }}>{pct}%</span>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+          <span style={{ fontSize: 11, color: "#64748b" }}>Available</span>
+          <span style={{ fontSize: 11, color, fontWeight: 700 }}>{pct}%</span>
         </div>
-        <div style={{ background:"#1d2942", borderRadius:99, height:7, overflow:"hidden" }}>
-          <div style={{ height:"100%", borderRadius:99, width:`${Math.min(pct,100)}%`,
-            background:color, transition:"width 0.5s ease" }} />
-        </div>
-        <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-          <span style={{ fontSize:10, color:"#475569" }}>Min: {pool.minThreshold?.toFixed(2)}</span>
-          <span style={{ fontSize:10, color:"#475569" }}>Usable: <strong style={{ color:"#94a3b8" }}>{pool.usable?.toFixed(2)}</strong></span>
+        <div style={{ background: "#1d2942", borderRadius: 99, height: 7, overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 99, width: `${Math.min(pct, 100)}%`, background: color, transition: "width 0.5s ease" }} />
         </div>
       </div>
 
-      {/* Warning */}
+      {/* Editable min threshold */}
+      <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: "#64748b" }}>Min Threshold:</span>
+        {editingThreshold ? (
+          <>
+            <input type="number" value={thresholdValue} onChange={e => setThresholdValue(e.target.value)}
+              style={{ width: 80, padding: "4px 8px", borderRadius: 4, border: "1px solid #1d2942", background: "#121b2f", color: "white", fontSize: 12 }} />
+            <button onClick={saveThreshold} style={{ padding: "2px 8px", borderRadius: 4, border: "none", background: "#22c55e", color: "white", cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditingThreshold(false)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", background: "#dc2626", color: "white", cursor: "pointer" }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <strong style={{ color: "white" }}>{pool.minThreshold?.toFixed(2)}</strong>
+            <button onClick={() => setEditingThreshold(true)} style={{ background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontSize: 11 }}>Edit</button>
+          </>
+        )}
+      </div>
+
       {(pool.status === "DEADLOCK" || pool.status === "CRITICAL") && (
         <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #dc2626",
           borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12, color:"#ef4444" }}>
-          ⚠️ {pool.status === "DEADLOCK"
-            ? "Deadlocked — inject funds immediately to resume swaps."
-            : `Critically low (${pct}%). Top up soon.`}
+          ⚠️ {pool.status === "DEADLOCK" ? "Deadlocked — inject funds into a provider account below to resume." : `Critically low (${pct}%). Top up a provider account soon.`}
         </div>
       )}
 
-      {/* Top-up */}
-      <div style={{ borderTop:"1px solid #1d2942", paddingTop:12 }}>
-        <div style={{ fontSize:10, color:"#64748b", marginBottom:7,
-          textTransform:"uppercase" as const, letterSpacing:"0.06em" }}>Manual Top-Up</div>
-        <div style={{ display:"flex", gap:8 }}>
-          <input type="number" placeholder={`Amount (${pool.currency})`}
-            value={topupAmount} onChange={e => setTopupAmount(e.target.value)}
-            style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #1d2942",
-              background:"#121b2f", color:"white", fontSize:13 }} />
-          <button onClick={handleTopup} disabled={topping || !topupAmount}
-            style={{ padding:"8px 16px", borderRadius:8, border:"none", cursor:"pointer",
-              background:"#16a34a", color:"white", fontWeight:700, fontSize:13,
-              opacity: topping || !topupAmount ? 0.6 : 1 }}>
-            {topping ? "…" : "+ Top Up"}
-          </button>
-        </div>
+      {/* Manage Accounts */}
+      <div style={{ borderTop: "1px solid #1d2942", paddingTop: 12, marginTop: 12 }}>
+        <button onClick={() => setShowAccounts(!showAccounts)} style={{ background: "transparent", border: "none", color: "#3b82f6", cursor: "pointer", fontWeight: 600, fontSize: 13, padding: 0 }}>
+          {showAccounts ? "▲ Hide" : "▼ Manage"} Provider Accounts ({accounts.length})
+        </button>
+        {showAccounts && (
+          <div style={{ marginTop: 10 }}>
+            {accounts.map(acc => {
+              const available = acc.physicalBalance - acc.reserved - acc.safetyReserve;
+              const isEditing = editingAccountId === acc._id;
+              return (
+                <div key={acc._id} style={{ background: "#121b2f", borderRadius: 8, padding: 12, marginBottom: 8, border: "1px solid #1d2942" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: "white" }}>{acc.accountLabel} ({acc.provider})</div>
+                      {isEditing ? (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                            <div>
+                              <span style={{ fontSize: 10, color: "#64748b" }}>Physical Balance</span>
+                              <input type="number" value={editPhysicalBalance} onChange={e => setEditPhysicalBalance(e.target.value)}
+                                style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid #1d2942", background: "#0d1526", color: "white", fontSize: 12 }} />
+                            </div>
+                            <div>
+                              <span style={{ fontSize: 10, color: "#64748b" }}>Safety Reserve</span>
+                              <input type="number" value={editSafetyReserve} onChange={e => setEditSafetyReserve(e.target.value)}
+                                style={{ width: 80, padding: "4px 8px", borderRadius: 4, border: "1px solid #1d2942", background: "#0d1526", color: "white", fontSize: 12 }} />
+                            </div>
+                          </div>
+                          <button onClick={() => saveAccount(acc._id)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: "#22c55e", color: "white", cursor: "pointer", marginRight: 6 }}>Save</button>
+                          <button onClick={() => setEditingAccountId(null)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: "#dc2626", color: "white", cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                            Physical: <strong>{acc.physicalBalance.toFixed(2)}</strong> | Reserved: <strong>{acc.reserved.toFixed(2)}</strong> | Safety: <strong>{acc.safetyReserve.toFixed(2)}</strong>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#22c55e" }}>
+                            Available: <strong>{available.toFixed(2)}</strong>
+                          </div>
+                          <button onClick={() => startEditAccount(acc)} style={{ background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontSize: 11, marginTop: 4 }}>
+                            Edit
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="number" placeholder="Top‑up amount" value={topupAmounts[acc._id] || ""}
+                        onChange={e => setTopupAmounts(prev => ({ ...prev, [acc._id]: e.target.value }))}
+                        style={{ width: 90, padding: "4px 8px", borderRadius: 4, border: "1px solid #1d2942", background: "#0d1526", color: "white", fontSize: 12 }} />
+                      <button onClick={() => handleAccountTopup(acc._id)} disabled={topping[acc._id] || !topupAmounts[acc._id]}
+                        style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: "#16a34a", color: "white", fontWeight: 600, cursor: "pointer", opacity: topping[acc._id] || !topupAmounts[acc._id] ? 0.6 : 1 }}>
+                        + Top Up
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function Treasury() {
   const [fees,    setFees]    = useState<any>(null);
   const [wallets, setWallets] = useState<any[]>([]);
@@ -158,15 +251,17 @@ export default function Treasury() {
   const [tab,     setTab]     = useState<"pools"|"fees"|"wallets">("pools");
   const [msg,     setMsg]     = useState<{ text:string; type:string } | null>(null);
 
-  const load = useCallback(async () => {
-    const [f, w, p] = await Promise.all([
+    const load = useCallback(async () => {
+    const [f, w, p, a] = await Promise.all([
       fetch("/api/v1/treasury/fees",    { credentials:"include" }).then(r => r.json()),
       fetch("/api/v1/treasury/wallets", { credentials:"include" }).then(r => r.json()),
       fetch("/api/v1/treasury/pools",   { credentials:"include" }).then(r => r.json()),
+      fetch("/api/v1/treasury/accounts",{ credentials:"include" }).then(r => r.json()),
     ]);
     setFees(f);
     setWallets(w.wallets || []);
     setPools(p.pools || []);
+    setAccounts(a.accounts || []);
     setLoading(false);
   }, []);
 
@@ -180,6 +275,43 @@ export default function Treasury() {
     setMsg({ text, type });
     setTimeout(() => setMsg(null), 4000);
   }
+  const [accounts, setAccounts] = useState<any[]>([]);
+
+  async function handleAccountTopup(accountId: string, amount: number) {
+    const res = await fetch(`/api/v1/treasury/accounts/${accountId}/topup`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount }),
+    }).then(r => r.json());
+    if (res.success) { flash("✅ Account topped up"); load(); }
+    else flash("❌ " + (res.error ?? "Top-up failed"), "error");
+  }
+
+  async function handleUpdateThreshold(currency: string, minThreshold: number) {
+    await fetch(`/api/v1/treasury/pools/${currency}/threshold`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ minThreshold }),
+    });
+    load();
+  }
+
+  async function handleUpdateAccount(accountId: string, data: any) {
+    await fetch(`/api/v1/treasury/accounts/${accountId}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    load();
+  }
+
+  const accountsByCurrency = accounts.reduce((acc, curr) => {
+    const key = curr.currency || "PHP";
+    (acc[key] = acc[key] || []).push(curr);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+
 
   async function handleTopup(currency: string, amount: number) {
     const res = await fetch(`/api/v1/treasury/pools/${currency}/topup`, {
@@ -285,7 +417,7 @@ export default function Treasury() {
             <div style={{ display:"grid",
               gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))", gap:16 }}>
               {pools.map(pool => (
-                <PoolCard key={pool.currency} pool={pool} onTopup={handleTopup} />
+                <PoolCard key={pool.currency} pool={pool} accounts={accountsByCurrency[pool.currency] || []} onAccountTopup={handleAccountTopup} onUpdateThreshold={handleUpdateThreshold} onUpdateAccount={handleUpdateAccount} />
               ))}
             </div>
           )

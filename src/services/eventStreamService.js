@@ -45,6 +45,7 @@ class EventStreamService {
 
   // Broadcast to all connected admin dashboards
   broadcast(type, data) {
+    if (["withdrawal.completed","withdrawal.rejected","withdrawal.verified","deposit.expired","withdrawal.expired","deposit.flagged"].includes(type)) return;
     const payload = `data: ${JSON.stringify({ type, data, timestamp: new Date() })}\n\n`;
     for (const client of adminClients) {
       try {

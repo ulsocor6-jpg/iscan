@@ -1,7 +1,7 @@
 import brainBus from '../brainbus/brainBus.js';
 import express from 'express';
 import crypto from 'crypto';
-import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
+import { requireAuth, requireAdmin } from '../auth/middleware/authMiddleware.js';
 import DirectDeposit from '../models/DirectDepositModel.js';
 import User from '../models/userModel.js';
 import BankAccount from '../models/BankAccount.js';

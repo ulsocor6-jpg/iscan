@@ -1,6 +1,6 @@
 import express from 'express';
 import { quoteSwap, executeSwap, poolStatus } from '../controllers/phpSwapController.js';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
 
 const router = express.Router();
 

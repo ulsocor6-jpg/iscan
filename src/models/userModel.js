@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   email:      { type: String, required: true, unique: true },
   password:   { type: String, required: true },
   role:       { type: String, enum: ['user', 'admin'], default: 'user' },
+  accountStatus: { type: String, enum: ["ACTIVE","SUSPENDED","RESTRICTED","DEACTIVATED","CLOSED"], default: "ACTIVE" },
 
   // ── KYC Tier ──────────────────────────────────────────────────────────
   // unverified : no ID submitted yet         → ₱2,000/day cap

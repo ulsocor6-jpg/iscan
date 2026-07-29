@@ -20,3 +20,13 @@ export const sendVerificationEmail = async (email, token) => {
     html: `<h1>Welcome to iSCAN</h1><p>Click the link below to verify your email:</p><a href="${url}">Verify Account</a>`
   });
 };
+
+// Generic email sender – used by OTP, alerts, etc.
+export const sendEmail = async (to, subject, html) => {
+  await transporter.sendMail({
+    from: '"iSCAN Security" <noreply@iscan.com>',
+    to,
+    subject,
+    html
+  });
+};

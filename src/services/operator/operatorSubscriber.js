@@ -11,7 +11,13 @@ class OperatorSubscriber {
 
         blockchainInspector.on("event", async (event) => {
 
-            const incident = incidentEngine.process(event);
+            
+console.log("\n===== RAW INSPECTOR EVENT =====");
+console.dir(event,{depth:8});
+console.log("===============================\n");
+
+const incident = incidentEngine.process(event);
+
 
             if (!incident) return;
 

@@ -21,6 +21,16 @@ const STAGE_FOR_STATUS: Record<string, string> = {
   FAILED: "SETTLE",
 };
 
+const CAUSE_COLOR: Record<string, string> = {
+  FUNDING_GAP: "#d85a30",
+  SCHEMA_BUG: "#e24b4a",
+  CONFIG_CREDENTIALS: "#ef9f27",
+  CONTRACT_REVERT: "#e24b4a",
+  NETWORK_RPC: "#ef9f27",
+  DUPLICATE_OR_STATE: "#6b7280",
+  UNKNOWN: "#6b7280",
+};
+
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
@@ -58,10 +68,9 @@ function stageStatusFor(order: any, stage: string) {
 }
 
 const TABS = [
+  { label: "Ongoing", value: "__active__" },
+  { label: "History", value: "__history__" },
   { label: "All", value: "" },
-  { label: "Needs attention", value: "__failed__" },
-  { label: "In progress", value: "__active__" },
-  { label: "Completed", value: "COMPLETED" },
 ];
 
 // Poll cadence: 30s while any order is still moving through the
@@ -85,7 +94,7 @@ export default function SwapInspector() {
   const [retrying, setRetrying] = useState<string | null>(null);
   const [intelData, setIntelData] = useState<Record<string, any>>({});
   const [loadingIntel, setLoadingIntel] = useState<string | null>(null);
-  const [tab, setTab] = useState("__failed__");
+  const [tab, setTab] = useState("__active__");
   const [loading, setLoading] = useState(true);
   const [liveLog, setLiveLog] = useState<Record<string, LiveLogEntry[]>>({});
   const ordersRef = useRef<any[]>([]);
@@ -172,6 +181,12 @@ export default function SwapInspector() {
   };
 
   const retry = async (orderId: string) => {
+    const rc = intelData[orderId]?.rootCause;
+    if (rc && rc.retryable === false && !confirm(
+      `This looks like a ${rc.label.toLowerCase()} (not a transient failure). ` +
+      `${rc.guidance} Retry anyway?`
+    )) return;
+
     setRetrying(orderId);
     const res = await api(`/api/v1/admin/flower-orders/${orderId}/retry`, { method: "POST" });
     setRetrying(null);
@@ -184,17 +199,20 @@ export default function SwapInspector() {
     (o) => !o.status.startsWith("FAILED") && o.status !== "COMPLETED"
   ).length;
 
+  const historyCount = orders.filter(
+    (o) => o.status.startsWith("FAILED") || o.status === "COMPLETED"
+  ).length;
+
   const counts: Record<string, number> = {
     "": orders.length,
-    __failed__: failedCount,
     __active__: activeCount,
-    COMPLETED: orders.filter((o) => o.status === "COMPLETED").length,
+    __history__: historyCount,
   };
 
   const rows = orders.filter((o) => {
     if (tab === "") return true;
-    if (tab === "__failed__") return o.status.startsWith("FAILED");
     if (tab === "__active__") return !o.status.startsWith("FAILED") && o.status !== "COMPLETED";
+    if (tab === "__history__") return o.status.startsWith("FAILED") || o.status === "COMPLETED";
     return o.status === tab;
   });
 
@@ -219,7 +237,7 @@ export default function SwapInspector() {
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
           {TABS.map((t) => {
             const active = tab === t.value;
-            const isFailedTab = t.value === "__failed__";
+            const isFailedTab = t.value === "__history__" && failedCount > 0;
             return (
               <button
                 key={t.value}
@@ -285,20 +303,31 @@ export default function SwapInspector() {
                       <span style={{ fontFamily: "monospace", color: "var(--color-text-tertiary)", minWidth: "60px" }}>
                         {order.chain}
                       </span>
-                      <span style={{ flex: 1, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {order.direction === "USDC_TO_FLOWER" ? (
-                          <>
-                            {order.usdcAmountIn} USDC
-                            {order.flowerAmountOut ? ` → ${order.flowerAmountOut} FLOWER` : ""}
-                          </>
-                        ) : (
-                          <>
-                            {order.receivedAmount || order.expectedAmount} FLOWER
-                            {order.usdcReceived ? ` → ${order.usdcReceived} USDC` : ""}
-                          </>
-                        )}
+                      <span style={{ flex: 1, minWidth: 0, color: "var(--color-text-secondary)" }}>
+                        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {order.direction === "USDC_TO_FLOWER" ? (
+                            <>
+                              {order.usdcAmountIn} USDC
+                              {order.flowerAmountOut ? ` → ${order.flowerAmountOut} FLOWER` : ""}
+                            </>
+                          ) : (
+                            <>
+                              {order.receivedAmount || order.expectedAmount} FLOWER
+                              {order.usdcReceived ? ` → ${order.usdcReceived} USDC` : ""}
+                            </>
+                          )}
+                        </div>
                         {isFailed && order.failureReason && (
-                          <span style={{ color: "#fca5a5", marginLeft: 8 }}>{order.failureReason}</span>
+                          <div style={{
+                            color: "#fca5a5", marginTop: 2, fontSize: "11px",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical" as any,
+                            overflow: "hidden",
+                            wordBreak: "break-word",
+                          }}>
+                            {order.failureReason}
+                          </div>
                         )}
                       </span>
                       <span style={{ color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
@@ -325,6 +354,25 @@ export default function SwapInspector() {
                         {/* ── Intelligence Panel ────────────────────────── */}
                         {intelData[order.orderId] && (
                           <div style={{ marginBottom: "12px" }}>
+                            {intelData[order.orderId].rootCause && (
+                              <div style={{ marginBottom: "8px" }}>
+                                <span style={{
+                                  fontSize: "11px", padding: "3px 10px", borderRadius: "99px", fontWeight: 700,
+                                  background: `${CAUSE_COLOR[intelData[order.orderId].rootCause.cause]}22`,
+                                  color: CAUSE_COLOR[intelData[order.orderId].rootCause.cause],
+                                }}>
+                                  {intelData[order.orderId].rootCause.label}
+                                </span>
+                                <div style={{ fontSize: "11px", color: "#a89fd4", marginTop: "6px", lineHeight: 1.5 }}>
+                                  {intelData[order.orderId].rootCause.causality}
+                                </div>
+                                {intelData[order.orderId].rootCause.retryable === false && (
+                                  <div style={{ fontSize: "10px", color: "#f87171", marginTop: "4px" }}>
+                                    ⚠ Not retry-safe — {intelData[order.orderId].rootCause.guidance}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {intelData[order.orderId].suggestion && (
                               <div style={{
                                 background: "rgba(251,191,36,0.15)", color: "#fbbf24",

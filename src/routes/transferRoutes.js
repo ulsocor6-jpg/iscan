@@ -2,7 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-import { requireAuth } from "../middleware/authMiddleware.js";
+import { requireAuth } from "../auth/middleware/authMiddleware.js";
 import { requireFullKYC } from "../middleware/kycTierMiddleware.js";
 import User from "../models/userModel.js";
 import Wallet from "../models/walletModel.js";

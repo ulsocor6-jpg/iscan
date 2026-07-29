@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../../middleware/authMiddleware.js';
+import { requireAuth } from '../../auth/middleware/authMiddleware.js';
 import { selfServiceRateLimiter } from '../../../middleware/rateLimiters.js';
 import { runForUserHandler } from '../../controllers/reconciliation/reconciliationController.js';
 

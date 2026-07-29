@@ -6,6 +6,15 @@ import nodemailer from 'nodemailer';
 import User from '../models/userModel.js';
 import WalletService from '../services/walletService.js';
 import eventStreamService from '../services/eventStreamService.js';
+import SessionService from "../auth/services/sessionService.js";
+
+import sessionContextCollector from "../auth/intelligence/sessionContextCollector.js";
+import sessionRiskAnalyzer from "../auth/intelligence/sessionRiskAnalyzer.js";
+import sessionIntelligencePublisher from "../auth/intelligence/sessionIntelligencePublisher.js";
+
+import buildFingerprint from "../auth/services/deviceFingerprint.js";
+import SessionEvents from "../auth/services/sessionEvents.js";
+
 
 /* =========================
    REGISTER
@@ -170,19 +179,87 @@ export const login = async (req, res) => {
     if (!user.isVerified) {
       return res.status(403).json({ message: 'Please verify your email first.' });
     }
+    
+/*
+|--------------------------------------------------------------------------
+| Build Device Information
+|--------------------------------------------------------------------------
+*/
 
+await SessionService.revokeActiveSessions(
+    user._id
+);
+
+const device = buildFingerprint(req);
+
+/*
+|--------------------------------------------------------------------------
+| Create Login Session
+|--------------------------------------------------------------------------
+*/
+
+const session = await SessionService.createSession({
+
+    userId: user._id,
+
+    fingerprint: device.fingerprint,
+
+    browser: device.browser,
+
+    os: device.os,
+
+    platform: device.platform,
+
+    userAgent: device.userAgent,
+
+    ip: device.ip,
+
+    emailVerified: user.isVerified,
+
+    phoneVerified: !!user.phoneVerified,
+
+    otpVerified: false
+
+});
+
+
+
+    
+
+    // ===== Session Intelligence =====
+    const sessionContext =
+        sessionContextCollector.collect(req, session);
+
+    const sessionRisk =
+        sessionRiskAnalyzer.analyze(sessionContext);
+
+    sessionIntelligencePublisher.publish(
+        sessionContext,
+        sessionRisk
+    );
+
+/*
+|--------------------------------------------------------------------------
+| Notify Event System
+|--------------------------------------------------------------------------
+*/
+
+await SessionEvents.created(session);
     const token = jwt.sign(
-      {
+    {
         id: user._id,
+        sessionId: session.sessionId,
         email: user.email,
         firstName: user.firstName,
         role: user.role
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    },
+    process.env.JWT_SECRET,
+    {
+        expiresIn: "1d"
+    }
+);
 
-    res.cookie('iscan_token', token, {
+res.cookie('iscan_token', token, {
       httpOnly: true,
       sameSite: 'Lax',
       secure: process.env.NODE_ENV === 'production',
@@ -227,12 +304,45 @@ export const login = async (req, res) => {
 /* =========================
    LOGOUT
 ========================= */
-export const logout = (req, res) => {
+export const logout = async (req, res) => {
+
+  try {
+
+    const token = req.cookies?.iscan_token;
+
+    if (token) {
+
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+
+      if (decoded.sessionId) {
+
+        const session = await SessionService.logoutSession(
+          decoded.sessionId
+        );
+
+        if (session) {
+          await SessionEvents.logout(session);
+        }
+
+      }
+
+    }
+
+  } catch (err) {
+    console.warn("[LOGOUT]", err.message);
+  }
+
   res.clearCookie('iscan_token');
   res.clearCookie('iscan_email');
   res.clearCookie('iscan_name');
 
-  return res.json({ success: true });
+  return res.json({
+    success: true
+  });
+
 };
 
 /* =========================

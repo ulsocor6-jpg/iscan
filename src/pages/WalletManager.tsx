@@ -1,6 +1,14 @@
 import DashboardLayout from "../banking/components/DashboardLayout";
-import { useEffect, useState, useRef } from "react";
-import QRCode from "qrcode";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+// Masks the middle of a deposit address for on-screen display, e.g.
+// 0x5cee••••••••dda21885.
+function maskAddress(addr?: string){
+    if(!addr) return "";
+    if(addr.length <= 16) return addr;
+    return `${addr.slice(0,6)}${"•".repeat(8)}${addr.slice(-6)}`;
+}
 
 const CHAINS = {
   BASE: {
@@ -35,13 +43,10 @@ const CHAINS = {
 
 export default function WalletManager() {
 
+    const navigate=useNavigate();
     const [wallet,setWallet]=useState<any>(null);
     const [activeChain,setActiveChain]=useState("BASE");
-    const [showQR,setShowQR]=useState(false);
-    const [copied,setCopied]=useState(false);
     const [onchain,setOnchain]=useState<any>({});
-
-    const qrRef=useRef<HTMLCanvasElement>(null);
 
     useEffect(()=>{
         loadWallet();
@@ -65,13 +70,7 @@ export default function WalletManager() {
         }
     }
 
-    useEffect(()=>{
-        if(showQR && qrRef.current && address){
-            QRCode.toCanvas(qrRef.current,address,{
-                width:180
-            });
-        }
-    },[showQR,activeChain,wallet]);
+
 
     async function loadWallet(){
 
@@ -106,20 +105,6 @@ export default function WalletManager() {
         wallet?.chains?.find(
             (c:any)=>c.chain===activeChain
         )?.address;
-
-    function copy(){
-
-        if(!address) return;
-
-        navigator.clipboard.writeText(address);
-
-        setCopied(true);
-
-        setTimeout(()=>{
-            setCopied(false);
-        },2000);
-
-    }
 
     return(
 
@@ -162,8 +147,6 @@ export default function WalletManager() {
                                 if(!c.configured) return;
 
                                 setActiveChain(key);
-
-                                setShowQR(false);
 
                             }}
 
@@ -291,54 +274,27 @@ export default function WalletManager() {
                                 color:"#22c55e"
                             }}
                         >
-                            {address}
+                            {maskAddress(address)}
                         </code>
 
                     </div>
 
                     <button
-                        onClick={copy}
+                        onClick={()=>navigate("/dashboard")}
                         style={{
-                            marginTop:12
+                            marginTop:12,
+                            width:"100%",
+                            padding:"12px 20px",
+                            borderRadius:8,
+                            border:"none",
+                            background:"#3b82f6",
+                            color:"white",
+                            fontWeight:600,
+                            cursor:"pointer"
                         }}
                     >
-
-                        {copied
-                            ?"Copied"
-                            :"Copy Address"}
-
+                        Deposit here
                     </button>
-
-                    <button
-                        onClick={()=>setShowQR(!showQR)}
-                        style={{
-                            marginLeft:10
-                        }}
-                    >
-
-                        {showQR
-                            ?"Hide QR"
-                            :"Show QR"}
-
-                    </button>
-
-                    {showQR &&
-
-                        <div
-                            style={{
-                                marginTop:20,
-                                background:"white",
-                                display:"inline-block",
-                                padding:10,
-                                borderRadius:8
-                            }}
-                        >
-
-                            <canvas ref={qrRef}/>
-
-                        </div>
-
-                    }
 
                     <hr
                         style={{

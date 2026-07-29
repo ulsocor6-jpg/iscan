@@ -11,7 +11,7 @@ import {
     resolveIncident
 }
 from "../../controllers/operatorController.js";
-import { requireAuth, requireAdmin } from "../../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../../auth/middleware/authMiddleware.js";
 
 
 const router = express.Router();
@@ -74,6 +74,7 @@ router.post(
     "/incidents/:id/resolve",
     resolveIncident
 );
+
 
 
 

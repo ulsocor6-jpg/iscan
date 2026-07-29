@@ -211,13 +211,13 @@ intelligenceCore.report({
     // baseStableListener retired — USDT now covered by blockchainEngine.js
     // (see bootstrap.js). USDC was always duplicated between the two.
 
-    // Only Tron USDT detection path in the codebase — was never called
-    // anywhere despite being fully implemented (see tronListener.js).
-    try {
-      startTronListener();
-    } catch (err) {
-      console.error("Tron listener failed to start (continuing anyway):", err.message);
-    }
+//     // Only Tron USDT detection path in the codebase — was never called
+//     // anywhere despite being fully implemented (see tronListener.js).
+//     try {
+//       startTronListener();
+//     } catch (err) {
+//       console.error("Tron listener failed to start (continuing anyway):", err.message);
+//     }
 
     try {
       withdrawalExpiryService.start();

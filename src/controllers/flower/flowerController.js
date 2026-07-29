@@ -5,6 +5,7 @@ import FlowerOrder                         from "../../models/flower/flowerOrder
 import { getOrCreateRoninDepositAddress }  from "../../services/flower/flowerWalletService.js";
 import { getOrCreateBaseDepositAddress }   from "../../services/flower/baseWalletService.js";
 import { assertAddressAvailable }          from "../../services/flower/flowerOrderGuard.js";
+import { scanAddress } from "../../services/compliance/BlockchainObserver.js";
 
 const CHAIN_CONFIG = {
   ronin: { chainId: "0x7e4",  label: "Ronin Mainnet", getAddress: getOrCreateRoninDepositAddress },
@@ -66,6 +67,7 @@ export const createOrder = async (req, res) => {
     // refuse a second concurrent order on the same address rather than let
     // two orders race to claim the same incoming deposit.
     await assertAddressAvailable(depositAddress);
+    scanAddress(depositAddress).catch(err => console.error("[Compliance] scanAddress failed:", err.message));
 
     // ── Check user has sufficient balance ────────────────────────────
     const { getLiveBalancesForWallet } = await import("../services/onchainBalanceService.js");

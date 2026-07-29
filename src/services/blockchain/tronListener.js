@@ -1,6 +1,8 @@
+import brainBus from "../../brainbus/brainBus.js";
 import axios from "axios";
 import DepositAddress from "../../models/depositAddressModel.js";
 import { creditUser } from "../ledger/creditService.js";
+import healthRegistry from "../../intelligence/healthRegistry.js";
 
 /**
  * Simple TRON USDT scanner (MVP polling version)
@@ -33,31 +35,32 @@ async function processDeposit(tx, depositAddress) {
 
 export async function startTronListener() {
   console.log("[TRON LISTENER] running...");
+  healthRegistry.registerNode({ node: "tronListener", type: "watcher" });
+  healthRegistry.report({ node: "tronListener", status: "ONLINE" });
 
-  setInterval(async () => {
+  // Event‑driven – wakes on deposit.created (USDT)
+  async function tronPoll() {
     try {
       const addresses = await DepositAddress.find({ status: "active" });
-
       for (const addr of addresses) {
         const txs = await fetchTransactions(addr.address);
-
         for (const tx of txs) {
           if (tx.to !== addr.address) continue;
           if (tx.token_info?.symbol !== "USDT") continue;
-
-          // avoid double credit
           if (addr.lastTxHash === tx.transaction_id) continue;
 
           await processDeposit(tx, addr);
-
           addr.lastTxHash = tx.transaction_id;
           addr.lastAmount = Number(tx.value) / 1e6;
-
           await addr.save();
         }
       }
     } catch (err) {
       console.error("[TRON LISTENER ERROR]", err.message);
+      healthRegistry.report({ node: "tronListener", status: "WARNING", error: err.message });
     }
-  }, 15000); // every 15 sec (MVP)
+  }
+  brainBus.on("deposit.created", tronPoll);
+  // Initial catch‑up
+  tronPoll(); // every 15 sec (MVP)
 }

@@ -1,6 +1,8 @@
+import brainBus from "../../../brainbus/brainBus.js";
 import BlockchainInbox from "../../../models/blockchain/blockchainInboxModel.js";
 import consumerDispatcher from "../pipeline/consumerDispatcher.js";
 import inspector from "../inspector/blockchainInspector.js";
+import healthRegistry from "../../../intelligence/healthRegistry.js";
 
 class RecoveryWorker {
 
@@ -24,13 +26,15 @@ class RecoveryWorker {
 
         console.log("[RecoveryWorker] Started");
 
-        this.interval = setInterval(
+        healthRegistry.registerNode({ node: "recoveryWorker", type: "watcher" });
+        healthRegistry.report({ node: "recoveryWorker", status: "ONLINE" });
 
-            () => this.scan(),
-
-            10000
-
-        );
+        // Event‑driven – wakes on deposit, withdrawal, or swap
+        brainBus.on("deposit.created",   () => this.scan());
+        brainBus.on("withdrawal.started", () => this.scan());
+        brainBus.on("swap.created",       () => this.scan());
+        // Run once immediately to catch any pending work
+        this.scan();
 
     }
 
@@ -45,6 +49,8 @@ class RecoveryWorker {
     async scan() {
 
         try {
+
+            healthRegistry.report({ node: "recoveryWorker", status: "ONLINE", metrics: { lastScanAt: new Date() } });
 
             const jobs = await BlockchainInbox.find({
 
@@ -95,6 +101,8 @@ class RecoveryWorker {
                 err.message
 
             );
+
+            healthRegistry.report({ node: "recoveryWorker", status: "WARNING", error: err.message });
 
         }
 

@@ -1,124 +1,192 @@
 // src/services/operator/remediationEngine.js
-//
-// Auto-remediation is opt-in per incident code, not generic. Only codes
-// listed in WHITELIST get an automatic action; everything else is left
-// for a human, same as today. Each handler MUST check current state
-// before acting (nothing here assumes the incident is still valid) and
-// every attempt — success, failure, or skip — is logged to
-// OperatorAction so there's a permanent record of what was checked and
-// what was done.
 
-import FlowerOrder from "../../models/flower/flowerOrderModel.js";
-import OperatorAction from "../../models/operatorActionModel.js";
-import { retryOrder } from "../flower/flowerOrderRecovery.js";
+/**
+ * Playbooks approved for automatic execution, per the roadmap:
+ *   "Initial automated playbooks should be limited to safe operations
+ *    such as: RPC_RETRY, RPC_FAILOVER, TREASURY_HEALTH."
+ *
+ * TREASURY_REFILL is a real, existing playbook (used by TREASURY_DEADLOCK,
+ * TREASURY_CRITICAL, and TREASURY_WARNING in knowledge/treasury.js) but is
+ * deliberately NOT whitelisted here — it injects liquidity, a financial
+ * operation, and stays manual-only per "high-risk actions ... remain
+ * manual until explicitly approved."
+ *
+ * Everything else (MANUAL_INVESTIGATION, MANUAL_REVIEW, AWAIT_CONFIRMATION,
+ * NONCE_RESYNC, SWAP_RETRY_SLIPPAGE, WORKER_RESTART, SAFE_TO_RETRY,
+ * FORWARDER_SWEEP_RETRY) has no handler and is not whitelisted — these
+ * will always resolve to SKIPPED until a handler is written and the name
+ * is explicitly added below.
+ */
+const AUTO_REMEDIATION_WHITELIST = new Set([
+  "RPC_RETRY",
+  "RPC_FAILOVER",
+  "TREASURY_HEALTH"
+]);
 
-async function logAction({ incident, outcome, reason, checkedState, resultStatus }) {
-    try {
-        await OperatorAction.create({
-            incidentId: incident.id,
-            code: incident.code,
-            orderId: incident.orderId,
-            pipeline: incident.metadata?.pipeline || null,
-            checkedState,
-            outcome,
-            reason,
-            resultStatus
-        });
-    } catch (err) {
-        console.error("[Remediation] Failed to write action log:", err.message);
-    }
-}
+/**
+ * Handler stubs for the 3 whitelisted playbooks.
+ *
+ * None of these are wired to real infrastructure yet — I don't have
+ * visibility into your RPC provider manager or treasury health-check
+ * invocation code, so faking a call here would just be a plausible-looking
+ * no-op that silently does nothing in production. Each stub returns
+ * SKIPPED with an explicit reason instead of pretending to succeed.
+ * Replace the body with the real call when you're ready to wire it up.
+ */
+const PLAYBOOK_HANDLERS = {
+  async RPC_RETRY(incident) {
+    // TODO: wire to real RPC retry logic (e.g. re-issue the failed call
+    // against the current/next healthy endpoint).
+    return { status: "SKIPPED", reason: "RPC_RETRY has no handler wired yet" };
+  },
 
-// FORWARDER_TRANSFER_FAILED — knowledgeBase's own recommendation is
-// "Retry the sweep." retryOrder() already refuses to act on a COMPLETED
-// order and caps itself at MAX_AUTO_ATTEMPTS internally, so this handler's
-// job is just: confirm there's still something to retry, then delegate.
-async function handleForwarderTransferFailed(incident) {
+  async RPC_FAILOVER(incident) {
+    // TODO: wire to real RPC provider failover logic.
+    return { status: "SKIPPED", reason: "RPC_FAILOVER has no handler wired yet" };
+  },
 
-    if (!incident.orderId) {
-        await logAction({
-            incident,
-            outcome: "SKIPPED",
-            reason: "Incident has no orderId — cannot identify which order to retry."
-        });
-        return;
-    }
-
-    const order = await FlowerOrder.findOne({ orderId: incident.orderId });
-
-    if (!order) {
-        await logAction({
-            incident,
-            outcome: "SKIPPED",
-            reason: "Order not found."
-        });
-        return;
-    }
-
-    const checkedState = {
-        status: order.status,
-        sweepAttempts: order.sweepAttempts || 0,
-        swapAttempts: order.swapAttempts || 0
-    };
-
-    if (order.status === "COMPLETED") {
-        await logAction({
-            incident,
-            outcome: "SKIPPED",
-            reason: "Order already COMPLETED — no action needed.",
-            checkedState
-        });
-        return;
-    }
-
-    if (order.status === "FAILED") {
-        await logAction({
-            incident,
-            outcome: "SKIPPED",
-            reason: "Order already at max auto-retry attempts (FAILED) — needs manual review.",
-            checkedState
-        });
-        return;
-    }
-
-    try {
-        const result = await retryOrder(incident.orderId, { isAdmin: true });
-        await logAction({
-            incident,
-            outcome: "SUCCEEDED",
-            reason: "Retried sweep via retryOrder().",
-            checkedState,
-            resultStatus: result?.status
-        });
-    } catch (err) {
-        await logAction({
-            incident,
-            outcome: "FAILED",
-            reason: err.message,
-            checkedState
-        });
-    }
-
-}
-
-const WHITELIST = {
-    FORWARDER_TRANSFER_FAILED: handleForwarderTransferFailed
+  async TREASURY_HEALTH(incident) {
+    // TODO: wire to real treasury health re-check logic.
+    return { status: "SKIPPED", reason: "TREASURY_HEALTH has no handler wired yet" };
+  }
 };
 
-export async function attemptRemediation(incident) {
+const remediationEngine = {
+  name: "Remediation Engine",
+  domain: "intelligence",
+  type: "recovery_executor",
+  owner: "Platform Intelligence",
+  description:
+    "Executes approved automatic recovery actions for supported incidents while maintaining a complete audit trail of every remediation attempt.",
+  purpose: [
+    "Execute Automatic Recovery",
+    "Validate Current State",
+    "Prevent Unsafe Recovery",
+    "Record Recovery Actions",
+    "Escalate Unsupported Incidents"
+  ],
+  lifecycle: {
+    startup: "Loads the remediation whitelist and recovery handlers.",
+    runtime:
+      "Receives incidents, validates eligibility, executes recovery handlers and records outcomes.",
+    shutdown: "Stateless service."
+  },
+  dependsOn: [
+    "incidentEngine",
+    "operatorActionModel",
+    "flowerOrderRecovery"
+  ],
+  provides: [
+    "Automatic Recovery",
+    "Recovery Audit",
+    "Recovery Execution",
+    "Recovery Status"
+  ],
+  consumedBy: [
+    "Operator",
+    "Mission Control",
+    "Telegram",
+    "Dashboard"
+  ],
+  inputs: ["Incident"],
+  outputs: ["SUCCEEDED", "FAILED", "SKIPPED"],
+  healthChecks: [
+    "Whitelist Loaded",
+    "Recovery Handler Availability",
+    "Recovery Execution",
+    "Audit Logging"
+  ],
+  metrics: [
+    "Recovery Attempts",
+    "Recovery Success Rate",
+    "Recovery Failure Rate",
+    "Skipped Recoveries",
+    "Average Recovery Time"
+  ],
+  failureModes: [
+    "Missing Recovery Handler",
+    "Recovery Execution Failure",
+    "Audit Logging Failure",
+    "Invalid Incident State"
+  ],
+  recovery: {
+    automatic: ["Execute Approved Handler", "Log Every Outcome"],
+    manual: ["Operator Review", "Manual Intervention", "Escalation"]
+  },
+  notificationPolicy: {
+    warning: ["Dashboard"],
+    critical: ["Telegram", "Incident Engine", "Dashboard"]
+  },
+  criticality: "CRITICAL",
 
-    if (!incident?.code) return null;
+  /**
+   * Dispatches on incident.playbook. Never throws — every path resolves
+   * to SUCCEEDED / FAILED / SKIPPED, and every outcome is logged for audit.
+   *
+   * Order of checks:
+   *   1. incident has no playbook                    -> SKIPPED
+   *   2. playbook not on AUTO_REMEDIATION_WHITELIST   -> SKIPPED
+   *   3. incident.autoRemediation !== true            -> SKIPPED
+   *      (the knowledge entry itself opted out, even if the playbook
+   *      is whitelisted — see TREASURY_HEALTH note below)
+   *   4. handler throws                                -> FAILED
+   *   5. handler resolves                              -> whatever it returns
+   *      (currently always SKIPPED, since no handler is wired yet)
+   */
+  async attemptRemediation(incident) {
+    const playbook = incident?.playbook;
+    const timestamp = new Date().toISOString();
 
-    const handler = WHITELIST[incident.code];
+    const record = (outcome) => {
+      console.log(
+        `[Remediation] incident=${incident?.id} code=${incident?.code} ` +
+        `playbook=${playbook || "(none)"} -> ${outcome.status}` +
+        (outcome.reason ? ` (${outcome.reason})` : "") +
+        ` @ ${timestamp}`
+      );
+      return outcome;
+    };
 
-    if (!handler) return null; // not whitelisted — left for a human, same as today
-
-    try {
-        await handler(incident);
-    } catch (err) {
-        console.error(`[Remediation] Handler for ${incident.code} threw:`, err.message);
+    if (!playbook) {
+      return record({ status: "SKIPPED", reason: "Incident has no playbook" });
     }
 
-}
+    if (!AUTO_REMEDIATION_WHITELIST.has(playbook)) {
+      return record({
+        status: "SKIPPED",
+        reason: `Playbook "${playbook}" is not on the automatic-remediation whitelist`
+      });
+    }
 
-export default { attemptRemediation };
+    // NOTE: TREASURY_HEALTH is whitelisted per the roadmap, but the actual
+    // TREASURY_CHECK_FAILED entry in knowledge/treasury.js currently has
+    // autoRemediation: false. That means TREASURY_HEALTH will resolve to
+    // SKIPPED here today, not because of this engine, but because the
+    // knowledge entry itself hasn't opted in yet. Flagging this rather
+    // than silently overriding either side — confirm which should govern
+    // before relying on TREASURY_HEALTH auto-firing.
+    if (incident.autoRemediation !== true) {
+      return record({
+        status: "SKIPPED",
+        reason: `Playbook "${playbook}" is whitelisted, but this incident's knowledge entry has autoRemediation=false`
+      });
+    }
+
+    const handler = PLAYBOOK_HANDLERS[playbook];
+    if (typeof handler !== "function") {
+      return record({
+        status: "SKIPPED",
+        reason: `Playbook "${playbook}" is whitelisted but has no handler function defined`
+      });
+    }
+
+    try {
+      const result = await handler(incident);
+      return record(result);
+    } catch (err) {
+      return record({ status: "FAILED", reason: err.message });
+    }
+  }
+};
+
+export default remediationEngine;

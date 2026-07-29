@@ -1,11 +1,11 @@
-// src/routes/treasuryRoutes.js — full replacement
 import express from 'express';
-import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
+import { requireAuth, requireAdmin } from '../auth/middleware/authMiddleware.js';
 import FeeRecord from '../models/feeModel.js';
 import Wallet from '../models/walletModel.js';
 import PhpLiquidityPool from '../models/phpLiquidityPool.js';
 import { getPoolHealth } from '../services/treasury/treasuryBalancer.js';
 import { getAllBalancesForAddress } from '../services/onchainBalanceService.js';
+import TreasuryAccount from '../models/treasuryAccountModel.js';       // <-- added
 
 const router = express.Router();
 
@@ -41,7 +41,6 @@ router.get('/wallets', requireAuth, async (req, res) => {
 });
 
 // Live on-chain USDC/USDT totals across configured treasury wallets.
-// PHP has no on-chain equivalent, so it's excluded here.
 async function getOnChainTreasuryBalances() {
   const totals = { USDC: 0, USDT: 0, FLOWER: 0 };
   const wallets = [
@@ -64,29 +63,21 @@ async function getOnChainTreasuryBalances() {
 }
 
 // ── GET /treasury/pools ───────────────────────────────────────────────────
-// Returns live health of all liquidity pools (PHP, USDT, USDC), enriched
-// with real on-chain treasury balances for USDC/USDT so ledger drift is
-// visible instead of silently trusted.
 const EXPECTED_CURRENCIES = ['PHP', 'USDT', 'USDC', 'FLOWER'];
-
-// FLOWER trades at a much smaller per-unit USD value than USDC/USDT, so it
-// gets its own minThreshold instead of inheriting the schema's 50000
-// default (which would represent ~$3,250 at ~$0.065/FLOWER, not the
-// intended ~$20 floor).
 const POOL_MIN_THRESHOLDS = { FLOWER: 300 };
 
 router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
   try {
     const onChainTotals = await getOnChainTreasuryBalances();
 
+    // Recalculate pool from underlying accounts to ensure freshness
+    await PhpLiquidityPool.recalculateFromAccounts('PHP');
+
     let pools = await PhpLiquidityPool.find();
     const existingCurrencies = new Set(pools.map(p => p.currency));
     const missing = EXPECTED_CURRENCIES.filter(c => !existingCurrencies.has(c));
 
     if (missing.length > 0) {
-      // Auto-heal missing pool records using REAL on-chain balances, never
-      // a fabricated starting number. PHP has no on-chain equivalent — it
-      // starts honestly at 0 instead of a guessed figure.
       const toCreate = missing.map(currency => ({
         currency,
         balance: (currency === 'USDC' || currency === 'USDT' || currency === 'FLOWER')
@@ -120,7 +111,6 @@ router.get('/pools', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // ── POST /treasury/pools/:currency/topup ──────────────────────────────────
-// Admin manually tops up a pool (e.g. after injecting real USDT)
 router.post('/pools/:currency/topup', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { currency } = req.params;
@@ -139,8 +129,6 @@ router.post('/pools/:currency/topup', requireAuth, requireAdmin, async (req, res
 });
 
 // ── GET /treasury/withdrawal-cap ───────────────────────────────────────────
-// User-facing "how much can I withdraw right now" figure — deliberately
-// NOT labeled or framed as the treasury's actual balance.
 import { getWithdrawalCaps } from '../services/treasury/treasuryLiquidityService.js';
 
 router.get('/withdrawal-cap', requireAuth, async (req, res) => {
@@ -152,4 +140,73 @@ router.get('/withdrawal-cap', requireAuth, async (req, res) => {
   }
 });
 
+// ── GET /treasury/liquidity ───────────────────────────────────────────────
+import treasuryCoordinator from '../services/treasury/treasuryCoordinator.js';
+
+router.get('/liquidity', requireAuth, async (req, res) => {
+  try {
+    const currency = req.query.currency || 'PHP';
+    const accounts = await treasuryCoordinator.getLiveState(currency);
+    res.json({ success: true, currency, accounts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /treasury/accounts ─────────────────────────────────────────────────
+router.get('/accounts', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const accounts = await TreasuryAccount.find({}).lean();
+    res.json({ success: true, accounts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /treasury/accounts/:id/topup ──────────────────────────────────────
+router.post('/accounts/:id/topup', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+
+    const account = await TreasuryAccount.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { physicalBalance: amount } },
+      { new: true }
+    );
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    // Recalculate the pool to reflect the new balance
+    await PhpLiquidityPool.recalculateFromAccounts(account.currency);
+
+    res.json({ success: true, account });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
+
+// ── PATCH /treasury/pools/:currency/threshold ────────────────────────────
+router.patch('/pools/:currency/threshold', requireAuth, requireAdmin, async (req, res) => {
+  const { minThreshold } = req.body;
+  const pool = await PhpLiquidityPool.findOneAndUpdate(
+    { currency: req.params.currency.toUpperCase() },
+    { minThreshold: parseFloat(minThreshold) },
+    { new: true }
+  );
+  if (!pool) return res.status(404).json({ error: 'Pool not found' });
+  res.json({ success: true, pool: getPoolHealth(pool) });
+});
+
+// ── PATCH /treasury/accounts/:id ─────────────────────────────────────────
+router.patch('/accounts/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { safetyReserve, physicalBalance } = req.body;
+  const update = {};
+  if (safetyReserve !== undefined) update.safetyReserve = parseFloat(safetyReserve);
+  if (physicalBalance !== undefined) update.physicalBalance = parseFloat(physicalBalance);
+  const account = await TreasuryAccount.findByIdAndUpdate(req.params.id, update, { new: true });
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  await PhpLiquidityPool.recalculateFromAccounts(account.currency);
+  res.json({ success: true, account });
+});

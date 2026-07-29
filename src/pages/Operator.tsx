@@ -1,3 +1,4 @@
+import OperatorMap from "./OperatorMap";
 
 
 import { useEffect, useState } from "react";
@@ -74,7 +75,7 @@ export default function Operator() {
   const [expandedSwap, setExpandedSwap] = useState<string | null>(null);
   const _swapState = useState<PredictionsData | null>(null);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"nodes" | "incidents" | "predictions">("nodes");
+  const [activeTab, setActiveTab] = useState<"nodes" | "incidents" | "predictions" | "map" | "history">("nodes");
   const [pipelineDetails, setPipelineDetails] = useState<any>(null);
   const [loadingPipeline, setLoadingPipeline] = useState(false);
 
@@ -287,7 +288,7 @@ export default function Operator() {
 
         {/* ── Tabs ────────────────────────────────────────────────────── */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {(["nodes", "incidents", "predictions", "swaps"] as const).map(tab => (
+          {(["nodes", "incidents", "predictions", "swaps", "map", "history"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -689,6 +690,133 @@ export default function Operator() {
           </button>
         </div>
       </div>
+        {activeTab === "map" && (
+          <OperatorMap />
+        )}
+    
+        {activeTab === "history" && (
+          <HistoryPanel />
+        )}
+
+        {activeTab === "history" && <HistoryPanel />}
     </DashboardLayout>
   );
 }
+
+
+// ---------- History Panel (inline) ----------
+
+// ---------- History Panel (fixed) ----------
+const HistoryPanel = () => {
+  const [allEvents, setAllEvents] = useState<any[]>([]);
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(false);
+
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/history"); // no filter – get all terminal events
+      const data = await res.json();
+      // Deduplicate by _id or event signature
+      const seen = new Set();
+      const unique = (data || []).filter(evt => {
+        const key = evt._id || `${evt.type}_${evt.timestamp}_${evt.entityId || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setAllEvents(unique);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
+
+  // Apply client‑side filter
+  const filtered = filter === "all"
+    ? allEvents
+    : allEvents.filter(evt => evt.type?.toLowerCase().includes(filter.toLowerCase()));
+
+  const getStatusColor = (type: string) => {
+    if (type.includes("expired")) return "#fbbf24";
+    if (type.includes("failed") || type.includes("rejected")) return "#ef4444";
+    if (type.includes("completed")) return "#4ade80";
+    if (type.includes("flagged")) return "#f59e0b";
+    return "#6b7280";
+  };
+
+  return (
+    <div style={{ padding: "16px", color: "white" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, color: "#00d4aa" }}>📜 Transaction History</h3>
+        <button
+          onClick={fetchAll}
+          disabled={loading}
+          style={{
+            marginLeft: "auto",
+            padding: "4px 12px",
+            borderRadius: 12,
+            border: "none",
+            background: "#1f2937",
+            color: "#d1d5db",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: 12
+          }}
+        >
+          {loading ? "Loading…" : "🔄 Refresh"}
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {["all", "deposit", "withdrawal", "expired", "failed", "completed", "flagged"].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 12,
+              border: "none",
+              background: filter === f ? "#00d4aa" : "#1f2937",
+              color: filter === f ? "#000" : "#d1d5db",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: 12
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f !== "all" && ` (${allEvents.filter(evt => evt.type?.toLowerCase().includes(f.toLowerCase())).length})`}
+          </button>
+        ))}
+      </div>
+      <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        {filtered.length === 0 && <p style={{ color: "#9ca3af" }}>No matching events.</p>}
+        {filtered.map((evt, idx) => (
+          <div
+            key={evt._id || idx}
+            style={{
+              borderLeft: `4px solid ${getStatusColor(evt.type)}`,
+              padding: "8px 12px",
+              marginBottom: 8,
+              background: "#111827",
+              borderRadius: 4
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, color: getStatusColor(evt.type) }}>{evt.type}</span>
+              <span style={{ fontSize: 12, color: "#9ca3af" }}>{new Date(evt.timestamp).toLocaleString()}</span>
+            </div>
+            <div style={{ fontSize: 13, color: "#d1d5db", wordBreak: "break-word" }}>
+              {typeof evt.data === "string" ? evt.data : JSON.stringify(evt.data)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+;

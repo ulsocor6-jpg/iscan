@@ -1,6 +1,6 @@
 import express from "express";
 import { createPayout, getMyPayouts, adminCompletePayouts, adminCancelPayout, adminGetAllPayouts } from "../controllers/payoutController.js";
-import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../auth/middleware/authMiddleware.js";
 
 const router = express.Router();
 

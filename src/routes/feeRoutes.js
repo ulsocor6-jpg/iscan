@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
 import FeeRecord from '../models/feeModel.js';
 const router = express.Router();
 router.get('/my', requireAuth, async (req, res) => {

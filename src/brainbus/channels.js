@@ -9,6 +9,9 @@ const Channels = {
   // Blockchain events
   BLOCKCHAIN_EVENT: 'blockchain.event',
   BLOCKCHAIN_EVENT_FAILED: 'blockchain.event.failed',
+  COMPLIANCE_TRANSACTION: "compliance:transaction",
+  COMPLIANCE_CORRELATED: "compliance:correlated",
+  COMPLIANCE_RISK_SCORE: "compliance:riskScore",
 
   // Knowledge and reasoning
   KNOWLEDGE_LOOKUP: 'knowledge.lookup',
@@ -32,8 +35,20 @@ const Channels = {
 
   // Memory snapshots
   MEMORY_SNAPSHOT: 'memory.snapshot',
+
+  // Treasury Consensus V2
+  DEPOSIT_VERIFIED: 'deposit.verified',
+  TREASURY_DRIFT: 'treasury.drift',
+  DEPOSIT_CREDITED: 'deposit.credited',
+
+  // Session Intelligence
+  SESSION_CREATED: 'session.created',
+  SESSION_UPDATED: 'session.updated',
+  SESSION_RISK: 'session.risk',
+  SESSION_ANOMALY: 'session.anomaly',
+  SESSION_TERMINATED: 'session.terminated',
+
 };
 
-// Support both default and named imports
 export { Channels };
 export default Channels;

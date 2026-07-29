@@ -15,11 +15,44 @@
 
 import brainBus from "./brainBus.js";
 import { Channels } from "./channels.js";
+import PendingOperation from "../models/blockchain/pendingOperationModel.js";
+import inspectorService from "../services/inspectorService.js";
 
 class ExplanationEngine {
 
     constructor() {
         this._explanationCount = 0;
+        // Map of reason patterns to human‑friendly explanations
+        this._reasonMap = {
+            "Signature verification failed": {
+                summary: (ctx) => `The deposit notification signature was invalid – the Android app may have used the wrong secret or the payload was tampered with.`,
+                recommendation: (ctx) => `Check that the Android app is using the correct depositSecret for operation ${ctx.operationId || 'N/A'}. Verify that the secret is still valid and has not expired.`
+            },
+            "Amount verification failed": {
+                summary: (ctx) => `The reported amount (${ctx.amount || 'unknown'}) does not match the expected ${ctx.expectedAmount || 'unknown'} ${ctx.asset || 'PHP'} for operation ${ctx.operationId || 'N/A'}.`,
+                recommendation: (ctx) => `Verify the actual deposit amount and ask the user to confirm. If correct, adjust the tolerance or create a new operation with the correct expected amount.`
+            },
+            "Duplicate reference": {
+                summary: (ctx) => `This reference has already been processed – likely a duplicate notification.`,
+                recommendation: (ctx) => `No action needed – this is a duplicate. If the user claims they sent multiple deposits, check the pending operations.`
+            },
+            "Pending operation mismatch": {
+                summary: (ctx) => `The operation ${ctx.operationId || 'N/A'} does not match the incoming deposit (user, amount, or asset mismatch).`,
+                recommendation: (ctx) => `Investigate the mismatch: verify the user ID, expected amount, and asset. The user may need to create a new deposit request.`
+            },
+            "Expired operation": {
+                summary: (ctx) => `Operation ${ctx.operationId || 'N/A'} expired at ${ctx.expiration || 'unknown'}.`,
+                recommendation: (ctx) => `The user must create a new deposit request. The previous operation has expired.`
+            },
+            "Operation not found": {
+                summary: (ctx) => `No pending deposit operation found for the provided operationId: ${ctx.operationId || 'N/A'}.`,
+                recommendation: (ctx) => `The operationId sent by the app does not exist. Ask the user to cancel and re‑initiate the deposit.`
+            },
+            "No matching pending operation": {
+                summary: (ctx) => `Could not find a pending deposit request for user ${ctx.userId || 'unknown'} with amount ${ctx.amount || 'unknown'} within tolerance.`,
+                recommendation: (ctx) => `Check if the user has an active pending deposit request. If not, ask the user to initiate a new deposit.`
+            }
+        };
     }
 
     async start() {
@@ -31,30 +64,35 @@ class ExplanationEngine {
             this._render(explanation);
         });
 
-        // ── Also explain operator incidents directly ────────────────────
-        brainBus.on(Channels.OPERATOR_INCIDENT, (envelope) => {
-            // Incidents that DON'T go through Decision Engine still need explanations.
-            // Decision Engine already re-emits these as explanation.generated for
-            // SUGGEST/ESCALATE tiers, so this catches anything that bypasses it.
-            const { flowId, type, severity, diagnosis, recommendation } = envelope.payload;
+        // ── Enhanced operator incident handler ─────────────────────────
+        brainBus.on(Channels.OPERATOR_INCIDENT, async (envelope) => {
+            const payload = envelope.payload;
 
-            // Only explain if it didn't already come through DecisionEngine
-            // (DecisionEngine tags its explanations with decisionId)
-            if (!envelope.payload.decisionId) {
+            // Only handle if it didn't come from DecisionEngine (avoid duplicates)
+            if (!payload.decisionId) {
+                // Fetch context (flow + pending operation)
+                const context = await this._fetchContext(payload.flowId, payload.userId, payload.source);
+
+                // Interpret the incident using context
+                const interpretation = this._interpretIncident(payload, context);
+
                 const explanation = {
                     id: `expl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                     timestamp: new Date().toISOString(),
                     source: "OperatorIncident",
-                    flowId: flowId || null,
-                    tier: severity === "CRITICAL" ? "ESCALATE" : "SUGGEST",
-                    title: type || "Unknown Incident",
-                    summary: diagnosis || "No diagnosis available.",
-                    recommendation: recommendation || "Review in Operator dashboard.",
-                    details: envelope.payload,
-                    rendered: null
+                    flowId: payload.flowId || null,
+                    tier: payload.severity === "high" || payload.severity === "CRITICAL" ? "ESCALATE" : "SUGGEST",
+                    title: interpretation.title,
+                    summary: interpretation.summary,
+                    recommendation: interpretation.recommendation,
+                    details: payload.details || payload,
+                    rendered: null,
+                    operationId: context.operationId || null,
+                    expectedAmount: context.expectedAmount || null,
+                    actualAmount: payload.amount || null,
                 };
 
-                this._persist(explanation);
+                await this._persist(explanation);
                 this._render(explanation);
             }
         });
@@ -71,6 +109,88 @@ class ExplanationEngine {
         }, 60000);
 
         console.log("[ExplanationEngine] ✅ Listening on explanation.generated + operator.incident — producing human-readable audit trail");
+    }
+
+    /* ------------------------------------------------------------------
+       Fetch context (flow + pending operation) for richer explanations
+       ------------------------------------------------------------------ */
+
+    async _fetchContext(flowId, userId, source) {
+        let flow = null;
+        let pendingOp = null;
+        let operationId = null;
+        let expectedAmount = null;
+        let expiration = null;
+
+        try {
+            if (flowId) {
+                flow = await inspectorService.getFlow(flowId);
+                if (flow && flow.operationId) {
+                    operationId = flow.operationId;
+                    pendingOp = await PendingOperation.findOne({ operationId }).select('+depositSecret');
+                }
+            }
+            if (!pendingOp && userId) {
+                // Try to find the most recent pending operation for this user
+                pendingOp = await PendingOperation.findOne({
+                    userId,
+                    status: 'PENDING',
+                    asset: 'PHP',
+                    expiration: { $gt: new Date() }
+                }).sort({ createdAt: -1 }).select('+depositSecret');
+                if (pendingOp) {
+                    operationId = pendingOp.operationId;
+                }
+            }
+            if (pendingOp) {
+                expectedAmount = pendingOp.expectedAmount;
+                expiration = pendingOp.expiration;
+            }
+        } catch (e) {
+            // ignore – best effort
+        }
+
+        return { flow, pendingOp, operationId, expectedAmount, expiration };
+    }
+
+    /* ------------------------------------------------------------------
+       Interpret an incident and produce a human‑readable explanation
+       ------------------------------------------------------------------ */
+
+    _interpretIncident(payload, context) {
+        const { reason, details, source, userId, amount } = payload;
+        const ctx = {
+            userId,
+            amount,
+            operationId: context.operationId,
+            expectedAmount: context.expectedAmount,
+            expiration: context.expiration,
+            asset: 'PHP',
+            source: source || 'unknown'
+        };
+
+        let summary, recommendation, title;
+
+        // Find matching reason in map
+        const matchedKey = Object.keys(this._reasonMap).find(key => reason && reason.includes(key));
+        if (matchedKey) {
+            const entry = this._reasonMap[matchedKey];
+            summary = entry.summary(ctx);
+            recommendation = entry.recommendation(ctx);
+            title = `❌ ${matchedKey}`;
+        } else {
+            // Generic fallback
+            summary = `${source} deposit failed: ${reason || 'unknown error'}. Operation: ${ctx.operationId || 'N/A'}.`;
+            recommendation = `Investigate the system logs for more details. Consider manual review if the issue persists.`;
+            title = `⚠️ Deposit Verification Failed`;
+        }
+
+        // Add details if present
+        if (details) {
+            summary += ` Details: ${JSON.stringify(details)}.`;
+        }
+
+        return { title, summary, recommendation };
     }
 
     /* ------------------------------------------------------------------
@@ -145,18 +265,20 @@ class ExplanationEngine {
                     recommendation: explanation.recommendation,
                     action: explanation.action,
                     source: explanation.source,
-                    explanationId: explanation.id
+                    explanationId: explanation.id,
+                    operationId: explanation.operationId,
+                    expectedAmount: explanation.expectedAmount,
+                    actualAmount: explanation.actualAmount,
                 },
                 status: explanation.tier === "ESCALATE" ? "failed" : "success"
             });
         } catch (e) {
-            // Audit model may not be available at boot — non-fatal
             if (e.code !== "MODULE_NOT_FOUND") {
                 console.error("[ExplanationEngine] Failed to write audit record:", e.message);
             }
         }
 
-        // ── Event stream broadcast (existing SSE to dashboards) ──────────
+        // ── Event stream broadcast ──────────────────────────────────────
         try {
             const { default: eventStreamService } = await import("../services/eventStreamService.js");
             eventStreamService.emit("explanation.generated", {
@@ -169,7 +291,7 @@ class ExplanationEngine {
                 timestamp: explanation.timestamp
             });
         } catch (e) {
-            // Non-fatal — SSE is best-effort
+            // Non-fatal
         }
     }
 
@@ -195,6 +317,15 @@ class ExplanationEngine {
         console.log(`  Tier:      ${explanation.tier}`);
         console.log(`  Summary:   ${explanation.summary}`);
         console.log(`  Action:    ${explanation.recommendation}`);
+        if (explanation.operationId) {
+            console.log(`  Operation: ${explanation.operationId}`);
+        }
+        if (explanation.expectedAmount) {
+            console.log(`  Expected:  ${explanation.expectedAmount} PHP`);
+        }
+        if (explanation.actualAmount) {
+            console.log(`  Actual:    ${explanation.actualAmount} PHP`);
+        }
         console.log(`${divider}\n`);
     }
 

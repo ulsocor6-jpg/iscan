@@ -47,7 +47,13 @@ const TABS = [
   { label: "Chain Scans", value: "scan" },
   { label: "System / Recovery", value: "system" },
   { label: "Errors", value: "__errors__" },
+  { label: "History", value: "__history__" },
 ];
+
+// Default views only show activity from this window — keeps stale/retired
+// scanner noise (e.g. old baseStableListener errors) out of the everyday
+// view without deleting it. Full unfiltered list lives under the History tab.
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 
 export default function BlockchainInspector() {
   const [live, setLive] = useState<ChainEvent[]>([]);
@@ -88,16 +94,25 @@ export default function BlockchainInspector() {
 
   const merged = [...live, ...history].slice(0, 300);
 
-  const errorCount = merged.filter((e) => e.data?.level === "ERROR").length;
+  const cutoff = Date.now() - RECENT_WINDOW_MS;
+  const recent = merged.filter((e) => new Date(e.timestamp).getTime() >= cutoff);
 
-  const rows = tab
+  const isHistoryTab = tab === "__history__";
+  const scope = isHistoryTab ? merged : recent;
+
+  const errorCount = recent.filter((e) => e.data?.level === "ERROR").length;
+  const historyCount = merged.length;
+
+  const rows = isHistoryTab
+    ? merged
+    : tab
     ? tab === "__errors__"
-      ? merged.filter((e) => e.data?.level === "ERROR")
-      : merged.filter((e) => (e.data?.category || "other") === tab)
-    : merged;
+      ? scope.filter((e) => e.data?.level === "ERROR")
+      : scope.filter((e) => (e.data?.category || "other") === tab)
+    : scope;
 
   const counts: Record<string, number> = {};
-  merged.forEach((e) => {
+  recent.forEach((e) => {
     const c = e.data?.category || "other";
     counts[c] = (counts[c] || 0) + 1;
   });
@@ -132,11 +147,14 @@ export default function BlockchainInspector() {
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
           {TABS.map((t) => {
             const isErrorsTab = t.value === "__errors__";
+            const isHistTab = t.value === "__history__";
             const count = isErrorsTab
               ? errorCount
+              : isHistTab
+              ? historyCount
               : t.value
               ? counts[t.value] || 0
-              : merged.length;
+              : recent.length;
             const active = tab === t.value;
             return (
               <button
@@ -216,8 +234,13 @@ export default function BlockchainInspector() {
                     </span>
                     <span style={{
                       flex: 1,
+                      minWidth: 0,
                       color: isError ? "#fca5a5" : "var(--color-text-secondary)",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical" as any,
+                      overflow: "hidden",
+                      wordBreak: "break-word",
                     }}>
                       {d.message}
                       {details.length > 0 && (

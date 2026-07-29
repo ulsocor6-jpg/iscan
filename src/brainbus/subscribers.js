@@ -64,6 +64,17 @@ export async function wireBrainBus() {
         console.warn("[BrainBus] ⚠ Explanation Engine not available:", e.message);
     }
 
+
+    // ── Session Intelligence ────────────────────────────────────────────
+    try {
+        const { default: sessionIntelligenceConsumer } =
+            await import("../auth/intelligence/sessionIntelligenceConsumer.js");
+        sessionIntelligenceConsumer.start();
+        console.log("[BrainBus] ✓ Session Intelligence wired");
+    } catch (e) {
+        console.warn("[BrainBus] ⚠ Session Intelligence not available:", e.message);
+    }
+
     // ── Live Memory ────────────────────────────────────────────────────
     try {
         const { default: liveMemory } = await import("./liveMemory.js");

@@ -1,3 +1,4 @@
+import brainBus from "../../../brainbus/brainBus.js";
 import { ethers } from "ethers";
 
 import BlockchainCursor from "../../../models/blockchain/blockchainCursorModel.js";
@@ -10,6 +11,7 @@ import { record } from "../journal/blockchainInbox.js";
 import inspector from "../inspector/blockchainInspector.js";
 import rpcUsageMonitor from "../monitor/rpcUsageMonitor.js";
 import { getProviderProfile } from "../config/providerRegistry.js";
+import healthRegistry from "../../../intelligence/healthRegistry.js";
 
 const POLL_INTERVAL = 15000; // was 1000ms — that meant a getBlockNumber() call every second per chain, forever, even when idle. 15s is still fast enough for deposit monitoring and cuts polling-overhead RPC usage by ~15x.              // base tick — cheap, just checks chain timers
 
@@ -177,16 +179,26 @@ class BlockchainEngine {
             { chains: this.chains.map(c => c.chain), tickMs: POLL_INTERVAL }
         );
 
-        setInterval(() => {
+        healthRegistry.registerNode({ node: "blockchainEngine", type: "watcher" });
+        healthRegistry.report({ node: "blockchainEngine", status: "ONLINE", metrics: { chains: this.chains.map(c => c.chain) } });
+
+        // Event‑driven – wakes on deposit, withdrawal, swap
+        const run = () => {
             if (this._polling) return;
             this._polling = true;
             this.poll()
                 .catch((err) => {
                     console.error(err);
                     inspector.error("BlockchainEngine", err.message, { stack: err.stack });
+                    healthRegistry.report({ node: "blockchainEngine", status: "WARNING", error: err.message });
                 })
                 .finally(() => { this._polling = false; });
-        }, POLL_INTERVAL);
+        };
+        brainBus.on("deposit.created",   run);
+        brainBus.on("withdrawal.started", run);
+        brainBus.on("swap.created",       run);
+        // Initial catch‑up
+        run();
 
         setInterval(() => {
             for (const snapshot of rpcUsageMonitor.snapshotAll()) {
@@ -388,6 +400,7 @@ class BlockchainEngine {
 
         }
 
+        healthRegistry.report({ node: "blockchainEngine", status: "ONLINE", metrics: { lastChain: chainConfig.chain, lastScannedBlock: cursor.lastScannedBlock } });
         this._scheduleNext(state);
 
     }

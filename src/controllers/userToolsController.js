@@ -4,34 +4,86 @@ import DirectDeposit from "../models/DirectDepositModel.js";
 import FlowerOrder from "../models/flower/flowerOrderModel.js";
 import BlockchainInbox from "../models/blockchain/blockchainInboxModel.js";
 import Ledger from "../models/ledgerModel.js";
+import AcknowledgedItem from "../models/acknowledgedItemModel.js";
 
 export async function getUserDashboard(req, res) {
     try {
         const userId = req.user.id;
-        const [deposits, withdrawals, swaps, recentLedger, inspectorFlows] = await Promise.all([
+        const [deposits, withdrawals, swaps, recentLedger, inspectorFlows, acknowledged] = await Promise.all([
             DirectDeposit.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
             WithdrawalRequest.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
             FlowerOrder.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
             Ledger.find({ userId }).sort({ createdAt: -1 }).limit(10).lean(),
             Inspector.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
+            AcknowledgedItem.find({ userId }).lean(),
         ]);
+
+        const ackSet = new Set(acknowledged.map(a => a.itemKey));
+
         const failedDeposits = deposits.filter(d => d.status === "failed" || d.status === "expired");
         const failedWithdrawals = withdrawals.filter(w => w.status === "failed");
         const stuckFlows = inspectorFlows.filter(f => f.status === "RUNNING" && f.stages?.some(s => s.status === "FAILED"));
+
+        const liveDeposits = deposits.filter(d => !ackSet.has(`deposit:${d._id}`));
+        const liveWithdrawals = withdrawals.filter(w => !ackSet.has(`withdrawal:${w._id}`));
+        const liveSwaps = swaps.filter(s => !ackSet.has(`swap:${s.orderId}`));
+        const liveStuckFlows = stuckFlows.filter(f => !ackSet.has(`flow:${f.flowId}`));
+
+        const liveFailedDeposits = liveDeposits.filter(d => d.status === "failed" || d.status === "expired");
+        const liveFailedWithdrawals = liveWithdrawals.filter(w => w.status === "failed");
+        const liveFailedSwaps = liveSwaps.filter(s => s.status?.startsWith("FAILED"));
+
+        const liveTotal = liveDeposits.length + liveWithdrawals.length + liveSwaps.length;
+        const liveFailedTotal = liveFailedDeposits.length + liveFailedWithdrawals.length + liveFailedSwaps.length + liveStuckFlows.length;
+
         res.json({ success: true, data: {
             summary: {
-                totalDeposits: deposits.length, failedDeposits: failedDeposits.length,
-                totalWithdrawals: withdrawals.length, failedWithdrawals: failedWithdrawals.length,
-                totalSwaps: swaps.length, failedSwaps: swaps.filter(s => s.status?.startsWith("FAILED")).length,
-                stuckFlows: stuckFlows.length,
-                healthScore: (() => { const t = deposits.length + withdrawals.length + swaps.length; if (!t) return 100; const f = failedDeposits.length + failedWithdrawals.length + swaps.filter(s => s.status?.startsWith("FAILED")).length + stuckFlows.length; return Math.round(100 - (f/t*100)); })(),
+                totalDeposits: liveDeposits.length, failedDeposits: liveFailedDeposits.length,
+                totalWithdrawals: liveWithdrawals.length, failedWithdrawals: liveFailedWithdrawals.length,
+                totalSwaps: liveSwaps.length, failedSwaps: liveFailedSwaps.length,
+                stuckFlows: liveStuckFlows.length,
+                healthScore: liveTotal ? Math.round(100 - (liveFailedTotal / liveTotal * 100)) : 100,
             },
-            deposits: deposits.map(d => ({ id: d._id, type: "deposit", amount: d.amount, currency: d.currency||"PHP", source: d.source, status: d.status, createdAt: d.createdAt, failureReason: d.failReason })),
-            withdrawals: withdrawals.map(w => ({ id: w._id, referenceId: w.referenceId||`WD-${w._id}`, type: "withdrawal", amount: w.amount, currency: w.asset||"PHP", network: w.network, status: w.status, createdAt: w.createdAt, failureReason: w.failReason||w.error, canRetry: w.status==="failed", canCancel: w.status==="pending_review" })),
-            swaps: swaps.map(s => ({ id: s._id, orderId: s.orderId, type: "swap", direction: s.direction, amount: s.expectedAmount||s.usdcAmountIn||0, currency: "USDC", status: s.status, currentStage: s.currentStage, createdAt: s.createdAt, failureReason: s.failureReason||(s.status?.startsWith("FAILED")?`Failed at ${s.status.replace("FAILED_","")}`:null), canRetry: s.status?.startsWith("FAILED")||s.status==="WAITING_DEPOSIT", canCancel: s.status==="WAITING_DEPOSIT", depositAddress: s.depositAddress, credited: s.status==="COMPLETED"?true:(s.status?.startsWith("FAILED")?false:null) })),
+            deposits: deposits.map(d => ({
+                id: d._id, itemKey: `deposit:${d._id}`, acknowledged: ackSet.has(`deposit:${d._id}`),
+                type: "deposit", amount: d.amount, currency: d.currency||"PHP", source: d.source,
+                status: d.status, createdAt: d.createdAt, failureReason: d.failReason,
+            })),
+            withdrawals: withdrawals.map(w => ({
+                id: w._id, itemKey: `withdrawal:${w._id}`, acknowledged: ackSet.has(`withdrawal:${w._id}`),
+                referenceId: w.referenceId||`WD-${w._id}`, type: "withdrawal", amount: w.amount,
+                currency: w.asset||"PHP", network: w.network, status: w.status, createdAt: w.createdAt,
+                failureReason: w.failReason||w.error, canRetry: w.status==="failed", canCancel: w.status==="pending_review",
+            })),
+            swaps: swaps.map(s => ({
+                id: s._id, itemKey: `swap:${s.orderId}`, acknowledged: ackSet.has(`swap:${s.orderId}`),
+                orderId: s.orderId, type: "swap", direction: s.direction, amount: s.expectedAmount||s.usdcAmountIn||0,
+                currency: "USDC", status: s.status, currentStage: s.currentStage, createdAt: s.createdAt,
+                failureReason: s.failureReason||(s.status?.startsWith("FAILED")?`Failed at ${s.status.replace("FAILED_","")}`:null),
+                canRetry: s.status?.startsWith("FAILED")||s.status==="WAITING_DEPOSIT", canCancel: s.status==="WAITING_DEPOSIT",
+                depositAddress: s.depositAddress, credited: s.status==="COMPLETED"?true:(s.status?.startsWith("FAILED")?false:null),
+            })),
             recentActivity: recentLedger.slice(0,5).map(l => ({ type: l.type, amount: l.amount, currency: l.currency, description: l.description, createdAt: l.createdAt })),
-            stuckFlows: stuckFlows.map(f => ({ flowId: f.flowId, pipeline: f.pipeline, status: f.status, stages: (f.stages||[]).map(s => ({ name: s.name, status: s.status, error: s.error })), createdAt: f.createdAt })),
+            stuckFlows: stuckFlows.map(f => ({
+                flowId: f.flowId, itemKey: `flow:${f.flowId}`, acknowledged: ackSet.has(`flow:${f.flowId}`),
+                pipeline: f.pipeline, status: f.status,
+                stages: (f.stages||[]).map(s => ({ name: s.name, status: s.status, error: s.error })), createdAt: f.createdAt,
+            })),
         }});
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+}
+
+export async function acknowledgeItem(req, res) {
+    try {
+        const userId = req.user.id;
+        const { itemKey } = req.body;
+        if (!itemKey) return res.status(400).json({ success: false, error: "itemKey required" });
+        await AcknowledgedItem.updateOne(
+            { userId, itemKey },
+            { $setOnInsert: { userId, itemKey, acknowledgedAt: new Date() } },
+            { upsert: true }
+        );
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 }
 

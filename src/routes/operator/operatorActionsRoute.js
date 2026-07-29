@@ -1,15 +1,18 @@
 import { Router } from "express";
+import { requireAuth, requireAdmin } from "../../auth/middleware/authMiddleware.js";
 import operatorActions from "../../brainbus/predictions/operatorActions.js";
 import anomalyDetector from "../../brainbus/predictions/anomalyDetector.js";
 import correlationEngine from "../../brainbus/predictions/correlationEngine.js";
 import liveMemoryStore from "../../brainbus/liveMemoryStore.js";
 import FlowerOrder from "../../models/flower/flowerOrderModel.js";
 import BlockchainInbox from "../../models/blockchain/blockchainInboxModel.js";
+import { buildStageTimeline } from "../../intelligence/stageTimeline.js";
+import { explainFailure } from "../../intelligence/rootCauseClassifier.js";
 
 const router = Router();
 
 // ── Get actionable items ────────────────────────────────────────────────
-router.get("/actionable", async (req, res) => {
+router.get("/actionable", requireAuth, requireAdmin, async (req, res) => {
     try {
         const data = operatorActions.getActionableIncidents();
         res.json({ success: true, data });
@@ -19,7 +22,7 @@ router.get("/actionable", async (req, res) => {
 });
 
 // ── Resolve / Retry / Escalate ──────────────────────────────────────────
-router.post("/resolve", async (req, res) => {
+router.post("/resolve", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { incidentId, resolution } = req.body;
         const result = await operatorActions.resolveIncident(incidentId, resolution);
@@ -27,7 +30,7 @@ router.post("/resolve", async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-router.post("/retry", async (req, res) => {
+router.post("/retry", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { flowId, stage } = req.body;
         const result = await operatorActions.retryFlow(flowId, stage);
@@ -35,7 +38,7 @@ router.post("/retry", async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-router.post("/escalate", async (req, res) => {
+router.post("/escalate", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { flowId, note } = req.body;
         const result = await operatorActions.escalateFlow(flowId, note);
@@ -44,7 +47,7 @@ router.post("/escalate", async (req, res) => {
 });
 
 // ── Predictions ─────────────────────────────────────────────────────────
-router.get("/predictions", async (req, res) => {
+router.get("/predictions", requireAuth, requireAdmin, async (req, res) => {
     try {
         res.json({
             success: true,
@@ -59,7 +62,7 @@ router.get("/predictions", async (req, res) => {
 });
 
 // ── Intelligence for a specific flow/order ──────────────────────────────
-router.get("/intelligence/:flowId", async (req, res) => {
+router.get("/intelligence/:flowId", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { flowId } = req.params;
         const store = liveMemoryStore;
@@ -76,6 +79,13 @@ router.get("/intelligence/:flowId", async (req, res) => {
         const trace = await getTrace(flowId);
         const suggestion = await getSuggestion(flowId, flow, stageStats);
 
+        // NEW: root-cause classification + full stage timeline. Prefer the
+        // live Inspector flow's stages[] (has real per-stage error text via
+        // failStage()); fall back to the FlowerOrder's single failureReason
+        // field when no Inspector doc is cached yet, so this still works
+        // for orders that failed before swapFlowBridge synced them.
+        const { rootCause, timeline } = await getRootCause(flowId, flow);
+
         res.json({
             success: true,
             data: {
@@ -86,10 +96,51 @@ router.get("/intelligence/:flowId", async (req, res) => {
                 stageStats,
                 suggestion,
                 trace,
+                rootCause,
+                timeline,
             }
         });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
+
+// ── Root cause: classify the failure + show which downstream stages ─────
+// never ran as a result. Returns { rootCause: null, timeline: null } for
+// flows that haven't failed — the frontend should only render the badge
+// when rootCause is present.
+async function getRootCause(flowId, cachedFlow) {
+    try {
+        // Case 1: we have a live Inspector flow with real stage-level errors.
+        if (cachedFlow?.pipeline && cachedFlow.status === "FAILED") {
+            const timeline = buildStageTimeline(cachedFlow.pipeline, cachedFlow.stages || [], cachedFlow.status);
+            const failedStage = (cachedFlow.stages || []).find(s => s.status === "FAILED");
+            if (failedStage) {
+                const rootCause = explainFailure(timeline, failedStage.name, failedStage.error || "");
+                return { rootCause, timeline };
+            }
+        }
+
+        // Case 2: fall back to FlowerOrder — most swap failures in the wild
+        // right now live here, not in a synced Inspector doc.
+        const order = await FlowerOrder.findOne({ orderId: flowId }).lean();
+        if (!order?.status?.startsWith("FAILED")) return { rootCause: null, timeline: null };
+
+        const timeline = buildStageTimeline(
+            "FLOWER_SWAP",
+            // Reconstruct a minimal observed-stages list from what FlowerOrder tracks directly.
+            [
+                order.sweepTxHash ? { name: "FLOWER_SWEEP", status: "SUCCESS" } : null,
+                order.swapTxHash ? { name: "FLOWER_SWAP", status: "SUCCESS" } : null,
+                { name: order.status.replace("FAILED_", "FLOWER_") || "FLOWER_SWEEP", status: "FAILED" },
+            ].filter(Boolean),
+            "FAILED"
+        );
+        const failedStageName = order.status.replace("FAILED_", "FLOWER_");
+        const rootCause = explainFailure(timeline, failedStageName, order.failureReason || order.status);
+        return { rootCause, timeline };
+    } catch (e) {
+        return { rootCause: null, timeline: null };
+    }
+}
 
 // ── Trace: user action → backend received → backend processed → result ──
 async function getTrace(flowId) {

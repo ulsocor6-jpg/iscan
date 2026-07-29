@@ -1,6 +1,5 @@
-// src/pages/Withdrawals.tsx — full replacement
-import DashboardLayout from "../banking/components/DashboardLayout";
 import { useState, useEffect } from "react";
+import DashboardLayout from "../banking/components/DashboardLayout";
 
 const inp: React.CSSProperties = {
   width: "100%", padding: 10, borderRadius: 8,
@@ -11,12 +10,8 @@ const lbl: React.CSSProperties = {
   color: "#94a3b8", fontSize: 12, marginTop: 12, display: "block",
 };
 
-// ── Platform fee on top of network gas (%) ────────────────────────────────────
-const PLATFORM_FEE_PCT = 0.5; // 0.5% — adjust as needed
-
-// ── PHP withdrawal fee — must match paymentRoutes.js (php * 0.015) ───────────
+const PLATFORM_FEE_PCT = 0.5;
 const PHP_FEE_PCT = 1.5;
-
 
 // ── Assets — only USDC, USDT, FLOWER live ────────────────────────────────────
 const ASSETS = [
@@ -33,7 +28,7 @@ const ASSETS = [
 const ASSET_NETWORKS: Record<string, string[]> = {
   USDC:   ["ERC-20", "Base", "Arbitrum", "Solana"],
   USDT:   ["ERC-20", "TRC-20", "BEP-20", "Solana"],
-  FLOWER: ["Ronin", "Base"],    // ← Ronin first as default
+  FLOWER: ["Ronin", "Base"],
   ETH:    ["ERC-20", "Base", "Arbitrum", "Optimism"],
   BTC:    ["Bitcoin", "Lightning"],
   SOL:    ["Solana"],
@@ -75,11 +70,10 @@ async function estimateFee(network: string): Promise<{ gasUsd: number; gwei?: nu
       });
       const d = await r.json();
       const gasPriceWei = parseInt(d.result, 16);
-      const gasLimit    = 65000; // ERC-20 token transfer
+      const gasLimit    = 65000;
       const feeNative   = (gasPriceWei * gasLimit) / 1e18;
       const gwei        = parseFloat((gasPriceWei / 1e9).toFixed(3));
 
-      // Get native token USD price
       const nativePrices: Record<string, string> = {
         "ERC-20": "ethereum", "Base": "ethereum", "Arbitrum": "ethereum",
         "Optimism": "ethereum", "BEP-20": "binancecoin", "Ronin": "ronin",
@@ -104,19 +98,24 @@ async function estimateFee(network: string): Promise<{ gasUsd: number; gwei?: nu
   }
 }
 
-// ── PHP Withdrawal ─────────────────────────────────────────────────────────────
-const CHANNEL_TO_PROVIDER: Record<string, string> = { MAYA: "maya", GCASH: "gcash", BANK: "bank" };
+// ── PHP Withdrawal (Maya, GCash, MariBank, BPI) ─────────────────────────
+const CHANNEL_TO_PROVIDER: Record<string, string> = {
+  MAYA: "maya", GCASH: "gcash", BANK: "bank_bpi", MARIBANK: "maribank"
+};
+const PROVIDER_LABELS: Record<string, string> = {
+  maya: "🟣 Maya", gcash: "💙 GCash", bank_bpi: "🏦 BPI", maribank: "🏦 MariBank"
+};
 
 function PhpWithdrawal() {
-  const [channel, setChannel] = useState("MAYA");
-  const [amount,  setAmount]  = useState("");
-  const [result,  setResult]  = useState<any>(null);
+  const [category, setCategory] = useState<"ewallet" | "bank" | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
 
-  // ── Linked accounts — fetched once, filtered per channel ────────────────
-  const [banks,        setBanks]        = useState<any[]>([]);
-  const [banksLoading,  setBanksLoading] = useState(true);
+  const [banks, setBanks] = useState<any[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/v1/bank/list", { credentials: "include" })
@@ -126,37 +125,90 @@ function PhpWithdrawal() {
       .finally(() => setBanksLoading(false));
   }, []);
 
-  const linkedAccount = banks.find(
-    b => b.provider === CHANNEL_TO_PROVIDER[channel] && b.status === "active"
-  );
+  const linkedAccount = provider
+    ? banks.find(b => b.provider === provider && b.status === "active")
+    : null;
   const account = linkedAccount?.accountNumber ?? "";
-  const name    = linkedAccount?.accountName ?? "";
+  const name = linkedAccount?.accountName ?? "";
+
+  const [availableAmount, setAvailableAmount] = useState<number | null>(null);
+  const [showBanner, setShowBanner] = useState(false);
+
+  async function selectProvider(p: string) {
+    setProvider(p);
+    setError("");
+    setResult(null);
+    setShowBanner(false);
+    setAvailableAmount(null);
+
+    if (!p) return;
+    try {
+      const res = await fetch("/api/v1/treasury/liquidity", { credentials: "include" });
+      const data = await res.json();
+      const accounts = data.accounts || [];
+      const available = accounts
+        .filter(a => a.provider === p)
+        .reduce((sum, a) => sum + a.available, 0);
+      setAvailableAmount(available);
+      setShowBanner(true);
+    } catch {
+      setAvailableAmount(0);
+      setShowBanner(true);
+    }
+  }
 
   async function handleCashOut() {
     setLoading(true); setError(""); setResult(null);
     try {
+      if (!provider) throw new Error("Please select a provider.");
+      const liqRes = await fetch("/api/v1/treasury/liquidity", { credentials: "include" });
+      const liqData = await liqRes.json();
+      const accounts = liqData.accounts || [];
+      const available = accounts
+        .filter(a => a.provider === provider)
+        .reduce((sum, a) => sum + a.available, 0);
+
+      const parsedAmount = parseFloat(amount);
+      if (parsedAmount > available) {
+        throw new Error(
+          `Maximum available through ${PROVIDER_LABELS[provider] || provider} is ₱${available.toFixed(2)}`
+        );
+      }
+
+      const channelMap: Record<string, string> = { maya: "MAYA", gcash: "GCASH", bank_bpi: "BANK", maribank: "BANK" };
+      const channel = channelMap[provider] || provider;
+
       const res = await fetch("/api/v1/payment/cashout", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: parseFloat(amount), channel,
+          amount: parsedAmount,
+          channel,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message);
+      if (!res.ok) {
+        if (data.suggestedAlternatives) {
+          throw new Error(
+            `${data.error}\n` +
+            `Available: ₱${data.maxAvailableForProvider?.toFixed(2) ?? '?'}\n` +
+            `Other options: ${data.suggestedAlternatives.map(p => PROVIDER_LABELS[p] || p).join(', ')}`
+          );
+        }
+        throw new Error(data.error || data.message || "Withdrawal failed");
+      }
       setResult(data);
+      setShowBanner(false);
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }
 
-  // ── Live status + countdown for the pending withdrawal ──────────────────
-  const [liveStatus,  setLiveStatus]  = useState<string>("pending_review");
+  const [liveStatus, setLiveStatus] = useState<string>("pending_review");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
     if (!result?.referenceId) return;
     let cancelled = false;
-
     const poll = async () => {
       try {
         const r = await fetch(`/api/v1/payment/cashout/${result.referenceId}/status`, { credentials: "include" });
@@ -169,7 +221,6 @@ function PhpWithdrawal() {
         }
       } catch {}
     };
-
     poll();
     const iv = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(iv); };
@@ -178,141 +229,187 @@ function PhpWithdrawal() {
   if (result) {
     const mins = secondsLeft != null ? Math.floor(secondsLeft / 60) : null;
     const secs = secondsLeft != null ? secondsLeft % 60 : null;
-
     return (
-    <div style={{ background: liveStatus === "expired" ? "#1a1013" : "#0a1f0a", borderRadius: 8, padding: 16 }}>
-      <p style={{ color: liveStatus === "expired" ? "#f87171" : "#22c55e", margin: "0 0 8px", fontWeight: 700 }}>
-        {liveStatus === "expired" ? "⏱️ Withdrawal Expired & Refunded" : "✅ Withdrawal Submitted!"}
-      </p>
-      <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 4px" }}>
-        Ref: <strong style={{ color: "white" }}>{result.referenceId}</strong>
-      </p>
-      <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 4px" }}>
-        Amount: <strong style={{ color: "white" }}>₱{result.amount}</strong>
-        {" "}→ Net: <strong style={{ color: "#22c55e" }}>₱{result.netAmount}</strong>
-        {" "}(Fee: ₱{result.fee})
-      </p>
-      <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{result.message}</p>
-
-      {liveStatus === "pending_review" && secondsLeft != null && (
-        <p style={{ color: secondsLeft < 60 ? "#f87171" : "#f59e0b", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
-          ⏳ Awaiting release — auto-refund in {mins}:{String(secs).padStart(2, "0")} if not processed
+      <div style={{ background: liveStatus === "expired" ? "#1a1013" : "#0a1f0a", borderRadius: 8, padding: 16 }}>
+        <p style={{ color: liveStatus === "expired" ? "#f87171" : "#22c55e", margin: "0 0 8px", fontWeight: 700 }}>
+          {liveStatus === "expired" ? "⏱️ Withdrawal Expired & Refunded" : "✅ Withdrawal Submitted!"}
         </p>
-      )}
-      {liveStatus === "expired" && (
-        <p style={{ color: "#f87171", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
-          This withdrawal wasn't processed in time and has been automatically refunded to your balance.
+        <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 4px" }}>
+          Ref: <strong style={{ color: "white" }}>{result.referenceId}</strong>
         </p>
-      )}
-      {liveStatus === "completed" && (
-        <p style={{ color: "#22c55e", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
-          ✅ Released to your {channel} account.
+        <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 4px" }}>
+          Amount: <strong style={{ color: "white" }}>₱{result.amount}</strong>
+          {" "}→ Net: <strong style={{ color: "#22c55e" }}>₱{result.netAmount}</strong>
+          {" "}(Fee: ₱{result.fee})
         </p>
-      )}
-
-      <button onClick={() => { setResult(null); setAmount(""); setSecondsLeft(null); setLiveStatus("pending_review"); }}
-        style={{ marginTop: 16, background: "transparent", border: "1px solid #1d2942",
-          borderRadius: 8, color: "#94a3b8", padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
-        New Withdrawal
-      </button>
-    </div>
-  );
+        <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{result.message}</p>
+        {liveStatus === "pending_review" && secondsLeft != null && (
+          <p style={{ color: secondsLeft < 60 ? "#f87171" : "#f59e0b", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+            ⏳ Awaiting release — auto-refund in {mins}:{String(secs).padStart(2, "0")} if not processed
+          </p>
+        )}
+        {liveStatus === "expired" && (
+          <p style={{ color: "#f87171", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+            This withdrawal wasn't processed in time and has been automatically refunded to your balance.
+          </p>
+        )}
+        {liveStatus === "completed" && (
+          <p style={{ color: "#22c55e", fontSize: 13, marginTop: 10, fontWeight: 600 }}>
+            ✅ Released to your {provider} account.
+          </p>
+        )}
+        <button onClick={() => { setResult(null); setAmount(""); setSecondsLeft(null); setLiveStatus("pending_review"); setProvider(null); setCategory(null); }}
+          style={{ marginTop: 16, background: "transparent", border: "1px solid #1d2942", borderRadius: 8,
+            color: "#94a3b8", padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+          New Withdrawal
+        </button>
+      </div>
+    );
   }
 
   return (
     <>
       <div style={{ marginBottom: 16 }}>
         <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-          E-Wallets
-        </label>
-        <div style={{ display: "flex", gap: 8, marginTop: 4, marginBottom: 12 }}>
-          {["MAYA","GCASH"].map(c => {
-            const disabled = c === "GCASH";
-            return (
-              <button key={c} onClick={() => !disabled && setChannel(c)} disabled={disabled} style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
-                cursor: disabled ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 13,
-                background: disabled ? "#151d30" : (channel === c ? "#3b82f6" : "#1d2942"),
-                color: disabled ? "#4b5563" : "white",
-                opacity: disabled ? 0.6 : 1,
-              }}>
-                {c === "MAYA" ? "🟣 Maya" : "💙 GCash"}{disabled ? " (Unavailable)" : ""}
-              </button>
-            );
-          })}
-        </div>
-        <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-          Bank
+          Withdrawal type
         </label>
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button onClick={() => setChannel("BANK")} style={{
-            flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
-            cursor: "pointer", fontWeight: 600, fontSize: 13,
-            background: channel === "BANK" ? "#3b82f6" : "#1d2942", color: "white",
-          }}>
-            🏦 Bank
-          </button>
+          <button onClick={() => { setCategory("ewallet"); setProvider(null); }} style={{
+            flex: 1, padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+            fontWeight: 700, fontSize: 13,
+            background: category === "ewallet" ? "#3b82f6" : "#1d2942", color: "white",
+          }}>📱 E‑Wallet</button>
+          <button onClick={() => { setCategory("bank"); setProvider(null); }} style={{
+            flex: 1, padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+            fontWeight: 700, fontSize: 13,
+            background: category === "bank" ? "#3b82f6" : "#1d2942", color: "white",
+          }}>🏦 Bank</button>
         </div>
       </div>
-      <label style={lbl}>Amount (PHP)</label>
-      <input style={inp} type="number" placeholder="Min ₱100"
-        value={amount} onChange={e => setAmount(e.target.value)} />
 
-      {(() => {
-        const parsedPhp = parseFloat(amount || "0");
-        const phpFee = parseFloat((parsedPhp * (PHP_FEE_PCT / 100)).toFixed(2));
-        const phpNet = Math.max(0, parsedPhp - phpFee);
-        if (parsedPhp <= 0) return null;
-        return (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
-            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
-              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>Fee ({PHP_FEE_PCT}%)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>-₱{phpFee.toFixed(2)}</div>
-            </div>
-            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
-              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Send</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "white" }}>₱{parsedPhp.toFixed(2)}</div>
-            </div>
-            <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
-              <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Receive</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>₱{phpNet.toFixed(2)}</div>
-            </div>
+      {category === "ewallet" && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Choose provider
+          </label>
+          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            <button onClick={() => selectProvider("maya")} style={{
+              padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontWeight: 600, fontSize: 13,
+              background: provider === "maya" ? "#3b82f6" : "#1d2942", color: "white",
+            }}>🟣 Maya</button>
+            <button onClick={() => selectProvider("gcash")} style={{
+              padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontWeight: 600, fontSize: 13,
+              background: provider === "gcash" ? "#3b82f6" : "#1d2942", color: "white",
+            }}>💙 GCash</button>
           </div>
-        );
-      })()}
-
-
-      {banksLoading ? (
-        <p style={{ color: "#64748b", fontSize: 13, marginTop: 16 }}>Loading linked accounts…</p>
-      ) : linkedAccount ? (
-        <>
-          <label style={lbl}>{channel === "BANK" ? "Account Number" : "Mobile Number"}</label>
-          <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
-            value={account} disabled readOnly />
-          <label style={lbl}>Account Name</label>
-          <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
-            value={name} disabled readOnly />
-          <p style={{ color: "#64748b", fontSize: 11, marginTop: 6 }}>
-            🔒 Linked to your profile — withdrawals always go to this account.
-          </p>
-        </>
-      ) : (
-        <div style={{ background: "#1a1013", border: "1px solid #7f1d1d", borderRadius: 8,
-          padding: "10px 12px", marginTop: 16, color: "#fca5a5", fontSize: 12 }}>
-          ⚠️ No linked {channel === "BANK" ? "Bank" : channel === "MAYA" ? "Maya" : "GCash"} account found.
-          Please <a href="/profile" style={{ color: "#f87171", fontWeight: 600 }}>add one in your Profile</a> before withdrawing.
         </div>
       )}
 
-      <div style={{ background: "#1a1a0a", border: "1px solid #854d0e", borderRadius: 8,
-        padding: "10px 12px", marginTop: 16, marginBottom: 16, color: "#fbbf24", fontSize: 12 }}>
-        ⚠️ Fee: 1.5% • Minimum ₱100 • Processed within 10 minutes
-      </div>
-      <button className="auth-btn" onClick={handleCashOut}
-        disabled={loading || !amount || !linkedAccount}>
-        {loading ? "Submitting..." : "Request Withdrawal"}
-      </button>
-      {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
+      {category === "bank" && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Choose bank
+          </label>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={() => selectProvider("bank_bpi")} style={{
+              flex: 1, padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+              fontWeight: 600, fontSize: 13,
+              background: provider === "bank_bpi" ? "#3b82f6" : "#1d2942", color: "white",
+            }}>🏦 BPI</button>
+            <button onClick={() => selectProvider("maribank")} style={{
+              flex: 1, padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+              fontWeight: 600, fontSize: 13,
+              background: provider === "maribank" ? "#3b82f6" : "#1d2942", color: "white",
+            }}>🏦 MariBank</button>
+          </div>
+        </div>
+      )}
+
+      {showBanner && availableAmount !== null && provider && (
+        <div style={{
+          background: "#121b2f", border: "1px solid #3b82f6", borderRadius: 8, padding: "12px 16px",
+          marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <span style={{ color: "#94a3b8", fontSize: 12 }}>
+              Maximum available via {PROVIDER_LABELS[provider] || provider}:
+            </span>
+            <strong style={{ color: "#22c55e", fontSize: 16, marginLeft: 8 }}>
+              ₱{availableAmount.toFixed(2)}
+            </strong>
+          </div>
+          <button onClick={() => setShowBanner(false)} style={{
+            background: "transparent", border: "none", color: "#64748b", fontSize: 18, cursor: "pointer",
+          }}>✕</button>
+        </div>
+      )}
+
+      {provider && (
+        <>
+          <label style={lbl}>Amount (PHP)</label>
+          <input style={inp} type="number" placeholder="Min ₱100"
+            value={amount} onChange={e => setAmount(e.target.value)} />
+
+          {(() => {
+            const parsedPhp = parseFloat(amount || "0");
+            const phpFee = parseFloat((parsedPhp * (PHP_FEE_PCT / 100)).toFixed(2));
+            const phpNet = Math.max(0, parsedPhp - phpFee);
+            if (parsedPhp <= 0) return null;
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+                <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>Fee ({PHP_FEE_PCT}%)</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>-₱{phpFee.toFixed(2)}</div>
+                </div>
+                <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Send</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "white" }}>₱{parsedPhp.toFixed(2)}</div>
+                </div>
+                <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Receive</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>₱{phpNet.toFixed(2)}</div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {banksLoading ? (
+            <p style={{ color: "#64748b", fontSize: 13, marginTop: 16 }}>Loading linked accounts…</p>
+          ) : linkedAccount ? (
+            <>
+              <label style={lbl}>{category === "bank" ? "Account Number" : "Mobile Number"}</label>
+              <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
+                value={account} disabled readOnly />
+              <label style={lbl}>Account Name</label>
+              <input style={{ ...inp, opacity: 0.7, cursor: "not-allowed" }} type="text"
+                value={name} disabled readOnly />
+              <p style={{ color: "#64748b", fontSize: 11, marginTop: 6 }}>
+                🔒 Linked to your profile — withdrawals always go to this account.
+              </p>
+            </>
+          ) : (
+            <div style={{ background: "#1a1013", border: "1px solid #7f1d1d", borderRadius: 8,
+              padding: "10px 12px", marginTop: 16, color: "#fca5a5", fontSize: 12 }}>
+              ⚠️ No linked {category === "bank" ? "bank" : "mobile"} account found.
+              Please <a href="/profile" style={{ color: "#f87171", fontWeight: 600 }}>add one in your Profile</a> before withdrawing.
+            </div>
+          )}
+
+          <div style={{ background: "#1a1a0a", border: "1px solid #854d0e", borderRadius: 8,
+            padding: "10px 12px", marginTop: 16, marginBottom: 16, color: "#fbbf24", fontSize: 12 }}>
+            ⚠️ Fee: 1.5% • Minimum ₱100 • Processed within 10 minutes
+          </div>
+
+          <button className="auth-btn" onClick={handleCashOut}
+            disabled={loading || !amount || !linkedAccount}>
+            {loading ? "Checking liquidity..." : "Request Withdrawal"}
+          </button>
+
+          {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13, whiteSpace: "pre-line" }}>{error}</p>}
+        </>
+      )}
     </>
   );
 }
@@ -348,12 +445,11 @@ function CryptoWithdrawal() {
 
   const parsedAmount   = parseFloat(amount || "0");
   const gasUsd         = feeInfo?.gasUsd ?? 0;
-  const platformFeeUsd = parsedAmount * (PLATFORM_FEE_PCT / 100); // in asset units ≈ USD for stables
+  const platformFeeUsd = parsedAmount * (PLATFORM_FEE_PCT / 100);
   const totalFeeUsd    = gasUsd + platformFeeUsd;
   const minimum        = MINIMUMS[network] ?? 0.01;
 
-  // For display: express total fee in asset units (stables ≈ 1:1 USD; FLOWER use its own unit)
-  const totalFeeInAsset = totalFeeUsd; // close enough for stables; FLOWER fee shown separately
+  const totalFeeInAsset = totalFeeUsd;
   const willReceive     = Math.max(0, parsedAmount - totalFeeInAsset);
 
   async function handleSubmit() {
@@ -457,20 +553,16 @@ function CryptoWithdrawal() {
 
       {/* Fee cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-        {/* Gas fee */}
         <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
           <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>
             ⛽ Gas {feeInfo?.gwei ? `(${feeInfo.gwei} gwei)` : ""}
           </div>
           {feeLoading
             ? <div style={{ fontSize: 11, color: "#475569" }}>…</div>
-            : <>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>~${gasUsd.toFixed(4)}</div>
-              </>
+            : <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>~${gasUsd.toFixed(4)}</div>
           }
         </div>
 
-        {/* Platform fee */}
         <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
           <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>Platform ({PLATFORM_FEE_PCT}%)</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>
@@ -478,13 +570,11 @@ function CryptoWithdrawal() {
           </div>
         </div>
 
-        {/* Minimum */}
         <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
           <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>Minimum</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#f59e0b" }}>{minimum} {asset.id}</div>
         </div>
 
-        {/* You receive */}
         <div style={{ background: "#121b2f", border: "1px solid #1d2942", borderRadius: 8, padding: "10px 12px" }}>
           <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>You Receive</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
@@ -552,7 +642,7 @@ function CryptoWithdrawal() {
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Main page ────────────────────────────────────────────────────────────
 type Tab = "php" | "crypto";
 
 export default function Withdrawals() {
@@ -562,7 +652,7 @@ export default function Withdrawals() {
       <div className="dashboard">
         <h2>Withdrawals</h2>
         <p style={{ color: "#94a3b8", marginTop: 0, marginBottom: 20 }}>
-          Withdraw PHP to your mobile wallet, or send crypto directly to any wallet address.
+          Withdraw PHP to your mobile wallet or bank, or send crypto to any wallet address.
         </p>
         <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
           <button onClick={() => setTab("php")} style={{

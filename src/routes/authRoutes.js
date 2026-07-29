@@ -10,8 +10,15 @@ import {
   resendVerification,
   exitImpersonation
 } from '../controllers/authController.js';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
 import { loginLimiter, authActionLimiter } from '../../middleware/rateLimiters.js';
+
+import {
+    getSessions,
+    getCurrentSession,
+    revokeSession,
+    revokeAllSessions
+} from "../auth/controllers/sessionController.js";
 
 const router = express.Router();
 
@@ -24,6 +31,20 @@ router.use((req,res,next)=>{
 router.post('/register', authActionLimiter, register);
 router.post('/login', loginLimiter, login);
 router.post('/logout', logout);
+
+/*
+|--------------------------------------------------------------------------
+| Session Management
+|--------------------------------------------------------------------------
+*/
+
+router.get('/sessions', requireAuth, getSessions);
+router.get('/sessions/me', requireAuth, getCurrentSession);
+
+router.delete('/sessions', requireAuth, revokeAllSessions);
+
+router.delete('/sessions/:sessionId', requireAuth, revokeSession);
+
 router.get('/verify', requireAuth, verify);
 router.get('/me', requireAuth, verify);  // alias — dashboard calls both
 router.get('/verify-email', verifyEmail);

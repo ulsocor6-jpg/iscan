@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
 import { requireFullKYC } from '../middleware/kycTierMiddleware.js';
 import { transfer } from '../services/p2pTransferService.js';
 

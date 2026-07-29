@@ -1,5 +1,5 @@
 import express from "express";
-import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../auth/middleware/authMiddleware.js";
 import dashboardService from "../services/dashboardService.js";
 import { getDashboard, refreshChainBalances } from "../controllers/dashboardController.js";
 import eventStreamService from "../services/eventStreamService.js";

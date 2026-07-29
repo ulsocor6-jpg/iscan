@@ -3,7 +3,7 @@ import {
   listPending,
   approveDeposit
 } from "../controllers/adminDepositController.js";
-import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../auth/middleware/authMiddleware.js";
 
 const router = express.Router();
 

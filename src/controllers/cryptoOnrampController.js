@@ -1,5 +1,6 @@
 import Wallet from "../models/walletModel.js";
 import activeDepositSessions from "../services/blockchain/watch/activeDepositSessions.js";
+import { scanAddress } from "../services/compliance/BlockchainObserver.js";
 
 /**
  * GET QUOTE
@@ -147,6 +148,7 @@ export const createDepositAddress = async (req, res) => {
       chain.toLowerCase(),
       `${userId}:${chainAddress.address}`
     );
+    scanAddress(chainAddress.address).catch(err => console.error("[Compliance] scanAddress failed:", err.message));
 
     return res.json({
       success: true,

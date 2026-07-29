@@ -159,7 +159,7 @@ export default function SystemInspector() {
     params.set("limit", "150");
     const res = await api(`/api/v1/admin/events?${params.toString()}`);
     if (res.success) {
-      setHistory(res.events.filter((e: SystemEvent) => !isBlockchainEvent(e.type)));
+      setHistory(res.events.filter((e: SystemEvent) => !isBlockchainEvent(e.type) && !["withdrawal.completed","withdrawal.rejected","withdrawal.verified","deposit.expired","withdrawal.expired","deposit.flagged"].includes(e.type)));
     }
     setLoadingHistory(false);
   }, []);

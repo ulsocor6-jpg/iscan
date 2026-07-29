@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import SessionService from '../services/sessionService.js';
 
 export const requireAuth = async (req, res, next) => {
   try {
@@ -19,8 +20,42 @@ export const requireAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+/*
+|--------------------------------------------------------------------------
+| Database Session Validation
+|--------------------------------------------------------------------------
+*/
+
+if (decoded.sessionId) {
+
+    const session = await SessionService.findSession(
+        decoded.sessionId
+    );
+
+    if (!session) {
+        return res.status(401).json({
+            success: false,
+            message: "Session not found."
+        });
+    }
+
+    if (session.status !== "ACTIVE") {
+        return res.status(401).json({
+            success: false,
+            message: "Session is no longer active."
+        });
+    }
+
+    await SessionService.touchSession(
+        decoded.sessionId
+    );
+
+}
+
+
     req.user = {
       id: decoded.id,
+      sessionId: decoded.sessionId,
       email: decoded.email,
       firstName: decoded.firstName,
       role: decoded.role || 'user',

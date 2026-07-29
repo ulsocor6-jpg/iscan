@@ -39,6 +39,7 @@ class PhpDepositWatcher {
    * @returns {Promise<Object>} { success, status, message, transaction? }
    */
   async processNotification(payload) {
+    brainBus.emit("deposit.php.received", { operationId: payload.operationId, userId: payload.userId });
     const {
       source,
       userId,
@@ -167,6 +168,7 @@ class PhpDepositWatcher {
    * Handle a verification failure — emit events to the operator / intelligent layer.
    */
   async handleVerificationFailure(verification, flowId, eventId, source, userId) {
+    brainBus.emit("deposit.php.verification_failed", { flowId, reason: verification.reason, userId });
     if (flowId) {
       await inspectorService.failStage(flowId, 'VERIFICATION', verification.reason).catch((inspectorErr) => {
         console.error('[PhpDepositWatcher] failed to record failStage on inspector:', inspectorErr);

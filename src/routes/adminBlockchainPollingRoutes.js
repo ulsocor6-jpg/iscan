@@ -1,5 +1,5 @@
 import express from "express";
-import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { requireAuth, requireAdmin } from "../auth/middleware/authMiddleware.js";
 import {
   getPollingState,
   setPollingOverride,

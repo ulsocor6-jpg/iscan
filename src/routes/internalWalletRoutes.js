@@ -1,6 +1,6 @@
 import express from 'express';
 import ledgerEngine from '../../core/ledgerEngine.js';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
 
 const router = express.Router();
 

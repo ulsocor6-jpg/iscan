@@ -3,7 +3,8 @@
 import express from 'express';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { requireAuth } from '../middleware/authMiddleware.js';
+import { requireAuth } from '../auth/middleware/authMiddleware.js';
+import { requireOtpIfNeeded } from '../middleware/requireOtp.js';
 import { cashIn, webhook } from '../controllers/paymentController.js';
 import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';
@@ -35,7 +36,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), (req, res, ne
 router.post('/cashin', requireAuth, cashIn);
 
 // POST /api/v1/payment/cashout
-router.post('/cashout', requireAuth, async (req, res) => {
+// requireOtpIfNeeded sits between auth and the handler, same placement as
+// cryptoWithdrawalRoutes.js. It reads req.body.amount to decide risk and
+// req.body.otpToken to validate a prior OTP verification — see
+// requireOtp.js / actionVerificationService.js for how the token is
+// minted and consumed. This is now the ONLY PHP withdrawal path in the
+// system (withdrawalRoutes.js is retired/unmounted), so this is the one
+// place a second factor actually needs to live.
+router.post('/cashout', requireAuth, requireOtpIfNeeded, async (req, res) => {
   try {
     const { amount, channel, purpose } = req.body;
     const php = parseFloat(amount);

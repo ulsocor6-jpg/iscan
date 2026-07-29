@@ -1,3 +1,4 @@
+import brainBus from "../brainbus/brainBus.js";
 // src/services/withdrawalExpiryService.js
 //
 // Sweeps PHP withdrawals (maya/bank/gcash) that have sat in "pending_review"
@@ -11,6 +12,7 @@ import WithdrawalRequest from "../models/withdrawalRequestModel.js";
 import walletService from "./walletService.js";
 import eventStreamService from "./eventStreamService.js";
 import { sendTelegramAlert } from "./telegramAlertService.js";
+import healthRegistry from "../intelligence/healthRegistry.js";
 
 const SWEEP_INTERVAL_MS = 30000; // check every 30s — deadline itself is 10 min, no need to poll faster
 
@@ -47,6 +49,7 @@ async function sweepExpiredWithdrawals() {
             withdrawal.status = "expired";
             withdrawal.failReason = "Not processed within the 10-minute window — automatically refunded.";
             await withdrawal.save();
+        brainBus.emit("withdrawal.expired", { referenceId: withdrawal.referenceId, userId: withdrawal.userId, amount: withdrawal.amount, reason: "Not processed within window" });
 
             eventStreamService.emit("withdrawal.expired", {
                 entityId: withdrawal.referenceId || withdrawal._id.toString(),
@@ -92,11 +95,20 @@ async function sweepExpiredWithdrawals() {
 
 function start() {
 
+    healthRegistry.registerNode({ node: "withdrawalExpiry", type: "worker" });
+    healthRegistry.report({ node: "withdrawalExpiry", status: "ONLINE" });
+
     setInterval(() => {
         if (sweeping) return;
         sweeping = true;
         sweepExpiredWithdrawals()
-            .catch(err => console.error("[withdrawalExpiryService]", err))
+            .then(() => {
+                healthRegistry.report({ node: "withdrawalExpiry", status: "ONLINE", metrics: { lastSweepAt: new Date() } });
+            })
+            .catch(err => {
+                console.error("[withdrawalExpiryService]", err);
+                healthRegistry.report({ node: "withdrawalExpiry", status: "WARNING", error: err.message });
+            })
             .finally(() => { sweeping = false; });
     }, SWEEP_INTERVAL_MS);
 

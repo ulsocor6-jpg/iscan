@@ -181,25 +181,17 @@ export async function finalizeReverseSwapSuccess(orderId, normalizedChain) {
 
   const feeRef = orderId + "-fee";
   if (!(await FeeRecord.exists({ referenceId: feeRef }))) {
-    // Send the real FLOWER to the user's own on-chain wallet — this used
-    // to be an internal walletService ledger credit only, which the
-    // Swaps page never even reads for crypto balances (it sums live
-    // on-chain amounts). That made the swap invisible to the user: their
-    // real balance never moved even though the order showed COMPLETED.
-    const wallet = await Wallet.findOne({ userId: order.userId });
-    const chainEntry = wallet?.chainAddresses?.find(
-      c => c.chain?.toUpperCase() === normalizedChain
-    );
-    if (!chainEntry?.address) {
-      throw new Error(`No ${normalizedChain} address on file for user ${order.userId} — cannot deliver FLOWER`);
-    }
-
-    const sendResult = await sendCryptoToAddress({
-      chain: normalizedChain,
-      currency: "FLOWER",
-      amount: netFlower,
-      toAddress: chainEntry.address,
-      txRef: `${orderId}-flower-out`,
+    // Credit the user's ledger with FLOWER — no on-chain send at settle
+    // time. The user later withdraws FLOWER through the existing crypto
+    // withdrawal flow (cryptoWithdrawalController.js), which already
+    // debits this same ledger balance, estimates network+platform fees
+    // live, and delivers on-chain via sendCryptoToAddress. This avoids an
+    // extra on-chain send per swap — the token only moves once, when the
+    // user actually chooses to withdraw it.
+    await walletService.credit(order.userId, "FLOWER", netFlower, {
+      referenceId: feeRef,
+      description: `USDC→FLOWER swap settled — ${netFlower} FLOWER credited`,
+      transactionType: "flower_swap_credit",
     });
 
     await FeeRecord.create({
@@ -207,17 +199,15 @@ export async function finalizeReverseSwapSuccess(orderId, normalizedChain) {
       txType: "flower_swap", currency: "FLOWER",
       grossAmount: grossFlower, feePercent: PLATFORM_FEE, feeAmount, netAmount: netFlower,
       chain: normalizedChain, txHash: order.swapTxHash,
-      metadata: { usdcAmountIn: order.usdcAmountIn, direction: "USDC_TO_FLOWER", sendTxHash: sendResult.txHash },
+      metadata: { usdcAmountIn: order.usdcAmountIn, direction: "USDC_TO_FLOWER" },
     });
-
-    await FlowerOrder.updateOne({ orderId }, { flowerSendTxHash: sendResult.txHash });
   }
 
   await FlowerOrder.updateOne({ orderId }, { status: "COMPLETED" });
-  console.log(`[FlowerUsdt] ${orderId} — COMPLETED, ${netFlower} FLOWER sent on-chain`);
-  inspector.success("swap", `${orderId} completed — ${netFlower} FLOWER sent to user (fee ${feeAmount})`, {
+  console.log(`[FlowerUsdt] ${orderId} — COMPLETED, ${netFlower} FLOWER credited to ledger`);
+  inspector.success("swap", `${orderId} completed — ${netFlower} FLOWER credited to ledger (fee ${feeAmount})`, {
     orderId, userId: String(order.userId), chain: normalizedChain, direction: "USDC_TO_FLOWER",
-    step: "flower_sent_onchain", netFlower, feeAmount
+    step: "flower_credited_ledger", netFlower, feeAmount
   });
 }
 

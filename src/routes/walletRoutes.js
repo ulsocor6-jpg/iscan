@@ -5,7 +5,7 @@ import {
   unlinkWallet,
   getAllWalletsAdmin
 } from '../controllers/walletController.js';
-import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
+import { requireAuth, requireAdmin } from '../auth/middleware/authMiddleware.js';
 import { getUserBalance } from '../services/balanceService.js';
 import Wallet from '../models/walletModel.js';
 import Ledger from '../models/ledgerModel.js';

@@ -9,7 +9,7 @@ import {
 import {
   requireAuth,
   requireAdmin
-} from "../../middleware/authMiddleware.js";
+} from "../../auth/middleware/authMiddleware.js";
 
 const router = express.Router();
 

@@ -210,7 +210,19 @@ export async function processReverseSwap(orderId) {
       inspector.info("swap", `Checking treasury USDC balance for ${orderId}`, {
         orderId, chain: "BASE", step: "treasury_balance_check"
       });
-      const bal = await usdcContract.balanceOf(signer.address);
+      // A sweep landing moments earlier is sometimes not yet visible on a
+      // balanceOf() read immediately after — even on a dedicated RPC
+      // provider, not just public/load-balanced ones (confirmed live:
+      // order 7dcf78a9-ea37 read treasury at 0.0 USDC right after its own
+      // sweep confirmed, then read correctly seconds later). Retry with a
+      // short backoff before treating a short balance as real, instead of
+      // failing an order whose funds are already sitting there.
+      let bal = await usdcContract.balanceOf(signer.address);
+      for (let attempt = 1; bal < amountIn && attempt <= 3; attempt++) {
+        console.warn(`[FlowerSwapBase] ${orderId} — treasury USDC read short (${ethers.formatUnits(bal, 6)} < ${usdcAmount}), retry ${attempt}/3 in 1.5s`);
+        await new Promise((r) => setTimeout(r, 1500));
+        bal = await usdcContract.balanceOf(signer.address);
+      }
       if (bal < amountIn) {
         throw new Error(`Treasury USDC balance ${ethers.formatUnits(bal, 6)} < ${usdcAmount}`);
       }

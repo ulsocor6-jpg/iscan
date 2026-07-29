@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import helmet from "helmet";
 import { generalApiLimiter } from "./middleware/rateLimiters.js";
+import { apiNotFoundHandler, globalErrorHandler } from "./middleware/apiErrorHandlers.js";
 import reconciliationRoutes from './src/routes/reconciliation/reconciliationRoutes.js';
 import selfReconciliationRoutes from './src/routes/reconciliation/selfReconciliationRoutes.js';
 
@@ -78,6 +79,7 @@ app.use(express.static(path.join(__dirname, "dist")));
 =========================== */
 
 import authRoutes from "./src/routes/authRoutes.js";
+import sessionDebugRoutes from "./src/auth/routes/sessionDebugRoutes.js";
 import walletRoutes from "./src/routes/walletRoutes.js";
 import treasuryRoutes from "./src/routes/treasuryRoutes.js";
 import feeRoutes from "./src/routes/feeRoutes.js";
@@ -113,10 +115,12 @@ import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
-import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js";
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
+import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
 import userToolsRoutes from "./src/routes/userToolsRoutes.js";
+import treasuryIntegrityRoutes from "./src/routes/treasuryIntegrityRoutes.js";
+import verificationRoutes from "./src/routes/verificationRoutes.js";
 import historyRoute from "./src/routes/historyRoute.js";
 import debugRoute from "./debugRoute.js";
 
@@ -138,6 +142,7 @@ app.get("/api/debug/brainbus-dump", debugRoute);
 =========================== */
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/auth/debug", sessionDebugRoutes);
 
 app.use("/api/v1/wallet", walletRoutes);
 app.use("/api/v1/treasury", treasuryRoutes);
@@ -162,7 +167,9 @@ app.use(
  supportRoutes
 );
 
+app.use("/api/v1/verification", verificationRoutes);
 app.use("/api/v1/user/tools", userToolsRoutes);
+app.use("/api/v1/treasury-integrity", treasuryIntegrityRoutes);
 
 app.use("/api/v1/ledger", ledgerRoutes);
 app.use("/api/v1/transactions", transactionRoutes);
@@ -209,6 +216,15 @@ app.use("/api/v1/admin/blockchain", adminBlockchainPollingRoutes);
 app.use("/api/v1/admin/reconciliation", adminReconciliationRoutes);
 
 app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
+// withdrawalRoutes.js is intentionally NOT mounted. It self-completes
+// PHP withdrawals without any human disbursement step, which does not
+// match how this system actually operates (operator must manually
+// disburse and confirm via the Cashouts dashboard). The real PHP
+// withdrawal flow is paymentRoutes.js's /cashout (mounted below at
+// /api/v1/payment), which creates a pending_review WithdrawalRequest
+// and alerts the operator via Telegram. Re-mount withdrawalRoutes.js
+// only once a real, confirmed disbursement API exists and this
+// project deliberately moves to automated sends.
 
 /* ===========================
    NEW INTERNAL INSPECTOR
@@ -245,6 +261,8 @@ app.use("/api/history", historyRoute);
 // which is exactly the "Expected a JavaScript module but server
 // responded with text/html" MIME error. Failing loud here turns that
 // into a visible 404 instead of a blank white page.
+app.use(apiNotFoundHandler);
+
 app.get(/^\/assets\/.*/, (req, res) => {
     res.status(404).end();
 });
@@ -256,5 +274,7 @@ app.get("/{*path}", (req, res) => {
 
     return res.status(404).send("Frontend not built. Run npm run build");
 });
+
+app.use(globalErrorHandler);
 
 export default app;
