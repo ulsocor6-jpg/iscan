@@ -123,6 +123,7 @@ import treasuryIntegrityRoutes from "./src/routes/treasuryIntegrityRoutes.js";
 import verificationRoutes from "./src/routes/verificationRoutes.js";
 import historyRoute from "./src/routes/historyRoute.js";
 import debugRoute from "./debugRoute.js";
+import { requireAuth, requireAdmin } from "./src/auth/middleware/authMiddleware.js";
 
 /* ===========================
    Health
@@ -132,10 +133,7 @@ app.get("/__health", (req, res) => {
     res.json({ ok: true });
 });
 
-// TODO: move behind adminAuthGuard before this goes anywhere near
-// production traffic — currently unauthenticated, fine for local
-// debugging only.
-app.get("/api/debug/brainbus-dump", debugRoute);
+app.get("/api/debug/brainbus-dump", requireAuth, requireAdmin, debugRoute);
 
 /* ===========================
    API
