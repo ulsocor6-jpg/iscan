@@ -21,6 +21,8 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(0);
 
   const sendCode = useCallback(async () => {
     setSending(true);
@@ -35,6 +37,7 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code");
       setCooldown(RESEND_COOLDOWN_SECONDS);
+      setExpiresAt(data.expiresAt ? new Date(data.expiresAt).getTime() : null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -48,6 +51,7 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
       setCode("");
       setError("");
       setCooldown(0);
+      setExpiresAt(null);
       return;
     }
     sendCode();
@@ -59,6 +63,27 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+
+  // Live countdown to when the code actually expires server-side, so the
+  // user sees it coming instead of just being told "OTP expired" cold.
+  useEffect(() => {
+    if (!expiresAt) {
+      setRemaining(0);
+      return;
+    }
+    const tick = () => setRemaining(Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [expiresAt]);
+
+  const expired = expiresAt !== null && remaining <= 0;
+
+  function formatCountdown(sec: number) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
 
   async function verify() {
     if (code.length !== 6) {
@@ -117,9 +142,14 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
             ✕
           </button>
         </div>
-        <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px" }}>
+        <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 8px" }}>
           {sending ? "Sending code to your email…" : "Enter the 6-digit code we emailed you."}
         </p>
+        {!sending && expiresAt !== null && (
+          <p style={{ color: expired ? "#ef4444" : "#64748b", fontSize: 12, margin: "0 0 16px" }}>
+            {expired ? "Code expired — tap Resend for a new one." : `Code valid for ${formatCountdown(remaining)}`}
+          </p>
+        )}
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -147,7 +177,7 @@ export default function OtpGate({ open, purpose, actionParams, onVerified, onClo
         <button
           className="auth-btn"
           onClick={verify}
-          disabled={verifying || code.length !== 6}
+          disabled={verifying || code.length !== 6 || expired}
           style={{ marginTop: 16, width: "100%" }}
         >
           {verifying ? "Verifying…" : "Verify"}

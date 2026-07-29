@@ -5,8 +5,8 @@ export async function sendActionOtp(req, res) {
         const { purpose } = req.body;
         if (!purpose) return res.status(400).json({ error: 'purpose is required' });
 
-        await sendOtp(req.user.id, purpose);
-        return res.status(200).json({ sent: true });
+        const { expiresAt } = await sendOtp(req.user.id, purpose);
+        return res.status(200).json({ sent: true, expiresAt });
     } catch (err) {
         return res.status(400).json({ error: err.message });
     }

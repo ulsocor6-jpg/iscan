@@ -72,7 +72,7 @@ export async function sendOtp(userId, purpose) {
     await addAuditLog(userId, 'OTP_SENT', { purpose });
     eventStreamService.emit('user.otp.sent', { userId, purpose });
 
-    return true;
+    return { expiresAt };
 }
 
 /**

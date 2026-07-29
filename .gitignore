@@ -30,3 +30,14 @@ dist/
 *.zip
 audit/
 *.txt
+
+# Python virtualenv (accidentally staged 2026-07-29)
+.venv/
+venv/
+
+# One-off patch scripts — not part of the app
+apply_*.py
+fix_*.py
+
+# Local audit output
+npm-audit.json
