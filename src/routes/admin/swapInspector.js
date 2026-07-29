@@ -1,8 +1,12 @@
 import express from "express";
 import FlowerOrder from "../../models/flower/flowerOrderModel.js";
 import { retryOrder } from "../../services/flower/flowerOrderRecovery.js";
+import requireAuth, { requireAdmin } from "../../auth/middleware/authMiddleware.js";
 
 const router = express.Router();
+
+router.use(requireAuth);
+router.use(requireAdmin);
 
 router.get("/flower-orders", async (req, res) => {
   const { status } = req.query;

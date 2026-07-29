@@ -335,9 +335,23 @@ export const logout = async (req, res) => {
     console.warn("[LOGOUT]", err.message);
   }
 
-  res.clearCookie('iscan_token');
-  res.clearCookie('iscan_email');
-  res.clearCookie('iscan_name');
+  const cookieOpts = {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: process.env.NODE_ENV === "production"
+  };
+
+  res.clearCookie("iscan_token", cookieOpts);
+
+  res.clearCookie("iscan_email", {
+    sameSite: "Lax",
+    secure: cookieOpts.secure
+  });
+
+  res.clearCookie("iscan_name", {
+    sameSite: "Lax",
+    secure: cookieOpts.secure
+  });
 
   return res.json({
     success: true
@@ -358,14 +372,6 @@ export const exitImpersonation = (req, res) => {
     return res.status(400).json({ success: false, message: 'Not currently impersonating.' });
   }
 
-  let decoded;
-  try {
-    decoded = jwt.verify(adminToken, process.env.JWT_SECRET);
-  } catch (err) {
-    res.clearCookie('iscan_admin_token');
-    return res.status(401).json({ success: false, message: 'Admin session expired. Please log in again.' });
-  }
-
   const cookieOpts = {
     httpOnly: true,
     sameSite: 'Lax',
@@ -373,10 +379,18 @@ export const exitImpersonation = (req, res) => {
     maxAge: 86400000
   };
 
+  let decoded;
+  try {
+    decoded = jwt.verify(adminToken, process.env.JWT_SECRET);
+  } catch (err) {
+    res.clearCookie("iscan_admin_token", cookieOpts);
+    return res.status(401).json({ success: false, message: 'Admin session expired. Please log in again.' });
+  }
+
   res.cookie('iscan_token', adminToken, cookieOpts);
   res.cookie('iscan_email', decoded.email, { sameSite: 'Lax', secure: cookieOpts.secure, maxAge: cookieOpts.maxAge });
   res.cookie('iscan_name', decoded.firstName || '', { sameSite: 'Lax', secure: cookieOpts.secure, maxAge: cookieOpts.maxAge });
-  res.clearCookie('iscan_admin_token');
+  res.clearCookie("iscan_admin_token", cookieOpts);
 
   eventStreamService.emit('admin.impersonation_end', {
     userId: String(req.user?.id || ''),

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import SessionService from '../services/sessionService.js';
+import User from '../../models/userModel.js';
 
 export const requireAuth = async (req, res, next) => {
   try {
@@ -19,6 +20,22 @@ export const requireAuth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id).select("_id email firstName role accountStatus");
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User account not found."
+      });
+    }
+
+    if (user.accountStatus !== "ACTIVE") {
+      return res.status(401).json({
+        success: false,
+        message: "User account is not active."
+      });
+    }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -54,11 +71,11 @@ if (decoded.sessionId) {
 
 
     req.user = {
-      id: decoded.id,
+      id: user._id,
       sessionId: decoded.sessionId,
-      email: decoded.email,
-      firstName: decoded.firstName,
-      role: decoded.role || 'user',
+      email: user.email,
+      firstName: user.firstName,
+      role: user.role || 'user',
       impersonating: decoded.impersonating || false,
       adminId: decoded.adminId || null,
       adminEmail: decoded.adminEmail || null
