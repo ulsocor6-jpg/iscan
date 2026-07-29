@@ -32,6 +32,16 @@ class AdvancedFraudService {
       variance
     };
   }
+
+  // Entry point used by withdrawalRiskEngine.shouldRequireOtp() (and any
+  // other caller that wants a fraud verdict for a specific action, not
+  // just a standing behavior profile). Delegates to analyzeUserBehavior()
+  // for now -- amount/action are accepted so callers don't need to change
+  // again if per-action scoring is added later, but they don't yet
+  // influence the score.
+  async evaluate({ userId, amount, action } = {}) {
+    return this.analyzeUserBehavior(userId);
+  }
 }
 
 export default new AdvancedFraudService();
