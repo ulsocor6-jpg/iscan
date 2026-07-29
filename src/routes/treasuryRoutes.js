@@ -120,7 +120,7 @@ router.post('/pools/:currency/topup', requireAuth, requireAdmin, async (req, res
     const pool = await PhpLiquidityPool.findOneAndUpdate(
       { currency: currency.toUpperCase() },
       { $inc: { balance: parseFloat(amount) }, updatedAt: new Date() },
-      { new: true, upsert: false }
+      { returnDocument: 'after', upsert: false }
     );
     if (!pool) return res.status(404).json({ error: `Pool for ${currency} not found` });
 
@@ -172,7 +172,7 @@ router.post('/accounts/:id/topup', requireAuth, requireAdmin, async (req, res) =
     const account = await TreasuryAccount.findByIdAndUpdate(
       req.params.id,
       { $inc: { physicalBalance: amount } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
@@ -193,7 +193,7 @@ router.patch('/pools/:currency/threshold', requireAuth, requireAdmin, async (req
   const pool = await PhpLiquidityPool.findOneAndUpdate(
     { currency: req.params.currency.toUpperCase() },
     { minThreshold: parseFloat(minThreshold) },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!pool) return res.status(404).json({ error: 'Pool not found' });
   res.json({ success: true, pool: getPoolHealth(pool) });
@@ -205,7 +205,7 @@ router.patch('/accounts/:id', requireAuth, requireAdmin, async (req, res) => {
   const update = {};
   if (safetyReserve !== undefined) update.safetyReserve = parseFloat(safetyReserve);
   if (physicalBalance !== undefined) update.physicalBalance = parseFloat(physicalBalance);
-  const account = await TreasuryAccount.findByIdAndUpdate(req.params.id, update, { new: true });
+  const account = await TreasuryAccount.findByIdAndUpdate(req.params.id, update, { returnDocument: 'after' });
   if (!account) return res.status(404).json({ error: 'Account not found' });
   await PhpLiquidityPool.recalculateFromAccounts(account.currency);
   res.json({ success: true, account });

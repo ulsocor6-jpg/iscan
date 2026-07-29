@@ -46,7 +46,7 @@ class SwapFlowBridge {
                             stages: [],
                         }
                     },
-                    { upsert: true, new: true }
+                    { upsert: true, returnDocument: 'after' }
                 );
 
                 this._syncedFlows.add(flow.flowId);

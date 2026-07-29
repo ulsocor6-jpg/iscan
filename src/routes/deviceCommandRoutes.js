@@ -14,7 +14,7 @@ router.get('/next', requireAuth, requireAdmin, async (req, res) => {
   const cmd = await OutboundCommand.findOneAndUpdate(
     { provider, status: 'PENDING' },
     { status: 'EXECUTING', deviceId: req.headers['x-device-id'] || 'unknown' },
-    { new: true, sort: { createdAt: 1 } }
+    { returnDocument: 'after', sort: { createdAt: 1 } }
   );
 
   if (!cmd) return res.json({ command: null });

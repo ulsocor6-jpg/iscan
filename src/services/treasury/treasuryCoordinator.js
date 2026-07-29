@@ -11,7 +11,7 @@ class TreasuryCoordinator {
     const account = await TreasuryAccount.findByIdAndUpdate(accountId, {
       physicalBalance: newBalance,
       lastUpdatedBy: source,
-    }, { new: true });
+    }, { returnDocument: 'after' });
     if (account) {
       await this.recalculatePool(account.currency);
       this.emitLiquidityUpdate(account.currency);
@@ -24,7 +24,7 @@ class TreasuryCoordinator {
     const update = {};
     if (deltaIn) update.pendingIncoming = deltaIn;
     if (deltaOut) update.pendingOutgoing = deltaOut;
-    const account = await TreasuryAccount.findByIdAndUpdate(accountId, { $inc: update }, { new: true });
+    const account = await TreasuryAccount.findByIdAndUpdate(accountId, { $inc: update }, { returnDocument: 'after' });
     if (account) {
       await this.recalculatePool(account.currency);
       this.emitLiquidityUpdate(account.currency);
@@ -37,7 +37,7 @@ class TreasuryCoordinator {
     const account = await TreasuryAccount.findOneAndUpdate(
       { _id: accountId, isActive: true, $expr: { $gte: [{ $subtract: ['$physicalBalance', '$reserved'] }, amount] } },
       { $inc: { reserved: amount } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!account) throw new Error('Insufficient available liquidity or account not found');
     await this.recalculatePool(account.currency);
@@ -49,7 +49,7 @@ class TreasuryCoordinator {
   async releaseReservation(accountId, amount) {
     const account = await TreasuryAccount.findByIdAndUpdate(accountId,
       { $inc: { reserved: -amount } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     await this.recalculatePool(account.currency);
     this.emitLiquidityUpdate(account.currency);

@@ -45,7 +45,7 @@ class SessionRegistryService {
                 status: "REVOKED"
             },
             {
-                new: true
+                returnDocument: 'after'
             }
         );
 

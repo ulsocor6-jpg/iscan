@@ -26,7 +26,7 @@ export async function createDetectedDeposit({
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       rawResult: true,
     }
   );

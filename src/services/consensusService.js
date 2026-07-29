@@ -51,7 +51,7 @@ class ConsensusService {
       const claimed = await DirectDeposit.findOneAndUpdate(
         { _id: depositId, status: 'PENDING' },
         { status: 'CREDITED', creditedAt: new Date() },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!claimed) {

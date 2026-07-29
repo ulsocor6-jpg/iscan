@@ -32,7 +32,7 @@ export const createVerificationSession = async (req, res) => {
     await IdentityProfile.findOneAndUpdate(
       { userId },
       { userId, kycStatus: 'pending', diditSessionId: session.session_id },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     res.json({ success: true, verificationUrl: session.url, sessionId: session.session_id });

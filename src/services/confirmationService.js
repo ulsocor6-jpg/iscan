@@ -46,7 +46,7 @@ class ConfirmationService {
         asset: tx.asset,
         status: 'CONFIRMED'
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     // 5. FINAL SETTLEMENT → ledger credit

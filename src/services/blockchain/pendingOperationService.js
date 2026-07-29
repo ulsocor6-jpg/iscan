@@ -88,7 +88,7 @@ export async function recordPendingOperation({
 
             upsert: true,
 
-            new: true
+            returnDocument: 'after'
 
         }
 
@@ -134,7 +134,7 @@ export async function setPendingOperationAmount({
 
         {
 
-            new: true
+            returnDocument: 'after'
 
         }
 
@@ -190,7 +190,7 @@ export async function failPendingOperation({
 
         {
 
-            new: true
+            returnDocument: 'after'
 
         }
 

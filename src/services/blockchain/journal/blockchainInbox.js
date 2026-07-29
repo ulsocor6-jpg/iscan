@@ -48,7 +48,7 @@ export async function record(event) {
                 }
             },
             {
-                new: true,
+                returnDocument: 'after',
                 upsert: true
             }
         );
@@ -101,7 +101,7 @@ export async function markWorkerDone(id, worker) {
             }
         },
         {
-            new: true
+            returnDocument: 'after'
         }
     );
 
@@ -124,7 +124,7 @@ export async function markWorkerError(id, worker, error) {
             }
         },
         {
-            new: true
+            returnDocument: 'after'
         }
     );
 

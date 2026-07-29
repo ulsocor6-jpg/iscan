@@ -148,7 +148,7 @@ class WalletService {
       const wallet = await Wallet.findOneAndUpdate(
         { userId },
         { $inc: { [`balances.${asset}`]: numericAmount } },
-        { new: true, session }
+        { returnDocument: 'after', session }
       );
       if (!wallet) throw new Error(`Wallet not found for user ${userId}`);
 
@@ -182,7 +182,7 @@ class WalletService {
       const wallet = await Wallet.findOneAndUpdate(
         { userId, [`balances.${asset}`]: { $gte: numericAmount } },
         { $inc: { [`balances.${asset}`]: -numericAmount } },
-        { new: true, session }
+        { returnDocument: 'after', session }
       );
 
       if (!wallet) {

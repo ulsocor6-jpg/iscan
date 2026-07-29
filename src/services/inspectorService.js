@@ -79,7 +79,7 @@ class InspectorService {
 
             },
 
-            { new: true }
+            { returnDocument: 'after' }
 
         );
 
@@ -252,7 +252,7 @@ class InspectorService {
 
             },
 
-            { new: true }
+            { returnDocument: 'after' }
 
         );
 
@@ -278,7 +278,7 @@ class InspectorService {
 
             },
 
-            { new: true }
+            { returnDocument: 'after' }
 
         );
 

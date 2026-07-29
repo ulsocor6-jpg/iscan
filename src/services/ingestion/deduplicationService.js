@@ -53,7 +53,7 @@ class DeduplicationService {
       },
 
       {
-        new: true
+        returnDocument: 'after'
       }
 
     );
@@ -119,7 +119,7 @@ class DeduplicationService {
 
       {
         upsert: false,
-        new: true
+        returnDocument: 'after'
       }
 
     );

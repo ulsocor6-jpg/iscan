@@ -137,7 +137,7 @@ class SessionService {
 
             {
 
-                new: true
+                returnDocument: 'after'
 
             }
 
@@ -163,7 +163,7 @@ class SessionService {
 
             {
 
-                new: true
+                returnDocument: 'after'
 
             }
 
@@ -189,7 +189,7 @@ class SessionService {
 
             {
 
-                new: true
+                returnDocument: 'after'
 
             }
 

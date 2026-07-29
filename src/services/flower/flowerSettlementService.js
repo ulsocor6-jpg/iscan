@@ -45,7 +45,7 @@ export async function settle(orderId) {
   await FlowerOrder.findOneAndUpdate(
     { orderId, status: "SWAPPED" },
     { status: "SETTLING" },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   try {

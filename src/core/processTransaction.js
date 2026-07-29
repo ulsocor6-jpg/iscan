@@ -217,7 +217,7 @@ export default async function processTransaction(raw) {
   const claimed = await DirectDeposit.findOneAndUpdate(
     { _id: deposit._id, status: "PENDING" },
     { status: "CREDITED", creditedAt: new Date(), senderName: senderPhone || senderName || "unknown", senderLastFour: senderLastFour || null },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!claimed) {

@@ -222,7 +222,7 @@ router.post('/admin/cancel', requireAuth, requireAdmin, async (req, res) => {
     const deposit = await DirectDeposit.findOneAndUpdate(
       { referenceId },
       { status: 'EXPIRED', adminNote: reason },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!deposit) return res.status(404).json({ error: 'Deposit not found' });
     res.json({ success: true, deposit });
@@ -263,7 +263,7 @@ router.post('/cancel', requireAuth, async (req, res) => {
     const deposit = await DirectDeposit.findOneAndUpdate(
       { referenceId, userId: req.user.id, status: 'PENDING' },
       { status: 'CANCELLED', cancelledAt: new Date() },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!deposit) {

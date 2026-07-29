@@ -149,7 +149,7 @@ async function doCancelWithdrawal(id, userId) {
   const withdrawal = await WithdrawalRequest.findOneAndUpdate(
     { _id: id, userId, status: "failed" },
     { status: "rejected", failReason: "Cancelled by user after failed withdrawal (funds already returned to balance)" },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!withdrawal) {

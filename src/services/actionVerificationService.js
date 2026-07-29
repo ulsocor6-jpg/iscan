@@ -159,7 +159,7 @@ export async function consumeVerificationToken(userId, purpose, rawToken, action
             expiresAt: { $gt: new Date() },
         },
         { $set: { consumed: true } },
-        { new: true }
+        { returnDocument: 'after' }
     );
 
     return !!record;

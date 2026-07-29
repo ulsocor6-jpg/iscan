@@ -39,7 +39,7 @@ export async function processSwap(orderId) {
   const updated = await FlowerOrder.findOneAndUpdate(
     { orderId, status: { $in: ["VERIFIED", "DEPOSIT_RECEIVED"] } },
     { status: "SWAPPING" },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!updated) {
     console.warn(`[FlowerSwap] ${orderId} already swapping or past that state — skipping`);

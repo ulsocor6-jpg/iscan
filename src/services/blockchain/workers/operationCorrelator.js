@@ -124,7 +124,7 @@ class OperationCorrelator {
 
             {
 
-                new: true
+                returnDocument: 'after'
 
             }
 
