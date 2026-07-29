@@ -186,7 +186,7 @@ export const login = async (req, res) => {
 |--------------------------------------------------------------------------
 */
 
-await SessionService.revokeActiveSessions(
+await SessionService.revokeAllUserSessions(
     user._id
 );
 
