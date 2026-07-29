@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../banking/components/DashboardLayout";
+import OtpGate from "../components/OtpGate";
 
 const inp: React.CSSProperties = {
   width: "100%", padding: 10, borderRadius: 8,
@@ -113,6 +114,8 @@ function PhpWithdrawal() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [pendingCashout, setPendingCashout] = useState<{ amount: number; channel: string } | null>(null);
 
   const [banks, setBanks] = useState<any[]>([]);
   const [banksLoading, setBanksLoading] = useState(true);
@@ -157,6 +160,35 @@ function PhpWithdrawal() {
     }
   }
 
+  async function submitCashout(parsedAmount: number, channel: string, otpToken?: string) {
+    const res = await fetch("/api/v1/payment/cashout", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: parsedAmount,
+        channel,
+        ...(otpToken ? { otpToken } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.requireOtp) {
+        setPendingCashout({ amount: parsedAmount, channel });
+        setOtpOpen(true);
+        return null;
+      }
+      if (data.suggestedAlternatives) {
+        throw new Error(
+          `${data.error}\n` +
+          `Available: ₱${data.maxAvailableForProvider?.toFixed(2) ?? '?'}\n` +
+          `Other options: ${data.suggestedAlternatives.map(p => PROVIDER_LABELS[p] || p).join(', ')}`
+        );
+      }
+      throw new Error(data.error || data.message || "Withdrawal failed");
+    }
+    return data;
+  }
+
   async function handleCashOut() {
     setLoading(true); setError(""); setResult(null);
     try {
@@ -178,29 +210,27 @@ function PhpWithdrawal() {
       const channelMap: Record<string, string> = { maya: "MAYA", gcash: "GCASH", bank_bpi: "BANK", maribank: "BANK" };
       const channel = channelMap[provider] || provider;
 
-      const res = await fetch("/api/v1/payment/cashout", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: parsedAmount,
-          channel,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.suggestedAlternatives) {
-          throw new Error(
-            `${data.error}\n` +
-            `Available: ₱${data.maxAvailableForProvider?.toFixed(2) ?? '?'}\n` +
-            `Other options: ${data.suggestedAlternatives.map(p => PROVIDER_LABELS[p] || p).join(', ')}`
-          );
-        }
-        throw new Error(data.error || data.message || "Withdrawal failed");
+      const data = await submitCashout(parsedAmount, channel);
+      if (data) {
+        setResult(data);
+        setShowBanner(false);
       }
-      setResult(data);
-      setShowBanner(false);
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
+  }
+
+  async function handleOtpVerified(otpToken: string) {
+    setOtpOpen(false);
+    if (!pendingCashout) return;
+    setLoading(true); setError("");
+    try {
+      const data = await submitCashout(pendingCashout.amount, pendingCashout.channel, otpToken);
+      if (data) {
+        setResult(data);
+        setShowBanner(false);
+      }
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); setPendingCashout(null); }
   }
 
   const [liveStatus, setLiveStatus] = useState<string>("pending_review");
@@ -410,6 +440,13 @@ function PhpWithdrawal() {
           {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13, whiteSpace: "pre-line" }}>{error}</p>}
         </>
       )}
+      <OtpGate
+        open={otpOpen}
+        purpose="WITHDRAWAL"
+        actionParams={{ amount: pendingCashout?.amount }}
+        onVerified={handleOtpVerified}
+        onClose={() => { setOtpOpen(false); setPendingCashout(null); }}
+      />
     </>
   );
 }
@@ -427,6 +464,8 @@ function CryptoWithdrawal() {
   const [confirm,     setConfirm]     = useState(false);
   const [feeInfo,     setFeeInfo]     = useState<{ gasUsd: number; gwei?: number } | null>(null);
   const [feeLoading,  setFeeLoading]  = useState(false);
+  const [otpOpen,     setOtpOpen]     = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState<{ asset: string; network: string; amount: number; destinationAddress: string } | null>(null);
 
   // Fetch live gas whenever network changes
   useEffect(() => {
@@ -452,25 +491,53 @@ function CryptoWithdrawal() {
   const totalFeeInAsset = totalFeeUsd;
   const willReceive     = Math.max(0, parsedAmount - totalFeeInAsset);
 
+  async function submitWithdrawal(otpToken?: string) {
+    const res = await fetch("/api/v1/crypto-withdrawals/request", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        asset: asset.id, network,
+        amount: parsedAmount,
+        destinationAddress: address.trim(),
+        ...(otpToken ? { otpToken } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.requireOtp) {
+        setPendingSubmit({ asset: asset.id, network, amount: parsedAmount, destinationAddress: address.trim() });
+        setOtpOpen(true);
+        return null;
+      }
+      throw new Error(data.error || data.message || "Request failed");
+    }
+    return data;
+  }
+
   async function handleSubmit() {
     if (!confirm) { setConfirm(true); return; }
     setLoading(true); setError(""); setResult(null);
     try {
-      const res = await fetch("/api/v1/crypto-withdrawals/request", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          asset: asset.id, network,
-          amount: parsedAmount,
-          destinationAddress: address.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || "Request failed");
-      setResult(data.withdrawal ?? data);
-      setConfirm(false);
+      const data = await submitWithdrawal();
+      if (data) {
+        setResult(data.withdrawal ?? data);
+        setConfirm(false);
+      }
     } catch (err: any) { setError(err.message); setConfirm(false); }
     finally { setLoading(false); }
+  }
+
+  async function handleOtpVerified(otpToken: string) {
+    setOtpOpen(false);
+    setLoading(true); setError("");
+    try {
+      const data = await submitWithdrawal(otpToken);
+      if (data) {
+        setResult(data.withdrawal ?? data);
+        setConfirm(false);
+      }
+    } catch (err: any) { setError(err.message); setConfirm(false); }
+    finally { setLoading(false); setPendingSubmit(null); }
   }
 
   if (result) return (
@@ -638,6 +705,13 @@ function CryptoWithdrawal() {
       )}
 
       {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
+      <OtpGate
+        open={otpOpen}
+        purpose="WITHDRAWAL"
+        actionParams={{ amount: pendingSubmit?.amount }}
+        onVerified={handleOtpVerified}
+        onClose={() => { setOtpOpen(false); setPendingSubmit(null); }}
+      />
     </>
   );
 }
