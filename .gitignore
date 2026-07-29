@@ -41,3 +41,4 @@ fix_*.py
 
 # Local audit output
 npm-audit.json
+security-review/
