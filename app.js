@@ -110,12 +110,15 @@ import adminEventRoutes from "./src/routes/adminEventRoutes.js";
 import adminBlockchainPollingRoutes from "./src/routes/adminBlockchainPollingRoutes.js";
 import cryptoWithdrawalRoutes from "./src/routes/cryptoWithdrawalRoutes.js";
 import adminWithdrawalRoutes from "./src/routes/adminWithdrawalRoutes.js";
+import adminTreasuryRoutes from "./src/routes/adminTreasuryRoutes.js";
 import maribankNotifyRoute from "./src/routes/maribankNotifyRoute.js";
 import adminReconciliationRoutes from "./src/routes/adminReconciliationRoutes.js";
 
 import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
+import activityRoutes from "./src/routes/activityRoutes.js";
+import architectureRoutes from "./src/routes/architectureRoutes.js";
 import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
 import userToolsRoutes from "./src/routes/userToolsRoutes.js";
@@ -204,6 +207,7 @@ app.use("/api/v1/user/background", backgroundRoutes);
 app.use("/api/v1/deposit", directDepositRoutes);
 
 app.use("/api/v1/admin/withdrawals", adminWithdrawalRoutes);
+app.use("/api/v1/admin/treasury", adminTreasuryRoutes);
 
 app.use("/api/v1/admin/deposits", adminDepositRoutes);
 app.use("/api/v1/admin/users", adminUserRoutes);
@@ -230,6 +234,7 @@ app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
 
 app.use("/api/admin/inspector", inspectorRoutes);
 app.use("/api/v1/intelligence", intelligenceRoutes);
+app.use("/api/v1/admin/architecture", requireAuth, requireAdmin, architectureRoutes);
 
 /* ===========================
    React Frontend
