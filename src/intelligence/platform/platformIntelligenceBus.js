@@ -4,6 +4,7 @@ import treasuryIntelligenceBus from "../consensus/treasuryIntelligenceBus.js";
 import eventGraphService from "../correlation/eventGraphService.js";
 import correlationEngine from "../correlation/correlationEngine.js";
 import activityEngine from "../activity/activityEngine.js";
+import architectureEventBridge from "../architecture/architectureEventBridge.js";
 
 class PlatformIntelligenceBus {
 
@@ -34,22 +35,32 @@ class PlatformIntelligenceBus {
 
     async publish(event = {}) {
 
+        architectureEventBridge.started("platformIntelligenceBus", { stage: event.stage });
+
+        architectureEventBridge.started("intelligenceEventFactory");
         const normalized =
             intelligenceEventFactory.create(event);
+        architectureEventBridge.completed("intelligenceEventFactory");
 
+        architectureEventBridge.started("eventGraphService");
         const graphNode =
             eventGraphService.create(normalized);
+        architectureEventBridge.completed("eventGraphService");
 
         normalized.id =
             graphNode.id;
 
+        architectureEventBridge.started("correlationEngine");
         const session =
             correlationEngine.correlate(normalized);
+        architectureEventBridge.completed("correlationEngine");
 
         normalized.session =
             session;
 
+        architectureEventBridge.started("activityEngine");
         activityEngine.record(normalized);
+        architectureEventBridge.completed("activityEngine");
 
         const results = [];
 
@@ -61,8 +72,12 @@ class PlatformIntelligenceBus {
 
         }
 
+        architectureEventBridge.started("incidentEngine");
         const incident =
             incidentEngine.process(normalized);
+        architectureEventBridge.completed("incidentEngine");
+
+        architectureEventBridge.completed("platformIntelligenceBus");
 
         return {
 

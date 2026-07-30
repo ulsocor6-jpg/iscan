@@ -1,6 +1,7 @@
 import consensusSnapshotService from "./consensusSnapshotService.js";
 import varianceDetectionEngine from "./varianceDetectionEngine.js";
 import incidentEngine from "../../services/operator/incidentEngine.js";
+import architectureEventBridge from "../architecture/architectureEventBridge.js";
 
 class TreasuryIntelligenceBus {
 
@@ -12,9 +13,12 @@ class TreasuryIntelligenceBus {
 
     }) {
 
+        architectureEventBridge.started("consensusSnapshotService");
         const snapshot =
             await consensusSnapshotService.create(channel);
+        architectureEventBridge.completed("consensusSnapshotService");
 
+        architectureEventBridge.started("varianceDetectionEngine");
         const variance =
             await varianceDetectionEngine.analyze({
 
@@ -23,6 +27,7 @@ class TreasuryIntelligenceBus {
                 observedBalance
 
             });
+        architectureEventBridge.completed("varianceDetectionEngine");
 
         const event = {
 
@@ -46,8 +51,10 @@ class TreasuryIntelligenceBus {
 
         };
 
+        architectureEventBridge.started("incidentEngine");
         const incident =
             incidentEngine.process(event);
+        architectureEventBridge.completed("incidentEngine");
 
         return {
 
