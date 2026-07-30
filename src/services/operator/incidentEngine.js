@@ -39,6 +39,8 @@ class IncidentEngine {
 
       acknowledged: null,
       resolved: null,
+      playbook: diagnosis.playbook,
+      autoRemediation: diagnosis.autoRemediation === true,
       metadata: event.metadata || {}
     };
 
@@ -79,10 +81,13 @@ class IncidentEngine {
 
 // Attach descriptor for documentation and introspection
 IncidentEngine.descriptor = {
+  id: "incidentEngine",
   name: "Incident Engine",
   domain: "intelligence",
-  type: "incident_manager",
+  type: "engine",
   owner: "Platform Intelligence",
+  previous: ["platformIntelligenceBus", "treasuryIntelligenceBus"],
+  next: [],
   description:
     "Transforms diagnoses into managed operational incidents and tracks their lifecycle until resolution.",
   purpose: [
