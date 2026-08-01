@@ -112,11 +112,11 @@ platformIntelligenceBus.descriptor = {
     type: "bridge",
     domain: "intelligence",
     description: "Central publish pipeline for intelligence events; normalizes, graphs, correlates, records, and dispatches to stage handlers.",
-    previous: ["treasuryCoordinator"],
+    previous: ["treasuryCoordinator", "operatorSubscriber"],
     next: ["intelligenceEventFactory"],
     dependsOn: ["intelligenceEventFactory", "eventGraphService", "correlationEngine", "activityEngine", "treasuryIntelligenceBus", "incidentEngine"],
     criticality: "HIGH",
-    notes: "Only confirmed caller is treasuryCoordinator.js — non-treasury sources do not yet publish to this bus."
+    notes: "Confirmed live callers: treasuryCoordinator.js (stage: 'treasury', on every pool recalculation) and operatorSubscriber.js (every blockchainInspector event, all stages). Non-treasury events flow through the bus's normalize/graph/correlate/record steps but skip the bus's only registered handler (treasury-stage-only) and go straight to incidentEngine.process()."
 };
 
 export default platformIntelligenceBus;
