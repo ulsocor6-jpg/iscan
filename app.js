@@ -241,6 +241,7 @@ app.use("/api/v1/mission-control", missionControlRoutes);
 app.use("/api/v1/client", clientHealthRoutes);
 app.use("/api/v1/node", nodeRoutes);
 app.use("/api/v1/admin/architecture", requireAuth, requireAdmin, architectureRoutes);
+app.use("/api/v1/admin/activity", requireAuth, requireAdmin, activityRoutes);
 
 /* ===========================
    React Frontend
