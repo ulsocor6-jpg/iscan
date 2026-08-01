@@ -7,6 +7,15 @@ import descriptorValidator from "../descriptors/descriptorValidator.js";
 
 class ArchitectureLoader {
 
+    constructor() {
+
+        // A single hanging import() (e.g. a top-level await on an
+        // unreachable Redis/queue connection) must not be able to stall
+        // the entire architecture scan forever.
+        this.importTimeoutMs = 3000;
+
+    }
+
     async load(root = "src") {
 
         let loaded = 0;
@@ -17,9 +26,20 @@ class ArchitectureLoader {
 
             try {
 
-                const mod = await import(
-                    pathToFileURL(path.resolve(file)).href
-                );
+                const mod = await Promise.race([
+
+                    import(
+                        pathToFileURL(path.resolve(file)).href
+                    ),
+
+                    new Promise((_, reject) =>
+                        setTimeout(
+                            () => reject(new Error(`import timed out after ${this.importTimeoutMs}ms`)),
+                            this.importTimeoutMs
+                        )
+                    )
+
+                ]);
 
                 const descriptor =
                     mod.default?.descriptor ||
@@ -69,7 +89,15 @@ class ArchitectureLoader {
 
             } catch (err) {
 
-                // Ignore modules requiring runtime state
+                if (String(err.message).includes("timed out")) {
+
+                    console.warn(
+                        `[ArchitectureLoader] Skipped ${file} — import() exceeded ${this.importTimeoutMs}ms (likely a top-level await on an unavailable connection, e.g. Redis).`
+                    );
+
+                }
+
+                // Other errors: ignore modules requiring runtime state
 
             }
 
