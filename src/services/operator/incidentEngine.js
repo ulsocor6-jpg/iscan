@@ -1,6 +1,7 @@
 // src/services/operator/incidentEngine.js
 
 import { diagnose } from "./diagnosisEngine.js";
+import architectureEventBridge from "../../intelligence/architecture/architectureEventBridge.js";
 
 class IncidentEngine {
   constructor() {
@@ -10,7 +11,9 @@ class IncidentEngine {
 
   // Process an operational event into an incident
   process(event) {
+    architectureEventBridge.started("diagnosisEngine");
     const diagnosis = diagnose(event);
+    architectureEventBridge.completed("diagnosisEngine");
     if (!diagnosis) return null;
 
     // Check for duplicates (same code + source + unresolved)

@@ -74,6 +74,22 @@ export const diagnosisEngine = {
   criticality: "CRITICAL"
 };
 
+// architectureLoader looks for mod.default.descriptor specifically — the
+// object above IS the default export but doesn't have a nested .descriptor
+// of its own, so it was never picked up. type is corrected here too:
+// "diagnostic_engine" above is not a registered ComponentTypes entry.
+diagnosisEngine.descriptor = {
+    id: "diagnosisEngine",
+    name: diagnosisEngine.name,
+    type: "engine",
+    domain: diagnosisEngine.domain,
+    description: diagnosisEngine.description,
+    previous: ["incidentEngine"],
+    next: [],
+    dependsOn: diagnosisEngine.dependsOn,
+    criticality: diagnosisEngine.criticality
+};
+
 import knowledgeBase from "./knowledgeBase.js";
 
 function matchAgainstKnowledgeBase(event) {
