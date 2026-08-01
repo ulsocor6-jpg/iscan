@@ -3,6 +3,8 @@ import intelligenceEventFactory from "./intelligenceEventFactory.js";
 import treasuryIntelligenceBus from "../consensus/treasuryIntelligenceBus.js";
 import eventGraphService from "../correlation/eventGraphService.js";
 import correlationEngine from "../correlation/correlationEngine.js";
+import missionControlAggregator from "../missionControl/missionControlAggregator.js";
+import executionGraph from "../correlation/executionGraph.js";
 import activityEngine from "../activity/activityEngine.js";
 import architectureEventBridge from "../architecture/architectureEventBridge.js";
 
@@ -60,6 +62,12 @@ class PlatformIntelligenceBus {
 
         architectureEventBridge.started("activityEngine");
         activityEngine.record(normalized);
+
+        missionControlAggregator.process(
+            normalized
+        );
+
+        executionGraph.record(normalized);
         architectureEventBridge.completed("activityEngine");
 
         const results = [];
@@ -69,6 +77,7 @@ class PlatformIntelligenceBus {
             results.push(
                 await handler(normalized)
             );
+
 
         }
 
