@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>ISCAN External Observer</title>
+
+<link
+rel="stylesheet"
+href="/css/main.css">
+
+</head>
+
+<body>
+
+<div id="dashboard">
+
+<header class="header">
+
+<div>
+
+<h1>ISCAN External Observer</h1>
+
+<p>
+Autonomous Monitoring & Recovery Console
+</p>
+
+</div>
+
+<div
+id="observerStatus"
+class="status online">
+
+ONLINE
+
+</div>
+
+</header>
+
+<main class="grid">
+
+<section class="card">
+
+<h2>Observer</h2>
+
+<div class="row">
+<span>Status</span>
+<strong id="observer-status">ONLINE</strong>
+</div>
+
+<div class="row">
+<span>Uptime</span>
+<strong id="observer-uptime">--</strong>
+</div>
+
+<div class="row">
+<span>Started</span>
+<strong id="observer-started">--</strong>
+</div>
+
+</section>
+
+<section class="card">
+
+<h2>ISCAN Core</h2>
+
+<div class="row">
+<span>Status</span>
+<strong id="iscan-status">UNKNOWN</strong>
+</div>
+
+<div class="row">
+<span>PID</span>
+<strong id="iscan-pid">--</strong>
+</div>
+
+<div class="row">
+<span>Uptime</span>
+<strong id="iscan-uptime">--</strong>
+</div>
+
+<div class="row">
+<span>Restart Count</span>
+<strong id="restart-count">0</strong>
+</div>
+
+</section>
+
+<section class="card">
+
+<h2>Services</h2>
+
+<table>
+
+<tbody>
+
+<tr>
+<td>MongoDB</td>
+<td id="service-db">--</td>
+</tr>
+
+<tr>
+<td>Queue</td>
+<td id="service-queue">--</td>
+</tr>
+
+<tr>
+<td>Heartbeat</td>
+<td id="service-heartbeat">--</td>
+</tr>
+
+<tr>
+<td>Recovery</td>
+<td id="service-recovery">READY</td>
+</tr>
+
+</tbody>
+
+</table>
+
+</section>
+
+<section class="card">
+
+<h2>Runtime</h2>
+
+<div class="row">
+<span>CPU</span>
+<strong id="cpu">--</strong>
+</div>
+
+<div class="row">
+<span>Memory</span>
+<strong id="memory">--</strong>
+</div>
+
+<div class="row">
+<span>Last Recovery</span>
+<strong id="last-recovery">Never</strong>
+</div>
+
+</section>
+
+<section class="card logs">
+
+<h2>Live Event Stream</h2>
+
+<pre id="logs">
+
+Waiting for observer...
+
+</pre>
+
+</section>
+
+<section class="card">
+
+<h2>Recovery Controls</h2>
+
+<button id="restartBtn">
+
+Restart ISCAN
+
+</button>
+
+<button id="stopBtn">
+
+Stop ISCAN
+
+</button>
+
+<button id="recoverBtn">
+
+Force Recovery
+
+</button>
+
+</section>
+
+</main>
+
+</div>
+
+<script src="/js/app.js"></script>
+
+</body>
+
+</html>

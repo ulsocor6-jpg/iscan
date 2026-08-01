@@ -103,7 +103,8 @@ export const createOrder = async (req, res) => {
       chain,
       source:         "GENERIC",
       status:         "WAITING_DEPOSIT",
-      currentStage:   "DEPOSIT"
+      currentStage:   "DEPOSIT",
+      expiresAt:      new Date(Date.now() + 5 * 60 * 1000)
     });
 
     res.json({

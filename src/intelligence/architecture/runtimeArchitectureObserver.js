@@ -1,5 +1,6 @@
 import architectureKnowledgeGraph from "./architectureKnowledgeGraph.js";
 import executionExpectationsEngine from "./executionExpectationsEngine.js";
+import missionControlPublisher from "../missionControl/missionControlPublisher.js";
 
 class RuntimeArchitectureObserver {
 
@@ -15,6 +16,7 @@ class RuntimeArchitectureObserver {
             metadata
         });
 
+        missionControlPublisher.started(componentId, metadata);
     }
 
     completed(componentId) {
@@ -31,21 +33,27 @@ class RuntimeArchitectureObserver {
         const expected =
             executionExpectationsEngine.expectedNext(componentId);
 
+        const duration = Date.now() - active.startedAt;
+
         this.active.delete(componentId);
 
         this.history.set(componentId, {
             status: "COMPLETED",
             lastSeenAt: Date.now(),
-            duration: Date.now() - active.startedAt
+            duration
+        });
+
+        missionControlPublisher.completed(componentId, {
+            duration,
+            expectedNext: expected
         });
 
         return {
             ok: true,
             component: componentId,
-            duration: Date.now() - active.startedAt,
+            duration,
             expectedNext: expected
         };
-
     }
 
     failed(componentId, error = {}) {
@@ -54,26 +62,28 @@ class RuntimeArchitectureObserver {
 
         this.active.delete(componentId);
 
+        const duration =
+            active ? Date.now() - active.startedAt : null;
+
         this.history.set(componentId, {
             status: "FAILED",
             lastSeenAt: Date.now(),
-            duration: active ? Date.now() - active.startedAt : null,
+            duration,
             error: error?.message || String(error)
         });
+
+        missionControlPublisher.failed(componentId, error);
 
         return {
             ok: false,
             component: componentId,
             error: error?.message || String(error),
-            duration: active ? Date.now() - active.startedAt : null
+            duration
         };
-
     }
 
     lastSeen(componentId) {
-
         return this.history.get(componentId) || null;
-
     }
 
     verify(componentId) {
@@ -82,12 +92,10 @@ class RuntimeArchitectureObserver {
             architectureKnowledgeGraph.get(componentId);
 
         if (!node) {
-
             return {
                 ok: false,
                 reason: "UNKNOWN_COMPONENT"
             };
-
         }
 
         return {
@@ -98,7 +106,6 @@ class RuntimeArchitectureObserver {
             next: node.next || [],
             previous: node.previous || []
         };
-
     }
 
 }

@@ -6,6 +6,7 @@ import operatorSubscriber from "../services/operator/operatorSubscriber.js";
 import consensusService from '../services/consensusService.js';
 import { resumeActiveWatches } from "../intelligence/laptop/mexcWatcher.js";
 import architectureBootstrap from "../intelligence/architecture/architectureBootstrap.js";
+import clientHealthMonitor from "../intelligence/clientHealth/clientHealthMonitor.js";
 
 
 
@@ -17,6 +18,8 @@ export function startServices() {
     startComplianceInspector();
     startRiskScoreConsumer();
     resumeActiveWatches(); // event-driven — only polls MEXC while a sweep intent is actually pending
+
+    clientHealthMonitor.start();
 
     // architectureBootstrap.start() scans and imports every file under src/
     // to discover .descriptor exports — not awaited so it never blocks boot,

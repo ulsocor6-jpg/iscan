@@ -66,6 +66,13 @@ const SystemHealthSchema = new mongoose.Schema(
 });
 
 
+// TTL: auto-expire snapshots after 7 days. Without this, a snapshot every
+// 60s (intelligenceCore's collection interval) accumulates ~120,960
+// documents/week forever — the same unbounded-growth pattern that caused
+// the earlier MongoDB Atlas storage quota issue with the orphaned `events`
+// collection. Adjust the window if you need longer health history.
+SystemHealthSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
+
 export default mongoose.model(
     "SystemHealth",
     SystemHealthSchema

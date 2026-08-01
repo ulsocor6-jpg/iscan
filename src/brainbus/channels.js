@@ -38,8 +38,11 @@ const Channels = {
 
   // Treasury Consensus V2
   DEPOSIT_VERIFIED: 'deposit.verified',
+  DEPOSIT_MATCHED: 'deposit.matched',
   TREASURY_DRIFT: 'treasury.drift',
   DEPOSIT_CREDITED: 'deposit.credited',
+  TREASURY_UNMATCHED_INCREASE: 'treasury.increase.unmatched',
+  TREASURY_AMBIGUOUS_INCREASE: 'treasury.increase.ambiguous',
 
   // Session Intelligence
   SESSION_CREATED: 'session.created',

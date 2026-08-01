@@ -1,0 +1,133 @@
+/**
+ * ISCAN External Observer
+ *
+ * Process Manager
+ *
+ * Responsibilities
+ * ----------------
+ * - Start ISCAN
+ * - Stop ISCAN
+ * - Restart ISCAN
+ * - Detect running process
+ * - Expose PID
+ */
+
+const { spawn, execSync } = require("child_process");
+const path = require("path");
+
+const ROOT =
+path.resolve(__dirname, "../../..");
+
+let child = null;
+
+function isRunning() {
+    try {
+        const output = execSync(
+            "pgrep -f 'server.js'",
+            { encoding: "utf8" }
+        ).trim();
+
+        return output.length > 0;
+    } catch {
+        return false;
+    }
+}
+
+function pid() {
+    try {
+        return execSync(
+            "pgrep -f 'server.js'",
+            { encoding: "utf8" }
+        ).trim();
+    } catch {
+        return null;
+    }
+}
+
+function start() {
+
+    if (isRunning()) {
+
+        return {
+            started:false,
+            reason:"already running",
+            pid:pid()
+        };
+
+    }
+
+    child = spawn(
+
+        "node",
+
+        ["server.js"],
+
+        {
+
+            cwd:ROOT,
+
+            detached:true,
+
+            stdio:"ignore"
+
+        }
+
+    );
+
+    child.unref();
+
+    return {
+
+        started:true,
+
+        pid:child.pid
+
+    };
+
+}
+
+function stop() {
+
+    try{
+
+        execSync(
+
+            "pkill -f 'server.js'"
+
+        );
+
+    }
+
+    catch{}
+
+    child=null;
+
+    return {
+
+        stopped:true
+
+    };
+
+}
+
+function restart(){
+
+    stop();
+
+    return start();
+
+}
+
+module.exports={
+
+    start,
+
+    stop,
+
+    restart,
+
+    isRunning,
+
+    pid
+
+};

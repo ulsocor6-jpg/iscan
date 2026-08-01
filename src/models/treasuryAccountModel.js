@@ -9,7 +9,7 @@ const treasuryAccountSchema = new mongoose.Schema({
   provider: {
     type: String,
     required: true,
-    enum: ['maya', 'gcash', 'bank_bpi', 'maribank'],
+    enum: ['maya', 'gcash', 'bank_bpi', 'maribank', 'mexc'],
   },
   accountLabel: {
     type: String,

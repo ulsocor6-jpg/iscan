@@ -26,6 +26,11 @@ const treasuryStateSchema = new mongoose.Schema({
   expectedBalance: { type: Number, default: 0 },
   lastVerified: { type: Date },
   lastDrift:    { type: Number, default: 0 },
+  // Actual balance as of the last laptop proof. Used to compute the delta
+  // ("treasuryIncrease") between proofs, so a specific pending deposit can
+  // be matched to a specific movement instead of waiting for the pool's
+  // full pending sum to clear. Null until the first proof arrives.
+  lastKnownActual: { type: Number, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('TreasuryState', treasuryStateSchema);

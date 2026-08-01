@@ -1,10 +1,35 @@
 import { useState, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { login } from "../services/authService";
+import { login, verifyLoginOtp, resendLoginOtp } from "../services/authService";
 import "../styles/auth.css";
+
+function maskEmail(email: string) {
+  const [name, domain] = email.split("@");
+  if (!domain) return email;
+  const visible = name.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(name.length - 2, 3))}@${domain}`;
+}
+
+// Rate-limit / lockout / failure messages should never render as a
+// success banner, regardless of which action produced them.
+function isErrorish(msg: string) {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("too many") ||
+    m.includes("wait") ||
+    m.includes("expired") ||
+    m.includes("invalid") ||
+    m.includes("failed") ||
+    m.includes("locked")
+  );
+}
 
 export default function Login() {
   const navigate = useNavigate();
+
+  // step: "credentials" -> "otp"
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
+
   const [email, setEmail]         = useState("");
   const [password, setPassword]   = useState("");
   const [error, setError]         = useState("");
@@ -12,6 +37,14 @@ export default function Login() {
   const [showResend, setShowResend] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
   const [resending, setResending] = useState(false);
+
+  // OTP step state
+  const [ticket, setTicket]       = useState("");
+  const [code, setCode]           = useState("");
+  const [otpError, setOtpError]   = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpResendMsg, setOtpResendMsg] = useState("");
+  const [otpResending, setOtpResending] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,8 +54,17 @@ export default function Login() {
     if (!email || !password) { setError("Please fill in all fields."); return; }
     setLoading(true);
     try {
-      await login(email, password);
-      navigate("/dashboard");
+      const data = await login(email, password);
+      if (data.requiresOtp && data.ticket) {
+        setTicket(data.ticket);
+        setOtpError("");
+        setOtpResendMsg("");
+        setCode("");
+        setStep("otp");
+      } else {
+        // Fallback in case a build without OTP responds directly.
+        navigate("/dashboard");
+      }
     } catch (err: any) {
       const msg = err.message || "Login failed.";
       setError(msg);
@@ -30,6 +72,42 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleVerifyOtp(e: FormEvent) {
+    e.preventDefault();
+    setOtpError("");
+    if (!code || code.length < 6) { setOtpError("Enter the 6-digit code."); return; }
+    setOtpLoading(true);
+    try {
+      await verifyLoginOtp(ticket, code);
+      navigate("/dashboard");
+    } catch (err: any) {
+      setOtpError(err.message || "Invalid code.");
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function handleOtpResend() {
+    setOtpResending(true);
+    setOtpResendMsg("");
+    try {
+      const data = await resendLoginOtp(ticket);
+      setOtpResendMsg(data.message || "Code resent.");
+    } catch (err: any) {
+      setOtpResendMsg(err.message || "Failed to resend. Please try again.");
+    } finally {
+      setOtpResending(false);
+    }
+  }
+
+  function handleBackToCredentials() {
+    setStep("credentials");
+    setTicket("");
+    setCode("");
+    setOtpError("");
+    setOtpResendMsg("");
   }
 
   async function handleResend() {
@@ -48,6 +126,76 @@ export default function Login() {
     } finally {
       setResending(false);
     }
+  }
+
+  if (step === "otp") {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="auth-logo">
+            <span className="auth-logo-mark">IS</span>
+            <span className="auth-logo-text">ISCAN</span>
+          </div>
+          <h1 className="auth-title">Check your email</h1>
+          <p className="auth-sub">
+            We sent a code to <strong>{maskEmail(email)}</strong>
+          </p>
+
+          {otpError && <div className="auth-alert auth-alert--error">{otpError}</div>}
+          {otpResendMsg && (
+            <div className={`auth-alert ${isErrorish(otpResendMsg) ? "auth-alert--error" : "auth-alert--success"}`}>
+              {otpResendMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleVerifyOtp} className="auth-form" noValidate>
+            <div className="auth-field">
+              <label htmlFor="otp-code">Verification code</label>
+              <input
+                id="otp-code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                autoFocus
+                style={{ letterSpacing: "4px", textAlign: "center", fontSize: "20px" }}
+              />
+            </div>
+
+            <button type="submit" className="auth-btn" disabled={otpLoading}>
+              {otpLoading ? "Verifying…" : "Verify & Sign in"}
+            </button>
+          </form>
+
+          <div className="auth-meta" style={{ justifyContent: "space-between", marginTop: "14px" }}>
+            <button
+              type="button"
+              onClick={handleOtpResend}
+              disabled={otpResending}
+              className="auth-link"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            >
+              {otpResending ? "Sending…" : "Resend code"}
+            </button>
+            <button
+              type="button"
+              onClick={handleBackToCredentials}
+              className="auth-link"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            >
+              Use a different account
+            </button>
+          </div>
+
+          <p className="auth-footer" style={{ marginTop: "18px" }}>
+            Signing in here will sign you out anywhere else you're currently logged in.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -72,7 +220,11 @@ export default function Login() {
             )}
           </div>
         )}
-        {resendMsg && <div className="auth-alert auth-alert--success">{resendMsg}</div>}
+        {resendMsg && (
+          <div className={`auth-alert ${isErrorish(resendMsg) ? "auth-alert--error" : "auth-alert--success"}`}>
+            {resendMsg}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
           <div className="auth-field">
             <label htmlFor="email">Email</label>

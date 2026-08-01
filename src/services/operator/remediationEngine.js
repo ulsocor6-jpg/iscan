@@ -1,5 +1,7 @@
 // src/services/operator/remediationEngine.js
 
+import { checkPools } from "../treasury/treasuryBalancer.js";
+
 /**
  * Playbooks approved for automatic execution, per the roadmap:
  *   "Initial automated playbooks should be limited to safe operations
@@ -35,9 +37,20 @@ const AUTO_REMEDIATION_WHITELIST = new Set([
  */
 const PLAYBOOK_HANDLERS = {
   async RPC_RETRY(incident) {
-    // TODO: wire to real RPC retry logic (e.g. re-issue the failed call
-    // against the current/next healthy endpoint).
-    return { status: "SKIPPED", reason: "RPC_RETRY has no handler wired yet" };
+    const chain = incident?.metadata?.chain;
+    if (!chain) {
+      return { status: "SKIPPED", reason: "RPC_RETRY: incident has no chain in metadata" };
+    }
+    try {
+      const { default: blockchainEngine } = await import("../blockchain/collector/blockchainEngine.js");
+      blockchainEngine.setChainPollingOverride(chain, 1000, { reason: `auto-remediation:${incident.code}` });
+      setTimeout(() => {
+        blockchainEngine.clearChainPollingOverride(chain);
+      }, 30000);
+      return { status: "SUCCEEDED", reason: `Forced immediate re-poll of ${chain} (1s for 30s, then reverts to adaptive)` };
+    } catch (err) {
+      return { status: "FAILED", reason: err.message };
+    }
   },
 
   async RPC_FAILOVER(incident) {
@@ -46,8 +59,20 @@ const PLAYBOOK_HANDLERS = {
   },
 
   async TREASURY_HEALTH(incident) {
-    // TODO: wire to real treasury health re-check logic.
-    return { status: "SKIPPED", reason: "TREASURY_HEALTH has no handler wired yet" };
+    try {
+      const results = await checkPools();
+      if (!results) {
+        return { status: "FAILED", reason: "Treasury re-check ran but returned no results (see logs for the underlying error)" };
+      }
+      const stillFailing = results.filter(r => r.status === "DEADLOCK" || r.status === "CRITICAL");
+      if (stillFailing.length > 0) {
+        const summary = stillFailing.map(r => `${r.currency}:${r.status}`).join(", ");
+        return { status: "FAILED", reason: `Treasury re-check ran successfully but ${stillFailing.length} pool(s) still unhealthy: ${summary}` };
+      }
+      return { status: "SUCCEEDED", reason: `Treasury re-check ran successfully — all ${results.length} pool(s) reporting HEALTHY or WARNING` };
+    } catch (err) {
+      return { status: "FAILED", reason: `Treasury re-check threw: ${err.message}` };
+    }
   }
 };
 

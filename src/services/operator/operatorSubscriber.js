@@ -1,7 +1,7 @@
 import blockchainInspector from "../blockchain/inspector/blockchainInspector.js";
 import eventStreamService from "../eventStreamService.js";
-import incidentEngine from "./incidentEngine.js";
 import remediationEngine from "./remediationEngine.js";
+import platformIntelligenceBus from "../../intelligence/platform/platformIntelligenceBus.js";
 
 class OperatorSubscriber {
 
@@ -16,7 +16,13 @@ console.log("\n===== RAW INSPECTOR EVENT =====");
 console.dir(event,{depth:8});
 console.log("===============================\n");
 
-const incident = incidentEngine.process(event);
+// Routed through platformIntelligenceBus instead of calling
+// incidentEngine.process() directly — the bus normalizes, graphs,
+// correlates, records to Activity/Mission Control, THEN calls
+// incidentEngine.process() itself as its final step. This makes every
+// event (not just treasury) visible in Mission Control live state.
+const busResult = await platformIntelligenceBus.publish(event);
+const incident = busResult.incident;
 
 
             if (!incident) return;

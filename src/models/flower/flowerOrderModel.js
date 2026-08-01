@@ -47,6 +47,7 @@ const flowerOrderSchema = new mongoose.Schema(
     feeAmount:{ type:Number, default:0 },
     phpAmount:{ type:Number, default:0 },
 
+    expiresAt:{ type: Date },
     status:{
         type:String,
         enum:[
@@ -61,7 +62,8 @@ const flowerOrderSchema = new mongoose.Schema(
             "FAILED_SWEEP",
             "FAILED_SWAP",
             "FAILED_SETTLE",
-            "FAILED"
+            "FAILED",
+            "EXPIRED"
         ],
         default:"CREATED"
     }

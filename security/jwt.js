@@ -1,6 +1,13 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "jwtsecret";
+if (!process.env.JWT_SECRET) {
+  throw new Error(
+    "JWT_SECRET is not set. Refusing to start with an insecure default — " +
+    "set JWT_SECRET in your environment (Railway variables / .env)."
+  );
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const signToken = (user) => {
   return jwt.sign(

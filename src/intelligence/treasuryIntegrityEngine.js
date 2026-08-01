@@ -30,54 +30,78 @@ class TreasuryIntegrityEngine {
 
   /**
    * Add a pending deposit to the equation.
+   * Atomic $push — safe under concurrent calls for the SAME pool from
+   * DIFFERENT users. (Same-user double-submit is already blocked upstream
+   * by the one-deposit-per-user guardrail; this protects against a surge of
+   * different users hitting the same pool at once, which that guardrail
+   * doesn't cover.)
    */
   async addPendingDeposit(pool, deposit) {
-    const state = await this.getOrCreateState(pool);
-    state.pendingDeposits.push({
-      depositId: deposit._id,
-      reference: deposit.reference,
-      amount: deposit.amount,
-      user: deposit.userId,
-      expectedAt: new Date(Date.now() + 30 * 60 * 1000), // 30m expiry
-    });
-    await state.save();
-    await this.recalculateExpected(pool);
-    return state;
+    await TreasuryState.findOneAndUpdate(
+      { pool },
+      {
+        $push: {
+          pendingDeposits: {
+            depositId: deposit._id,
+            reference: deposit.reference,
+            amount: deposit.amount,
+            user: deposit.userId,
+            expectedAt: new Date(Date.now() + 30 * 60 * 1000), // 30m expiry
+          },
+        },
+      },
+      { new: true, upsert: true }
+    );
+    return this.recalculateExpected(pool);
   }
 
   /**
-   * Remove a pending deposit (e.g., after credit or expiry).
+   * Remove a pending deposit (e.g., after credit or expiry). Atomic $pull.
    */
   async removePendingDeposit(pool, depositId) {
-    const state = await this.getOrCreateState(pool);
-    state.pendingDeposits = state.pendingDeposits.filter(d => d.depositId.toString() !== depositId.toString());
-    await state.save();
-    await this.recalculateExpected(pool);
-    return state;
+    await TreasuryState.findOneAndUpdate(
+      { pool },
+      { $pull: { pendingDeposits: { depositId } } },
+      { new: true, upsert: true }
+    );
+    return this.recalculateExpected(pool);
   }
 
   /**
-   * Reserve liquidity for a pending withdrawal.
+   * Reserve liquidity for a pending withdrawal. Atomic $push + $inc in one
+   * update, so a concurrent withdrawal can't observe reserved incremented
+   * without the array entry present (or vice versa).
    */
   async addPendingWithdrawal(pool, withdrawal) {
-    const state = await this.getOrCreateState(pool);
-    state.pendingWithdrawals.push({ withdrawalId: withdrawal._id, amount: withdrawal.amount });
-    state.reserved += withdrawal.amount;
-    await state.save();
-    await this.recalculateExpected(pool);
-    return state;
+    await TreasuryState.findOneAndUpdate(
+      { pool },
+      {
+        $push: { pendingWithdrawals: { withdrawalId: withdrawal._id, amount: withdrawal.amount } },
+        $inc: { reserved: withdrawal.amount },
+      },
+      { new: true, upsert: true }
+    );
+    return this.recalculateExpected(pool);
   }
 
   /**
    * Release reserved liquidity after withdrawal completes/fails.
+   * Atomic $pull + $inc(-amount). NOTE: unlike the old code this no longer
+   * clamps reserved at 0 server-side (Mongo can't do Math.max in a plain
+   * $inc) — callers must pass the correct amount. If that's a concern, this
+   * needs an aggregation-pipeline update instead; flagging rather than
+   * guessing at syntax I can't verify against your Mongo version.
    */
   async removePendingWithdrawal(pool, withdrawalId, amount) {
-    const state = await this.getOrCreateState(pool);
-    state.pendingWithdrawals = state.pendingWithdrawals.filter(w => w.withdrawalId.toString() !== withdrawalId.toString());
-    state.reserved = Math.max(0, state.reserved - (amount || 0));
-    await state.save();
-    await this.recalculateExpected(pool);
-    return state;
+    await TreasuryState.findOneAndUpdate(
+      { pool },
+      {
+        $pull: { pendingWithdrawals: { withdrawalId } },
+        $inc: { reserved: -(amount || 0) },
+      },
+      { new: true, upsert: true }
+    );
+    return this.recalculateExpected(pool);
   }
 
   /**
@@ -87,6 +111,21 @@ class TreasuryIntegrityEngine {
     const state = await this.getOrCreateState(pool);
     state.baseBalance = newBase;
     await state.save();
+    await this.recalculateExpected(pool);
+    return state;
+  }
+
+  /**
+   * Atomically increment baseBalance — safe for concurrent calls on the same
+   * pool (e.g. two deposits crediting close together). Unlike setBaseBalance,
+   * this does not read-then-write, so it can't lose a concurrent increment.
+   */
+  async incrementBaseBalance(pool, amount) {
+    const state = await TreasuryState.findOneAndUpdate(
+      { pool },
+      { $inc: { baseBalance: amount } },
+      { new: true, upsert: true }
+    );
     await this.recalculateExpected(pool);
     return state;
   }
@@ -116,6 +155,15 @@ class TreasuryIntegrityEngine {
     const drift = proof.actualBalance - state.expectedBalance;
     const integrityScore = this.calculateIntegrityScore(drift, state);
 
+    // How much did the pool actually move since the last time we read it?
+    // This is what lets consensus match the movement to ONE specific pending
+    // deposit (spec's "700 == Pending B" check) instead of waiting for the
+    // whole pool's pending sum to clear before crediting anything.
+    // NOTE: requires a `lastKnownActual: Number` field on TreasuryState —
+    // add it to the schema if it isn't there yet.
+    const baseline = state.lastKnownActual ?? state.baseBalance;
+    const treasuryIncrease = proof.actualBalance - baseline;
+
     const snapshot = await TreasurySnapshot.create({
       pool: proof.pool,
       baseBalance: state.baseBalance,
@@ -132,16 +180,28 @@ class TreasuryIntegrityEngine {
 
     state.lastVerified = new Date();
     state.lastDrift = drift;
+    state.lastKnownActual = proof.actualBalance;
     await state.save();
 
     // Always emit — consensusService needs the drift===0 ("clean proof")
     // case just as much as the mismatch case. Only the *handling* differs
     // downstream, not whether the event fires.
+    //
+    // pendingDeposits + treasuryIncrease are included so consensus can match
+    // the movement to a specific deposit (reference/depositId), instead of
+    // crediting every android-proofed deposit in the pool once the pool-wide
+    // drift happens to hit zero.
     brainBus.emit(Channels.TREASURY_DRIFT, {
       pool: proof.pool,
       drift,
       expected: state.expectedBalance,
       actual: proof.actualBalance,
+      treasuryIncrease,
+      pendingDeposits: state.pendingDeposits.map(d => ({
+        depositId: d.depositId,
+        reference: d.reference,
+        amount: d.amount,
+      })),
     });
 
     return snapshot;

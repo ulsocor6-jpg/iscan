@@ -65,8 +65,12 @@ export async function sendOtp(userId, purpose) {
 
     await VerificationCode.create({ userId, codeHash, purpose, expiresAt });
 
-    const subject = purpose === 'WITHDRAWAL' ? 'iScan withdrawal verification' : 'iScan verification code';
-    const html = `<p>Your verification code is: <strong>${otp}</strong></p><p>It expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`;
+    const subject = purpose === 'WITHDRAWAL' ? 'iScan withdrawal verification'
+                   : purpose === 'LOGIN_2FA' ? 'Your ISCAN login code'
+                   : 'iScan verification code';
+    const html = purpose === 'LOGIN_2FA'
+        ? `<p>Someone is signing in to your ISCAN account. Your code is: <strong>${otp}</strong></p><p>It expires in ${OTP_EXPIRY_MINUTES} minutes. If this wasn't you, ignore this email — login cannot complete without this code, so your account stays safe.</p>`
+        : `<p>Your verification code is: <strong>${otp}</strong></p><p>It expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`;
     await sendEmail(user.email, subject, html);
 
     await addAuditLog(userId, 'OTP_SENT', { purpose });

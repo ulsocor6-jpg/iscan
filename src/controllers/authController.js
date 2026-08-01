@@ -15,6 +15,12 @@ import sessionIntelligencePublisher from "../auth/intelligence/sessionIntelligen
 import buildFingerprint from "../auth/services/deviceFingerprint.js";
 import SessionEvents from "../auth/services/sessionEvents.js";
 
+import { sendOtp, verifyOtp } from '../services/actionVerificationService.js';
+import SessionRegistryService from '../auth/services/sessionRegistryService.js';
+import { addAuditLog } from '../services/auditService.js';
+
+const LOGIN_OTP_TICKET_TTL = '10m';
+
 
 /* =========================
    REGISTER
@@ -152,7 +158,11 @@ export const verifyEmail = async (req, res) => {
 };
 
 /* =========================
-   LOGIN
+   LOGIN — step 1: password check, send login OTP
+   No session is created and no cookie/token with API access is issued
+   here. Only a short-lived pre-auth ticket goes back to the client,
+   scoped to type "login_otp" — requireAuth rejects any token without a
+   sessionId, so this ticket can never be used to hit a protected route.
 ========================= */
 export const login = async (req, res) => {
   try {
@@ -179,18 +189,101 @@ export const login = async (req, res) => {
     if (!user.isVerified) {
       return res.status(403).json({ message: 'Please verify your email first.' });
     }
-    
+
+    if (user.accountStatus && user.accountStatus !== 'ACTIVE') {
+      return res.status(403).json({ message: 'Account is not active.' });
+    }
+
+    await sendOtp(user._id, 'LOGIN_2FA');
+
+    const ticket = jwt.sign(
+      {
+        id: user._id,
+        type: 'login_otp'
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: LOGIN_OTP_TICKET_TTL
+      }
+    );
+
+    return res.status(202).json({
+      success: true,
+      requiresOtp: true,
+      ticket,
+      message: 'A verification code has been sent to your email.'
+    });
+
+  } catch (error) {
+    console.error('[LOGIN ERROR]', error);
+    return res.status(500).json({ message: error.message || 'Login failed.' });
+  }
+};
+
+/* =========================
+   LOGIN — step 2: verify OTP, revoke old session(s) instantly,
+   then create the new session and issue the real auth cookie/token.
+========================= */
+export const verifyLoginOtp = async (req, res) => {
+  try {
+    const { ticket, code } = req.body;
+
+    if (!ticket || !code) {
+      return res.status(400).json({ message: 'Ticket and code are required.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(ticket, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: 'Verification expired. Please log in again.' });
+    }
+
+    if (decoded.type !== 'login_otp') {
+      return res.status(401).json({ message: 'Invalid ticket.' });
+    }
+
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ message: 'Account unavailable.' });
+    }
+
+    if (user.accountStatus && user.accountStatus !== 'ACTIVE') {
+      return res.status(401).json({ message: 'Account unavailable.' });
+    }
+
+    try {
+      await verifyOtp(user._id, code, 'LOGIN_2FA', {});
+    } catch (err) {
+      return res.status(401).json({ message: err.message || 'Invalid code.' });
+    }
+
 /*
 |--------------------------------------------------------------------------
-| Build Device Information
+| OTP confirmed — revoke any existing session(s) instantly, no delay.
+| This is the single-session-per-account enforcement point.
 |--------------------------------------------------------------------------
 */
 
-await SessionService.revokeAllUserSessions(
-    user._id
-);
+    const oldSessions = await SessionRegistryService.getActiveSessions(user._id);
 
-const device = buildFingerprint(req);
+    await SessionService.revokeAllUserSessions(user._id);
+
+    for (const old of oldSessions) {
+      await SessionEvents.revoked(old);
+
+      try {
+        await addAuditLog(user._id, 'SESSION_REPLACED', {
+          oldSessionId: old.sessionId,
+          oldIp: old.network?.ip,
+          oldDevice: old.device?.browser,
+          newIp: req.ip
+        });
+      } catch (auditErr) {
+        console.warn('[VERIFY LOGIN OTP] audit log failed:', auditErr.message);
+      }
+    }
 
 /*
 |--------------------------------------------------------------------------
@@ -198,33 +291,31 @@ const device = buildFingerprint(req);
 |--------------------------------------------------------------------------
 */
 
-const session = await SessionService.createSession({
+    const device = buildFingerprint(req);
 
-    userId: user._id,
+    const session = await SessionService.createSession({
 
-    fingerprint: device.fingerprint,
+        userId: user._id,
 
-    browser: device.browser,
+        fingerprint: device.fingerprint,
 
-    os: device.os,
+        browser: device.browser,
 
-    platform: device.platform,
+        os: device.os,
 
-    userAgent: device.userAgent,
+        platform: device.platform,
 
-    ip: device.ip,
+        userAgent: device.userAgent,
 
-    emailVerified: user.isVerified,
+        ip: device.ip,
 
-    phoneVerified: !!user.phoneVerified,
+        emailVerified: user.isVerified,
 
-    otpVerified: false
+        phoneVerified: !!user.phoneVerified,
 
-});
+        otpVerified: true
 
-
-
-    
+    });
 
     // ===== Session Intelligence =====
     const sessionContext =
@@ -238,13 +329,8 @@ const session = await SessionService.createSession({
         sessionRisk
     );
 
-/*
-|--------------------------------------------------------------------------
-| Notify Event System
-|--------------------------------------------------------------------------
-*/
+    await SessionEvents.created(session);
 
-await SessionEvents.created(session);
     const token = jwt.sign(
     {
         id: user._id,
@@ -257,9 +343,9 @@ await SessionEvents.created(session);
     {
         expiresIn: "1d"
     }
-);
+    );
 
-res.cookie('iscan_token', token, {
+    res.cookie('iscan_token', token, {
       httpOnly: true,
       sameSite: 'Lax',
       secure: process.env.NODE_ENV === 'production',
@@ -296,8 +382,40 @@ res.cookie('iscan_token', token, {
     });
 
   } catch (error) {
-    console.error('[LOGIN ERROR]', error);
-    return res.status(500).json({ message: 'Login failed.' });
+    console.error('[VERIFY LOGIN OTP ERROR]', error);
+    return res.status(500).json({ message: 'Verification failed.' });
+  }
+};
+
+/* =========================
+   LOGIN — resend OTP
+========================= */
+export const resendLoginOtp = async (req, res) => {
+  try {
+    const { ticket } = req.body;
+
+    if (!ticket) {
+      return res.status(400).json({ message: 'Ticket is required.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(ticket, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: 'Verification expired. Please log in again.' });
+    }
+
+    if (decoded.type !== 'login_otp') {
+      return res.status(401).json({ message: 'Invalid ticket.' });
+    }
+
+    await sendOtp(decoded.id, 'LOGIN_2FA');
+
+    return res.json({ success: true, message: 'Code resent.' });
+
+  } catch (error) {
+    console.error('[RESEND LOGIN OTP ERROR]', error);
+    return res.status(400).json({ message: error.message || 'Could not resend code.' });
   }
 };
 

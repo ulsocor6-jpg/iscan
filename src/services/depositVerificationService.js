@@ -4,6 +4,7 @@ import Transaction from "../models/transactionModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
 import DepositVerificationLog from "../models/DepositVerificationLog.js";
 import inspector from "./blockchain/inspector/blockchainInspector.js";
+import consensusVerificationService from "../intelligence/consensus/consensusVerificationService.js";
 
 export async function verifyDeposit({
 
@@ -109,6 +110,53 @@ const deposit = await DirectDeposit.findOne({
     };
   }
 
+  // ------------------------------------------------------
+  // Consensus Verification
+  // ------------------------------------------------------
+
+  const consensus =
+    await consensusVerificationService.verify({
+
+      deposit,
+
+      watcher: {
+        verified: true,
+        senderId: deposit.userId,
+        senderName: senderAccount,
+        referenceId: deposit.referenceId
+      },
+
+      observedBalance: amount,
+
+      laptopVerified: false
+
+    });
+
+  if (consensus.decision !== "PASS") {
+
+    deposit.status = "PENDING_REVIEW";
+    deposit.verificationResult = "CONSENSUS_FAILED";
+
+    await deposit.save();
+
+    inspector.warn(
+      "php-deposit",
+      `Consensus rejected auto-credit for ${deposit.referenceId}`,
+      {
+        orderId: deposit.referenceId,
+        decision: consensus.decision,
+        score: consensus.score,
+        reasons: consensus.reasons
+      }
+    );
+
+    return {
+      matched: false,
+      code: "CONSENSUS_FAILED",
+      consensus
+    };
+
+  }
   await walletService.credit(
     deposit.userId,
     "PHP",

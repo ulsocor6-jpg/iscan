@@ -1,12 +1,10 @@
 import User from "../models/userModel.js";
 import DirectDeposit from "../models/DirectDepositModel.js";
-import walletService from "../services/walletService.js";
 import brainBus from "../brainbus/brainBus.js";
 import Channels from "../brainbus/channels.js";
 import eventStreamService from "../services/eventStreamService.js";
 import DepositReview from "../models/depositReviewModel.js";
 import BankAccount from "../models/BankAccount.js";
-import { archiveDeposit } from "../services/depositArchiveService.js";
 import inspectorService from "../services/inspectorService.js";
 import { InspectorStage } from "../inspector/inspectorConstants.js";
 
@@ -96,8 +94,11 @@ export default async function processTransaction(raw) {
         status: "active",
       };
       const bankAccount = await BankAccount.findOne(query).lean();
-      if (bankAccount) { user = await User.findById(bankAccount.userId).lean(); matchMethod = "SENDER_NAME_LAST_FOUR"; }
-      brainBus.emit("deposit.matched", { flowId, userId: user._id, source });
+      if (bankAccount) {
+        user = await User.findById(bankAccount.userId).lean();
+        matchMethod = "SENDER_NAME_LAST_FOUR";
+        brainBus.emit(Channels.DEPOSIT_MATCHED, { flowId, userId: user._id, source });
+      }
     }
 
     let ambiguousAnonymous = false;
@@ -213,109 +214,38 @@ export default async function processTransaction(raw) {
     decision: { reason: "VERIFIED_ELIGIBLE" },
   });
 
-  // ── Step 4: Atomic claim ───────────────────────────────────────────────
-  const claimed = await DirectDeposit.findOneAndUpdate(
-    { _id: deposit._id, status: "PENDING" },
-    { status: "CREDITED", creditedAt: new Date(), senderName: senderPhone || senderName || "unknown", senderLastFour: senderLastFour || null },
-    { returnDocument: 'after' }
-  );
+  // ── Step 4: Hand off to Consensus — this file no longer credits directly.
+  // Android's job ends at "who paid, and does it match an eligible pending
+  // deposit" (Steps 1-3 above). Whether to actually move money is now
+  // consensusService's call, gated on the laptop's treasury proof too.
+  // flowId travels with the event so consensusService can finish/fail the
+  // inspector flow once it resolves — the audit trail would otherwise go
+  // silent here.
+  //
+  // IMPORTANT ROLLOUT PRECONDITION: this only completes deposits if (a) the
+  // deposit session was registered in treasuryIntegrityEngine's pending list
+  // when it was created, and (b) the laptop verifier is actually running and
+  // posting proofs regularly. If either isn't true yet, deposits will now
+  // hang in AWAITING_CONSENSUS indefinitely instead of completing — verify
+  // both before this goes live, don't assume it from this file alone.
+  await inspectorService.startStage(flowId, InspectorStage.LEDGER, { userId: user._id, amount: deposit.amount });
+  await inspectorService.finishStage(flowId, InspectorStage.LEDGER, {
+    result: { depositId: deposit._id, referenceId: deposit.referenceId, amount: deposit.amount },
+    decision: { reason: "AWAITING_CONSENSUS" },
+  });
 
-  if (!claimed) {
-    await inspectorService.failStage(flowId, InspectorStage.LEDGER, "Race condition — already claimed");
-    return { skipped: true, reason: "RACE_CONDITION_ALREADY_CLAIMED", depositId: deposit._id };
-  }
+  brainBus.emit(Channels.DEPOSIT_VERIFIED, {
+    flowId,
+    depositId: deposit._id,
+    userId: user._id,
+    amount: deposit.amount,
+    reference: deposit.referenceId,
+    pool: channel,
+    senderPhone: senderPhone || null,
+    senderName: senderName || null,
+  });
 
-  // ── Step 5: LEDGER ─────────────────────────────────────────────────────
-  await inspectorService.startStage(flowId, InspectorStage.LEDGER, { userId: user._id, amount: claimed.amount });
-  let wallet;
-  try {
-    wallet = await walletService.credit(user._id.toString(), "PHP", claimed.amount, {
-      referenceId: claimed.referenceId,
-      description: `PHP deposit ₱${claimed.amount} from ${senderPhone || senderName || "unknown"} (ref: ${claimed.referenceId}, auto-matched)`,
-      transactionType: "cashin",
-    });
-    await archiveDeposit(claimed, "CREDITED", { creditedAt: new Date(), senderName, senderPhone });
-
-    // ── Treasury sync: add incoming amount to the matching provider account ──
-    try {
-      const treasuryCoordinator = (await import('../services/treasury/treasuryCoordinator.js')).default;
-      const providerMap = { MAYA: 'maya', MARI_BANK: 'maribank', GCASH: 'gcash' };
-      const provider = providerMap[source] || 'maya';
-      const accounts = await treasuryCoordinator.getLiveState('PHP');
-      const target = accounts.find(a => a.provider === provider && a.isActive !== false);
-      if (target) {
-        await treasuryCoordinator.updatePhysicalBalance(
-          target.id,
-          target.physicalBalance + claimed.amount,
-          'deposit'
-        );
-      }
-    } catch (treasuryErr) {
-      console.error('[processTransaction] Treasury sync failed:', treasuryErr.message);
-    }
-
-    await inspectorService.finishStage(flowId, InspectorStage.LEDGER, {
-      result: { credited: claimed.amount, referenceId: claimed.referenceId, userId: user._id },
-      decision: { reason: "CREDITED" },
-    });
-
-    // Feed ConsensusService's android-side proof. NOTE: this file still
-    // credits directly above rather than waiting on consensus — this
-    // emission is currently for tracking/cross-checking only. If the
-    // intent is to gate crediting on dual-proof consensus, that requires
-    // a separate, deliberate change to the flow above (flagging for
-    // review, not silently changing money-movement behavior).
-    brainBus.emit(Channels.DEPOSIT_VERIFIED, {
-      depositId: claimed._id,
-      userId: user._id,
-      amount: claimed.amount,
-      reference: claimed.referenceId,
-      pool: channel,
-    });
-  } catch (creditErr) {
-    await DirectDeposit.findOneAndUpdate({ _id: claimed._id }, { status: "PENDING" });
-    await inspectorService.failStage(flowId, InspectorStage.LEDGER, creditErr.message);
-    throw creditErr;
-  }
-
-  // ── Step 6: WALLET ──────────────────────────────────────────────────────
-  await inspectorService.startStage(flowId, InspectorStage.WALLET, { userId: user._id });
-  try {
-    const newBalance = await walletService.getBalance(user._id.toString(), "PHP");
-    await inspectorService.finishStage(flowId, InspectorStage.WALLET, {
-      result: { walletId: wallet?._id, iscanAddress: wallet?.iscanAddress, newPhpBalance: newBalance },
-      decision: { reason: "WALLET_BALANCE_CONFIRMED" },
-    });
-  } catch (walletErr) {
-    await inspectorService.failStage(flowId, InspectorStage.WALLET, walletErr.message, {
-      decision: { reason: "BALANCE_CONFIRM_FAILED_NON_FATAL" },
-    });
-  }
-
-  // ── Step 7: EVENT STREAM ───────────────────────────────────────────────
-  await inspectorService.startStage(flowId, InspectorStage.EVENT_STREAM, {});
-  try {
-    await eventStreamService.emit("deposit.credited", {
-      entityId: claimed.referenceId,
-      userId: user._id.toString(),
-      amount: claimed.amount,
-      channel: claimed.channel,
-      source,
-      sender: senderPhone || senderName || "unknown",
-      userEmail: user.email || "unknown",
-      userName: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : "unknown",
-    });
-    await inspectorService.finishStage(flowId, InspectorStage.EVENT_STREAM, {
-      result: { emitted: "deposit.credited" },
-    });
-  } catch (eventErr) {
-    await inspectorService.failStage(flowId, InspectorStage.EVENT_STREAM, eventErr.message);
-  }
-
-  await inspectorService.finishFlow(flowId);
-  console.log(`[processTransaction] ✅ ₱${claimed.amount} credited to user ${user._id} (ref: ${claimed.referenceId})`);
-
-  return { success: true, referenceId: claimed.referenceId, userId: user._id, amount: claimed.amount, channel: claimed.channel };
+  return { success: true, awaitingConsensus: true, referenceId: deposit.referenceId, userId: user._id, amount: deposit.amount, channel };
 }
 
 async function flagForReview(raw, reason, userId = null) {

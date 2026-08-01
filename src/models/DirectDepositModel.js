@@ -19,6 +19,7 @@ const schema = new mongoose.Schema({
       'SENDER_MISMATCH',
       'NO_ACTIVE_REQUEST',
       'MULTIPLE_MATCHES',
+      'CONSENSUS_FAILED',
       'MANUAL_REVIEW'
     ]
   }

@@ -1,4 +1,6 @@
 import healthRegistry from "./healthRegistry.js";
+import inspectorAdapter from "./adapters/inspectorAdapter.js";
+import SystemHealth from "./models/systemHealthModel.js";
 // src/intelligence/intelligenceCore.js
 
 const intelligenceCore = {
@@ -110,8 +112,22 @@ const intelligenceCore = {
 
     async _collectHealth() {
         console.log("[IntelligenceCore] Collecting inspector reports...");
-        // TODO: integrate with inspectorAdapter and systemHealthModel
-        // For now, just log – replace with real aggregation logic
+        try {
+            const inspectorHealth = await inspectorAdapter.collect();
+            // report() diffs against the previous status itself and fires
+            // the Telegram alert on transitions — nothing extra needed here.
+            healthRegistry.report(inspectorHealth);
+
+            const snapshot = healthRegistry.snapshot();
+            await SystemHealth.create(snapshot);
+        } catch (err) {
+            console.error("[IntelligenceCore] Health collection failed:", err.message);
+            healthRegistry.report({
+                node: "intelligenceCore",
+                status: "WARNING",
+                error: err.message,
+            });
+        }
     },
 
     report(data) {

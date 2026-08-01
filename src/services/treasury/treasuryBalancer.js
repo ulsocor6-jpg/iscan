@@ -32,7 +32,7 @@ export function getPoolHealth(pool) {
   };
 }
 
-async function checkPools() {
+export async function checkPools() {
   try {
     const pools = await PhpLiquidityPool.find();
     const results = pools.map(getPoolHealth);

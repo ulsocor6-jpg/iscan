@@ -195,13 +195,10 @@ export default function SwapInspector() {
   };
 
   const failedCount = orders.filter((o) => o.status.startsWith("FAILED")).length;
-  const activeCount = orders.filter(
-    (o) => !o.status.startsWith("FAILED") && o.status !== "COMPLETED"
-  ).length;
-
-  const historyCount = orders.filter(
-    (o) => o.status.startsWith("FAILED") || o.status === "COMPLETED"
-  ).length;
+  const isTerminal = (o) =>
+    o.status.startsWith("FAILED") || o.status === "COMPLETED" || o.status === "EXPIRED";
+  const activeCount = orders.filter((o) => !isTerminal(o)).length;
+  const historyCount = orders.filter(isTerminal).length;
 
   const counts: Record<string, number> = {
     "": orders.length,
@@ -211,8 +208,8 @@ export default function SwapInspector() {
 
   const rows = orders.filter((o) => {
     if (tab === "") return true;
-    if (tab === "__active__") return !o.status.startsWith("FAILED") && o.status !== "COMPLETED";
-    if (tab === "__history__") return o.status.startsWith("FAILED") || o.status === "COMPLETED";
+    if (tab === "__active__") return !isTerminal(o);
+    if (tab === "__history__") return isTerminal(o);
     return o.status === tab;
   });
 

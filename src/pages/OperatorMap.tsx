@@ -76,6 +76,25 @@ const operatorTree = {
   ]
 };
 
+const pipelineTree = {
+  id: 'pipeline',
+  label: 'Intelligence Pipeline',
+  purpose: 'Event flow: Subsystem -> Platform Intelligence Bus -> Event Factory -> Execution Graph -> Correlation Engine -> Activity Engine -> Consensus/Variance -> Diagnosis -> Incident -> Mission Control',
+  status: 'online',
+  children: [
+    { id: 'subsystem', label: 'Subsystem (source event)', purpose: 'Any component emitting an event — currently only TreasuryCoordinator publishes to this bus.', status: 'online' },
+    { id: 'platformIntelligenceBus', label: 'Platform Intelligence Bus', purpose: 'Central publish pipeline — normalizes, graphs, correlates, records, dispatches.', status: 'idle' },
+    { id: 'eventFactory', label: 'Event Factory', purpose: 'intelligenceEventFactory — normalizes raw events into a consistent shape.', status: 'idle' },
+    { id: 'executionGraph', label: 'Execution Graph', purpose: 'eventGraphService / executionGraph — builds node+edge graph of event flow.', status: 'idle' },
+    { id: 'correlationEngine', label: 'Correlation Engine', purpose: 'Groups related events into sessions.', status: 'idle' },
+    { id: 'activityEngine', label: 'Activity Engine', purpose: 'Records every published event for activity feed / audit.', status: 'idle' },
+    { id: 'consensusEngine', label: 'Consensus / Variance Detection', purpose: 'treasuryIntelligenceBus + varianceDetectionEngine — treasury-specific balance verification.', status: 'idle' },
+    { id: 'diagnosisEngine', label: 'Diagnosis Engine', purpose: 'Matches events against the 35-rule knowledge base to classify root cause.', status: 'idle' },
+    { id: 'incidentEngine', label: 'Incident Engine', purpose: 'Creates and tracks incidents from diagnoses.', status: 'idle' },
+    { id: 'missionControl', label: 'Mission Control', purpose: 'missionControlAggregator — live system/activity/execution/components/timeline state.', status: 'idle' }
+  ]
+};
+
 const triggerMap = {
   id: 'triggers',
   label: 'Trigger Map (Wake-Up Signals)',
@@ -207,6 +226,7 @@ const TreeNode = ({ node, depth = 0 }: any) => {
 
 const OperatorMap = () => {
   const [health, setHealth] = useState<Record<string, any>>({});
+  const [pipelineComponents, setPipelineComponents] = useState<Record<string, any>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -223,13 +243,47 @@ const OperatorMap = () => {
         // fetch failed — keep last known state rather than blanking the map
       }
     }
+    async function loadPipeline() {
+      try {
+        const res = await fetch('/api/v1/mission-control', { credentials: 'include' });
+        const data = await res.json();
+        if (!cancelled && data?.components) {
+          setPipelineComponents(data.components);
+        }
+      } catch (e) {
+        // fetch failed — keep last known state rather than blanking the map
+      }
+    }
     loadHealth();
-    const interval = setInterval(loadHealth, 10000);
+    loadPipeline();
+    const interval = setInterval(() => { loadHealth(); loadPipeline(); }, 10000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   const liveOperatorTree = mergeLiveStatus(operatorTree, health);
   const liveTriggerMap = mergeLiveStatus(triggerMap, health);
+
+  // Pipeline stages beyond "subsystem" are always-on plumbing — if the
+  // subsystem stage fired recently, every stage after it in the chain ran
+  // too (the bus calls them synchronously in sequence). Only "subsystem"
+  // itself reflects a real per-source distinction (which stage published).
+  const pipelineHasFired = Object.keys(pipelineComponents).length > 0;
+  const livePipelineTree = {
+    ...pipelineTree,
+    children: pipelineTree.children.map((node: any) => {
+      if (node.id === 'subsystem') {
+        const firedStages = Object.keys(pipelineComponents);
+        return {
+          ...node,
+          status: pipelineHasFired ? 'online' : 'idle',
+          purpose: firedStages.length > 0
+            ? `${node.purpose}\n\nActive sources: ${firedStages.join(', ')}`
+            : node.purpose,
+        };
+      }
+      return { ...node, status: pipelineHasFired ? 'online' : 'idle' };
+    }),
+  };
 
   return (
     <div style={{ padding: 20, color: 'white' }}>
@@ -239,6 +293,7 @@ const OperatorMap = () => {
       </p>
       <TreeNode node={liveOperatorTree} depth={0} />
       <TreeNode node={liveTriggerMap} depth={0} />
+      <TreeNode node={livePipelineTree} depth={0} />
     </div>
   );
 };

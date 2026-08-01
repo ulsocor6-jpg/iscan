@@ -149,7 +149,7 @@ export default [
 
         confidence: 100,
 
-        autoRemediation: false,
+        autoRemediation: true,
 
         playbook: "TREASURY_HEALTH",
 

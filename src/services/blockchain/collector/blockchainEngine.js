@@ -224,7 +224,17 @@ class BlockchainEngine {
 
             if (now < state.nextPollAt) continue;
 
-            await this.pollChain(chain, state);
+            try {
+
+                await this.pollChain(chain, state);
+
+            } catch (err) {
+
+                inspector.error("BlockchainEngine", err.message, { chain: chain.chain, stack: err.stack });
+
+                healthRegistry.report({ node: "blockchainEngine", status: "WARNING", error: err.message, metrics: { lastFailedChain: chain.chain } });
+
+            }
 
         }
 

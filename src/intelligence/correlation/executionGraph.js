@@ -3,8 +3,8 @@ class ExecutionGraph {
     constructor() {
 
         this.nodes = new Map();
-
         this.edges = new Map();
+        this.flows = new Map();
 
     }
 
@@ -12,26 +12,16 @@ class ExecutionGraph {
 
         const id =
             event.id ||
+            event.eventId ||
             crypto.randomUUID();
 
         const node = {
 
             id,
 
-            timestamp:
-                event.timestamp || new Date(),
+            ...event,
 
-            stage:
-                event.stage || "UNKNOWN",
-
-            type:
-                event.type || "UNKNOWN",
-
-            source:
-                event.source || null,
-
-            metadata:
-                event.metadata || {}
+            createdAt: Date.now()
 
         };
 
@@ -39,7 +29,7 @@ class ExecutionGraph {
 
         if (!this.edges.has(id)) {
 
-            this.edges.set(id, []);
+            this.edges.set(id, new Set());
 
         }
 
@@ -51,19 +41,11 @@ class ExecutionGraph {
 
         if (!this.edges.has(parentId)) {
 
-            this.edges.set(parentId, []);
+            this.edges.set(parentId, new Set());
 
         }
 
-        this.edges
-            .get(parentId)
-            .push(childId);
-
-    }
-
-    children(id) {
-
-        return this.edges.get(id) || [];
+        this.edges.get(parentId).add(childId);
 
     }
 
@@ -73,44 +55,84 @@ class ExecutionGraph {
 
     }
 
-    path(startId) {
+    children(id) {
 
-        const visited = new Set();
-
-        const output = [];
-
-        const walk = id => {
-
-            if (visited.has(id))
-                return;
-
-            visited.add(id);
-
-            const node =
-                this.node(id);
-
-            if (node)
-                output.push(node);
-
-            for (const child of this.children(id)) {
-
-                walk(child);
-
-            }
-
-        };
-
-        walk(startId);
-
-        return output;
+        return [...(this.edges.get(id) || [])]
+            .map(child => this.node(child));
 
     }
 
-    clear() {
+    path(id) {
 
-        this.nodes.clear();
+        return {
 
-        this.edges.clear();
+            node: this.node(id),
+
+            children: this.children(id)
+
+        };
+
+    }
+
+    update(event = {}) {
+
+        const node = this.createNode(event);
+
+        const flowId =
+            event.flowId ||
+            event.orderId ||
+            event.referenceId ||
+            event.transactionId;
+
+        if (!flowId) return;
+
+        if (!this.flows.has(flowId)) {
+
+            this.flows.set(flowId, {
+
+                id: flowId,
+
+                startedAt: Date.now(),
+
+                stages: {},
+
+                lastEvent: null
+
+            });
+
+        }
+
+        const flow = this.flows.get(flowId);
+
+        flow.lastEvent = event.type;
+
+        flow.stages[event.source || "unknown"] = {
+
+            status: event.status || "OK",
+
+            updatedAt: Date.now(),
+
+            nodeId: node.id
+
+        };
+
+    }
+
+    snapshot() {
+
+        return {
+
+            flows: [...this.flows.values()],
+
+            nodes: [...this.nodes.values()],
+
+            edges:
+                [...this.edges.entries()].map(([k,v]) => ({
+                    parent:k,
+                    children:[...v]
+                }))
+
+        };
 
     }
 

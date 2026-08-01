@@ -1,0 +1,296 @@
+/**
+ * ISCAN External Observer
+ *
+ * Main Bootstrap
+ *
+ * Responsibilities:
+ *
+ * - Start observer service
+ * - Connect observer database
+ * - Start monitoring systems
+ * - Receive ISCAN heartbeat signals
+ *
+ */
+
+
+require("dotenv").config();
+
+
+const express =
+require("express");
+
+
+const mongoose =
+require("mongoose");
+
+const {
+    startServer
+}
+=
+require("./server");
+
+
+
+
+
+const {
+    startServiceMonitor
+}
+=
+require("./monitors/serviceMonitor");
+
+
+
+const {
+    startDatabaseMonitor
+}
+=
+require("./monitors/databaseMonitor");
+
+
+
+const {
+    startQueueMonitor
+}
+=
+require("./monitors/queueMonitor");
+
+
+
+
+const app =
+express();
+
+
+
+app.use(
+    express.json()
+);
+
+
+
+const PORT =
+process.env.OBSERVER_PORT || 4000;
+
+
+
+const observerState = {
+
+
+    service:
+    "ISCAN_EXTERNAL_OBSERVER",
+
+
+    status:
+    "STARTING",
+
+
+    startedAt:
+    new Date()
+
+
+};
+
+
+
+
+// -----------------------------
+// Health Endpoint
+// -----------------------------
+
+
+app.get(
+"/health",
+(req,res)=>{
+
+
+    res.json({
+
+        service:
+        observerState.service,
+
+
+        status:
+        observerState.status,
+
+
+        uptime:
+        process.uptime(),
+
+
+        startedAt:
+        observerState.startedAt
+
+
+    });
+
+
+});
+
+
+
+
+// -----------------------------
+// Heartbeat Receiver
+// -----------------------------
+
+
+app.post(
+"/heartbeat",
+async(req,res)=>{
+
+
+    const heartbeat =
+    req.body;
+
+
+
+    console.log(
+
+        "[ISCAN HEARTBEAT]",
+        heartbeat
+
+    );
+
+
+
+    /*
+        Future:
+
+        Save to:
+
+        ObserverHeartbeat model
+
+    */
+
+
+
+    res.json({
+
+        received:true,
+
+
+        observer:
+        observerState.service
+
+
+    });
+
+
+
+});
+
+
+
+
+
+// -----------------------------
+// Database Connection
+// -----------------------------
+
+
+async function connectDatabase(){
+
+
+    try {
+
+
+        await mongoose.connect(
+
+            process.env.OBSERVER_DB_URI
+
+        );
+
+
+
+        console.log(
+
+            "Observer database connected"
+
+        );
+
+
+
+    }
+
+
+    catch(error){
+
+
+        console.error(
+
+            "Observer database failure",
+            error.message
+
+        );
+
+
+        process.exit(1);
+
+
+    }
+
+
+}
+
+
+
+
+
+// -----------------------------
+// Start Observer
+// -----------------------------
+
+
+async function startObserver(){
+
+
+
+    console.log(`
+
+=================================
+
+ ISCANN EXTERNAL OBSERVER
+
+ STARTING
+
+=================================
+
+    `);
+
+
+
+    await connectDatabase();
+
+
+
+    observerState.status =
+    "ONLINE";
+
+
+
+    startServiceMonitor();
+
+
+
+    startDatabaseMonitor();
+
+
+
+    startQueueMonitor();
+
+
+
+
+
+    startServer(observerState);
+
+
+
+}
+
+
+
+
+
+startObserver();

@@ -1,6 +1,12 @@
 import TreasuryAccount from '../../models/treasuryAccountModel.js';
 import PhpLiquidityPool from '../../models/phpLiquidityPool.js';
 import eventStreamService from '../eventStreamService.js';
+import { addAuditLog } from '../auditService.js';
+import balanceCache from "../../intelligence/laptop/balanceCache.js";
+import balanceHistory from "../../intelligence/laptop/balanceHistory.js";
+import treasuryWatcher from "../../intelligence/laptop/treasuryWatcher.js";
+import consensusSnapshotService from "../../intelligence/consensus/consensusSnapshotService.js";
+import platformIntelligenceBus from "../../intelligence/platform/platformIntelligenceBus.js";
 
 class TreasuryCoordinator {
   /**
@@ -8,11 +14,45 @@ class TreasuryCoordinator {
    * the current physical balance of a specific treasury account.
    */
   async updatePhysicalBalance(accountId, newBalance, source) {
+    const before = await TreasuryAccount.findById(accountId);
     const account = await TreasuryAccount.findByIdAndUpdate(accountId, {
       physicalBalance: newBalance,
       lastUpdatedBy: source,
     }, { returnDocument: 'after' });
     if (account) {
+      await addAuditLog(null, 'TREASURY_BALANCE_UPDATE', {
+        provider: account.provider,
+        currency: account.currency,
+        before: before?.physicalBalance ?? null,
+        after: account.physicalBalance,
+        source,
+      }, { entity: 'TreasuryAccount', entityId: String(accountId) });
+      await this.recalculatePool(account.currency);
+      this.emitLiquidityUpdate(account.currency);
+    }
+    return account;
+  }
+
+  /**
+   * Atomic delta version of updatePhysicalBalance — for callers crediting an
+   * amount (e.g. consensusService after a verified deposit), NOT reporting
+   * an absolute live balance. Uses $inc, so two concurrent credits to the
+   * same account can't clobber each other the way a read-then-set would.
+   */
+  async incrementPhysicalBalance(accountId, delta, source) {
+    const account = await TreasuryAccount.findByIdAndUpdate(
+      accountId,
+      { $inc: { physicalBalance: delta }, $set: { lastUpdatedBy: source } },
+      { returnDocument: 'after' }
+    );
+    if (account) {
+      await addAuditLog(null, 'TREASURY_BALANCE_UPDATE', {
+        provider: account.provider,
+        currency: account.currency,
+        delta,
+        after: account.physicalBalance,
+        source,
+      }, { entity: 'TreasuryAccount', entityId: String(accountId) });
       await this.recalculatePool(account.currency);
       this.emitLiquidityUpdate(account.currency);
     }
@@ -26,6 +66,14 @@ class TreasuryCoordinator {
     if (deltaOut) update.pendingOutgoing = deltaOut;
     const account = await TreasuryAccount.findByIdAndUpdate(accountId, { $inc: update }, { returnDocument: 'after' });
     if (account) {
+      await addAuditLog(null, 'TREASURY_PENDING_ADJUST', {
+        provider: account.provider,
+        currency: account.currency,
+        deltaIn: deltaIn || 0,
+        deltaOut: deltaOut || 0,
+        resultingPendingIncoming: account.pendingIncoming,
+        resultingPendingOutgoing: account.pendingOutgoing,
+      }, { entity: 'TreasuryAccount', entityId: String(accountId) });
       await this.recalculatePool(account.currency);
       this.emitLiquidityUpdate(account.currency);
     }
@@ -40,6 +88,12 @@ class TreasuryCoordinator {
       { returnDocument: 'after' }
     );
     if (!account) throw new Error('Insufficient available liquidity or account not found');
+    await addAuditLog(null, 'TREASURY_RESERVE', {
+      provider: account.provider,
+      currency: account.currency,
+      amount,
+      resultingReserved: account.reserved,
+    }, { entity: 'TreasuryAccount', entityId: String(accountId) });
     await this.recalculatePool(account.currency);
     this.emitLiquidityUpdate(account.currency);
     return account;
@@ -51,6 +105,12 @@ class TreasuryCoordinator {
       { $inc: { reserved: -amount } },
       { returnDocument: 'after' }
     );
+    await addAuditLog(null, 'TREASURY_RELEASE_RESERVATION', {
+      provider: account.provider,
+      currency: account.currency,
+      amount,
+      resultingReserved: account.reserved,
+    }, { entity: 'TreasuryAccount', entityId: String(accountId) });
     await this.recalculatePool(account.currency);
     this.emitLiquidityUpdate(account.currency);
     return account;
@@ -76,8 +136,45 @@ class TreasuryCoordinator {
   }
 
   async recalculatePool(currency) {
-    await PhpLiquidityPool.recalculateFromAccounts(currency);
-  }
+
+    const pool = await PhpLiquidityPool.recalculateFromAccounts(currency);
+
+    const snapshot = treasuryWatcher.update(currency, {
+        balance: pool.balance,
+        available: pool.balance - pool.reserved,
+        reserved: pool.reserved,
+        pending: (pool.metadata?.pendingIncoming || 0) - (pool.metadata?.pendingOutgoing || 0),
+        expected: pool.balance
+    });
+
+    balanceCache.setBalance(currency, snapshot);
+
+    balanceHistory.record(snapshot);
+
+    await platformIntelligenceBus.publish({
+
+        stage: "treasury",
+
+        source: "TreasuryCoordinator",
+
+        type: "TREASURY_UPDATE",
+
+        level: "INFO",
+
+        message: "Treasury pool recalculated.",
+
+        metadata: {
+            currency,
+            observedBalance: pool.balance,
+            reserved: pool.reserved,
+            pendingIncoming: pool.metadata?.pendingIncoming || 0,
+            pendingOutgoing: pool.metadata?.pendingOutgoing || 0
+        }
+
+    });
+
+    return pool;
+}
 
   emitLiquidityUpdate(currency) {
     eventStreamService.emit('treasury.liquidity.updated', { currency });

@@ -2,6 +2,8 @@ import express from 'express';
 import {
   register,
   login,
+  verifyLoginOtp,
+  resendLoginOtp,
   logout,
   verify,
   verifyEmail,
@@ -11,7 +13,7 @@ import {
   exitImpersonation
 } from '../controllers/authController.js';
 import { requireAuth } from '../auth/middleware/authMiddleware.js';
-import { loginLimiter, authActionLimiter } from '../../middleware/rateLimiters.js';
+import { loginLimiter, authActionLimiter, loginOtpVerifyLimiter, loginOtpResendLimiter, markLoginOtpAdmin } from '../../middleware/rateLimiters.js';
 
 import {
     getSessions,
@@ -30,6 +32,8 @@ router.use((req,res,next)=>{
 
 router.post('/register', authActionLimiter, register);
 router.post('/login', loginLimiter, login);
+router.post('/login/verify-otp', markLoginOtpAdmin, loginOtpVerifyLimiter, verifyLoginOtp);
+router.post('/login/resend-otp', markLoginOtpAdmin, loginOtpResendLimiter, resendLoginOtp);
 router.post('/logout', logout);
 
 /*

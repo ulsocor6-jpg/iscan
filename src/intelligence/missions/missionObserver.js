@@ -1,71 +1,100 @@
 import brainBus from "../../brainbus/brainBus.js";
 import missionEngine from "./missionEngine.js";
+import missionControlPublisher from "../missionControl/missionControlPublisher.js";
 
 class MissionObserver {
 
-    constructor() {
+    constructor(){
 
-        this.running = new Map();
+        this.running=new Map();
 
     }
 
-    startMission(id, context = {}) {
+    startMission(id,context={}){
 
-        const state =
-            missionEngine.start(id, context);
+        const state=missionEngine.start(id,context);
 
-        if (!state.ok)
+        if(!state.ok)
             return state;
 
-        this.running.set(
-            state.missionId,
-            state
-        );
+        this.running.set(state.missionId,state);
 
-        console.log(
-            `[Mission] Started ${state.missionId}`
-        );
+        missionControlPublisher.publish({
+
+            component:"MissionEngine",
+
+            stage:"MISSION_START",
+
+            type:state.missionId,
+
+            session:{
+                id:state.missionId
+            },
+
+            metadata:context,
+
+            message:`Mission ${state.missionId} started`
+
+        });
 
         return state;
 
     }
 
-    completeStage(missionId, stageId) {
+    completeStage(missionId,stageId){
 
-        const state =
-            this.running.get(missionId);
+        const state=this.running.get(missionId);
 
-        if (!state)
+        if(!state)
             return;
 
-        missionEngine.complete(
-            state,
-            stageId
-        );
+        missionEngine.complete(state,stageId);
 
-        console.log(
-            `[Mission] ${missionId} -> ${stageId}`
-        );
+        missionControlPublisher.publish({
 
-        if (state.finished) {
+            component:"MissionEngine",
 
-            console.log(
-                `[Mission] ${missionId} completed`
-            );
+            stage:stageId,
 
-            this.running.delete(
-                missionId
-            );
+            type:missionId,
+
+            session:{
+                id:missionId
+            },
+
+            message:`${stageId} completed`
+
+        });
+
+        if(state.finished){
+
+            missionControlPublisher.publish({
+
+                component:"MissionEngine",
+
+                stage:"MISSION_FINISHED",
+
+                type:missionId,
+
+                session:{
+                    id:missionId
+                },
+
+                message:`Mission ${missionId} finished`
+
+            });
+
+            this.running.delete(missionId);
 
         }
 
     }
 
-    wire() {
+    wire(){
 
         brainBus.on(
             "mission.started",
-            payload => {
+            payload=>{
 
                 this.startMission(
                     payload.missionId,
@@ -77,7 +106,7 @@ class MissionObserver {
 
         brainBus.on(
             "mission.stage.completed",
-            payload => {
+            payload=>{
 
                 this.completeStage(
                     payload.missionId,
@@ -87,9 +116,15 @@ class MissionObserver {
             }
         );
 
-        console.log(
-            "[MissionObserver] Listening."
-        );
+    }
+
+    snapshot(){
+
+        return{
+
+            running:Array.from(this.running.values())
+
+        };
 
     }
 

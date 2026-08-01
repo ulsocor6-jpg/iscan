@@ -23,6 +23,14 @@ require("express");
 const mongoose =
 require("mongoose");
 
+const {
+    startServer
+}
+=
+require("./server");
+
+
+
 
 
 const {
@@ -47,6 +55,14 @@ const {
 =
 require("./monitors/queueMonitor");
 
+const {
+    startProcessMonitor
+}
+=
+require("./process/processMonitor");
+
+
+
 
 
 
@@ -57,6 +73,24 @@ express();
 
 app.use(
     express.json()
+);
+
+app.use(
+    express.static("public")
+);
+
+app.get(
+    "/",
+    (req,res)=>{
+
+        res.sendFile(
+            require("path").join(
+                __dirname,
+                "../public/index.html"
+            )
+        );
+
+    }
 );
 
 
@@ -273,25 +307,13 @@ async function startObserver(){
 
 
 
+    startProcessMonitor();
 
 
-    app.listen(
-
-        PORT,
-
-        ()=>{
 
 
-            console.log(
 
-                `Observer listening on ${PORT}`
-
-            );
-
-
-        }
-
-    );
+    startServer(observerState);
 
 
 

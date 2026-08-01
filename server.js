@@ -14,10 +14,12 @@ import { startWalletBalanceSyncWorker } from "./src/services/blockchain/workers/
 import { startServices } from "./src/bootstrap/startServices.js";
 import { startTronListener } from "./src/services/blockchain/tronListener.js";
 import withdrawalExpiryService from "./src/services/withdrawalExpiryService.js";
+import securityPostureService from "./src/services/securityPostureService.js";
 import eventRetentionService from "./src/services/eventRetentionService.js";
 import blockchainBootstrap from "./src/services/blockchain/bootstrap.js";
 import { sendTelegramAlert } from "./src/services/telegramAlertService.js";
 import intelligenceCore from "./src/intelligence/intelligenceCore.js";
+import systemSnapshotService from "./src/intelligence/missionControl/systemSnapshotService.js";
 import inspectorRoutes from './src/routes/admin/inspectorRoutes.js';
 import maribankNotifyRoute from './src/routes/maribankNotifyRoute.js';
 import mayaNotifyRoute from './src/routes/mayaNotifyRoute.js';
@@ -77,6 +79,11 @@ async function startServer() {
     await mongoose.connect(mongoUrl);
 
 console.log("MongoDB connected");
+
+systemSnapshotService.update({
+    mongodb: "ONLINE",
+    status: "ONLINE"
+});
 
 await intelligenceCore.start();
 
@@ -223,6 +230,12 @@ intelligenceCore.report({
       withdrawalExpiryService.start();
     } catch (err) {
       console.error("Withdrawal expiry service failed to start (continuing anyway):", err.message);
+    }
+
+    try {
+      securityPostureService.start(app);
+    } catch (err) {
+      console.error("Security posture service failed to start (continuing anyway):", err.message);
     }
 
     try {

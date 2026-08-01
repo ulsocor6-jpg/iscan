@@ -67,6 +67,15 @@ if (decoded.sessionId) {
         decoded.sessionId
     );
 
+} else {
+
+    // Every real login issues a sessionId. A token without one (e.g. a
+    // login-OTP pre-auth ticket) must never grant API access.
+    return res.status(401).json({
+        success: false,
+        message: "Invalid token."
+    });
+
 }
 
 

@@ -1,4 +1,46 @@
 import rateLimit from "express-rate-limit";
+import jwt from "jsonwebtoken";
+import User from "../src/models/userModel.js";
+
+// Best-effort decode only — never used for authorization, just for
+// rate-limit keying/exemption. The route handlers themselves verify the
+// ticket signature before trusting anything in it.
+function ticketUserId(req) {
+  try {
+    const decoded = jwt.decode(req.body?.ticket || "");
+    return decoded?.id ? String(decoded.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Runs before the OTP rate limiters on /login/verify-otp and
+ * /login/resend-otp. Looks up the ticket's account role and stamps
+ * req._rateLimitAdminExempt so the limiter's `skip` can stay a plain
+ * synchronous check — some express-rate-limit versions don't await an
+ * async `skip`, and an un-awaited Promise is truthy, which would
+ * silently disable rate limiting for everyone. Doing the lookup here,
+ * in real middleware, avoids that trap entirely.
+ *
+ * This never blocks the request — worst case (lookup fails, no ticket)
+ * it just proceeds as non-admin, same as before this middleware existed.
+ */
+export async function markLoginOtpAdmin(req, res, next) {
+  req._rateLimitAdminExempt = false;
+  try {
+    const userId = ticketUserId(req);
+    if (userId) {
+      const user = await User.findById(userId).select("role").lean();
+      if (user?.role === "admin") {
+        req._rateLimitAdminExempt = true;
+      }
+    }
+  } catch {
+    // fail closed — stays non-admin, normal rate limiting applies
+  }
+  next();
+}
 
 /**
  * Strict limiter for login attempts.
@@ -119,5 +161,61 @@ export const selfServiceRateLimiter = rateLimit({
   message: {
     success: false,
     message: "Too many refresh attempts. Please wait a few minutes and try again."
+  }
+});
+
+/**
+ * OTP code entry after login. Kept separate from authActionLimiter so a
+ * few mistyped digits don't burn the same 5/hour bucket shared by
+ * unrelated actions (password reset, resend-verification) — and so one
+ * IP's OTP attempts on Account A can't lock out Account B on the same
+ * network. Keyed by the ticket's user id rather than raw IP for the
+ * same reason.
+ *
+ * The OTP itself already self-destructs after 3 wrong codes
+ * (actionVerificationService MAX_ATTEMPTS), forcing a fresh resend —
+ * this is just a backstop against hammering the route, not the primary
+ * defense against guessing.
+ *
+ * Admin accounts skip this specific limiter (see markLoginOtpAdmin) so a
+ * shared office IP or an unrelated bug can't lock an admin out of ISCAN.
+ * This does NOT exempt admins from loginLimiter (the password stage) or
+ * from the OTP's own 3-attempt lockout — only from this route throttle.
+ */
+export const loginOtpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req._rateLimitAdminExempt === true,
+  keyGenerator: (req) => {
+    const uid = ticketUserId(req);
+    return uid || req.ip;
+  },
+  message: {
+    success: false,
+    message: "Too many verification attempts. Please wait a few minutes and try again."
+  }
+});
+
+/**
+ * Resending the login OTP. actionVerificationService.sendOtp already
+ * enforces its own 30s cooldown per user+purpose (that's the primary
+ * spam defense) — this is a looser backstop at the route level, same
+ * admin exemption and per-user keying as loginOtpVerifyLimiter.
+ */
+export const loginOtpResendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req._rateLimitAdminExempt === true,
+  keyGenerator: (req) => {
+    const uid = ticketUserId(req);
+    return uid || req.ip;
+  },
+  message: {
+    success: false,
+    message: "Too many resend attempts. Please wait a few minutes and try again."
   }
 });

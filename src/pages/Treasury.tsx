@@ -1,6 +1,7 @@
 // src/pages/Treasury.tsx — full replacement (pools + existing fees + wallets)
 import DashboardLayout from "../banking/components/DashboardLayout";
 import { useState, useEffect, useCallback } from "react";
+import TreasuryRebalance from "../banking/components/dashboard/TreasuryRebalance";
 
 const card = { background:"#0d1526", borderRadius:12, padding:20 } as const;
 const lbl  = { color:"#94a3b8", fontSize:11, textTransform:"uppercase" as const, letterSpacing:1, marginBottom:6, display:"block" as const };
@@ -248,20 +249,22 @@ export default function Treasury() {
   const [pools,   setPools]   = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [period,  setPeriod]  = useState<Period>("week");
-  const [tab,     setTab]     = useState<"pools"|"fees"|"wallets">("pools");
+  const [tab,     setTab]     = useState<"pools"|"fees"|"wallets"|"rebalance">("pools");
   const [msg,     setMsg]     = useState<{ text:string; type:string } | null>(null);
 
     const load = useCallback(async () => {
-    const [f, w, p, a] = await Promise.all([
+    const [f, w, p, a, si] = await Promise.all([
       fetch("/api/v1/treasury/fees",    { credentials:"include" }).then(r => r.json()),
       fetch("/api/v1/treasury/wallets", { credentials:"include" }).then(r => r.json()),
       fetch("/api/v1/treasury/pools",   { credentials:"include" }).then(r => r.json()),
       fetch("/api/v1/treasury/accounts",{ credentials:"include" }).then(r => r.json()),
+      fetch("/api/v1/admin/treasury/sweep-intents", { credentials:"include" }).then(r => r.json()),
     ]);
     setFees(f);
     setWallets(w.wallets || []);
     setPools(p.pools || []);
     setAccounts(a.accounts || []);
+    setSweepIntents(si.operations || []);
     setLoading(false);
   }, []);
 
@@ -276,6 +279,7 @@ export default function Treasury() {
     setTimeout(() => setMsg(null), 4000);
   }
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [sweepIntents, setSweepIntents] = useState<any[]>([]);
 
   async function handleAccountTopup(accountId: string, amount: number) {
     const res = await fetch(`/api/v1/treasury/accounts/${accountId}/topup`, {
@@ -303,6 +307,29 @@ export default function Treasury() {
       body: JSON.stringify(data),
     });
     load();
+  }
+
+  async function handleRebalance(sourceAccountId: string, destinationAccountId: string, amount: number, note: string) {
+    const res = await fetch("/api/v1/admin/treasury/rebalance", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceAccountId, destinationAccountId, amount, note }),
+    }).then(r => r.json());
+    if (res.success) { flash("✅ Rebalance recorded"); load(); }
+    else flash("❌ " + (res.error ?? "Rebalance failed"), "error");
+  }
+
+  async function handleCreateSweepIntent(
+    sourcePhpAccountId: string, phpAmount: number, expectedAsset: string,
+    expectedAssetAmount: number, expirationMinutes: number
+  ) {
+    const res = await fetch("/api/v1/admin/treasury/sweep-intent", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourcePhpAccountId, phpAmount, expectedAsset, expectedAssetAmount, expirationMinutes }),
+    }).then(r => r.json());
+    if (res.success) { flash(`✅ Sweep intent declared — watching for ${expectedAssetAmount} ${expectedAsset}`); load(); }
+    else flash("❌ " + (res.error ?? "Failed to declare sweep intent"), "error");
   }
 
   const accountsByCurrency = accounts.reduce((acc, curr) => {
@@ -398,9 +425,10 @@ export default function Treasury() {
 
         {/* Tabs */}
         <div style={{ marginBottom:20 }}>
-          <button style={tabBtn("pools")}   onClick={() => setTab("pools")}>🏦 Liquidity Pools</button>
-          <button style={tabBtn("fees")}    onClick={() => setTab("fees")}>💰 Fee Analytics</button>
-          <button style={tabBtn("wallets")} onClick={() => setTab("wallets")}>👛 Wallets</button>
+          <button style={tabBtn("pools")}     onClick={() => setTab("pools")}>🏦 Liquidity Pools</button>
+          <button style={tabBtn("fees")}      onClick={() => setTab("fees")}>💰 Fee Analytics</button>
+          <button style={tabBtn("wallets")}   onClick={() => setTab("wallets")}>👛 Wallets</button>
+          <button style={tabBtn("rebalance")} onClick={() => setTab("rebalance")}>🔁 Rebalance</button>
         </div>
 
         {/* ── POOLS TAB ── */}
@@ -586,6 +614,16 @@ export default function Treasury() {
               ))
             }
           </div>
+        )}
+
+        {/* ── REBALANCE TAB ── */}
+        {tab === "rebalance" && (
+          <TreasuryRebalance
+            accounts={accounts}
+            sweepIntents={sweepIntents}
+            onRebalance={handleRebalance}
+            onCreateSweepIntent={handleCreateSweepIntent}
+          />
         )}
 
       </div>

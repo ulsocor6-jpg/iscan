@@ -1,8 +1,13 @@
 import brainBus from "./brainBus.js";
 import { Channels } from "./channels.js";
 
+import systemSnapshotService from "../intelligence/missionControl/systemSnapshotService.js";
 export async function wireBrainBus() {
     brainBus.start();
+
+    systemSnapshotService.update({
+        brainBus: "ONLINE"
+    });
 
     // ── Reasoning Bridge (flow stages → verdicts → operator) ──────────
     try {

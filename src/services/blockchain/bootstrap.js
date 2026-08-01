@@ -26,6 +26,7 @@ import flowerBaseRetryWorker from "./workers/flowerBaseRetryWorker.js";
 import flowerDepositWatcher from "./workers/flowerDepositWatcher.js";
 import flowerRoninRetryWorker from "./workers/flowerRoninRetryWorker.js";
 import flowerOrderCleanupWorker from "./workers/flowerOrderCleanupWorker.js";
+import flowerOrderExpiryWorker from "./workers/flowerOrderExpiryWorker.js";
 import healthRegistry from "../../intelligence/healthRegistry.js";
 
 class BlockchainBootstrap {
@@ -220,6 +221,10 @@ class BlockchainBootstrap {
 
         workScheduler.register(
             flowerOrderCleanupWorker
+        );
+
+        workScheduler.register(
+            flowerOrderExpiryWorker
         );
 
         /*
