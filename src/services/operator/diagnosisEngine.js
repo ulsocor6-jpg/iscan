@@ -74,8 +74,29 @@ export const diagnosisEngine = {
   criticality: "CRITICAL"
 };
 
-// TODO: Replace this placeholder with the actual diagnosis logic.
-// This function must satisfy the import { diagnose } from "./diagnosisEngine.js"
+import knowledgeBase from "./knowledgeBase.js";
+
+function matchAgainstKnowledgeBase(event) {
+    const message = (event.message || "").toLowerCase();
+
+    for (const rule of knowledgeBase) {
+        if (typeof rule.match === "function") {
+            try {
+                if (rule.match(event)) return rule;
+            } catch (err) {
+                console.warn(`[DiagnosisEngine] Rule "${rule.code}" match() threw:`, err.message);
+                continue;
+            }
+        }
+
+        if (Array.isArray(rule.patterns) && rule.patterns.length > 0) {
+            const hit = rule.patterns.some((p) => message.includes(p.toLowerCase()));
+            if (hit) return rule;
+        }
+    }
+
+    return null;
+}
 
 export function diagnose(event = {}) {
 
@@ -84,7 +105,31 @@ export function diagnose(event = {}) {
     const message = event.message || "";
     const meta = event.metadata || {};
 
-    // Treasury
+    // Routine recalculation from TreasuryCoordinator on every balance
+    // mutation — not a failure, not actionable. Skipping incident
+    // creation here (return null) since incidentEngine.process() treats
+    // a null diagnosis as "no incident" and drops it silently.
+    if (stage === "treasury" && event.type === "TREASURY_UPDATE") {
+        return null;
+    }
+
+    const matched = matchAgainstKnowledgeBase(event);
+    if (matched) {
+        return {
+            code: matched.code,
+            title: matched.title,
+            message: matched.recommendation
+                ? `${matched.title}: ${message || matched.recommendation}`
+                : (message || matched.title),
+            severity: matched.severity,
+            recommendation: matched.recommendation,
+            playbook: matched.playbook,
+            autoRemediation: matched.autoRemediation === true,
+            confidence: (matched.confidence ?? 100) / 100,
+            metadata: meta
+        };
+    }
+
     if (stage === "treasury") {
 
         if (meta.status === "DEADLOCK") {
@@ -110,11 +155,33 @@ export function diagnose(event = {}) {
                 metadata: meta
             };
         }
+
+        if (meta.status === "UNMATCHED_INCREASE") {
+            return {
+                code: "TREASURY_UNMATCHED_INCREASE",
+                title: "Unmatched treasury increase",
+                message: `${meta.pool} pool increased by ${meta.treasuryIncrease} with no matching pending deposit.`,
+                severity: "WARNING",
+                recommendation: "Check for an untracked deposit, a split/partial payment, or a missing addPendingDeposit call.",
+                confidence: 0.8,
+                metadata: meta
+            };
+        }
+
+        if (meta.status === "AMBIGUOUS_INCREASE") {
+            return {
+                code: "TREASURY_AMBIGUOUS_INCREASE",
+                title: "Ambiguous treasury increase",
+                message: `${meta.pool} pool increase of ${meta.treasuryIncrease} matches ${meta.candidateCount} pending deposits — cannot auto-credit.`,
+                severity: "WARNING",
+                recommendation: "Manually match by reference and credit the correct deposit.",
+                confidence: 0.7,
+                metadata: meta
+            };
+        }
     }
 
-    // Recovery Worker
-
-    if (stage === "RecoveryWorker") {
+    if (stage === "recoveryworker") {
         return {
             code: "RECOVERY_COMPLETED",
             title: "Recovery Worker",
@@ -126,9 +193,7 @@ export function diagnose(event = {}) {
         };
     }
 
-    // Pipeline
-
-    if (stage === "Pipeline") {
+    if (stage === "pipeline") {
 
         if (message.includes("Idle")) {
             return {
@@ -143,8 +208,6 @@ export function diagnose(event = {}) {
         }
     }
 
-    // Generic
-
     return {
         code: level === "ERROR" ? "ERROR" : "UNKNOWN",
         title: message || "Unknown Event",
@@ -157,6 +220,5 @@ export function diagnose(event = {}) {
         metadata: meta
     };
 }
-
 
 export default diagnosisEngine;
