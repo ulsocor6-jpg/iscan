@@ -63,11 +63,39 @@ class PlatformIntelligenceBus {
         architectureEventBridge.started("activityEngine");
         activityEngine.record(normalized);
 
-        missionControlAggregator.process(
-            normalized
-        );
+        // Wrapped defensively — a failure in either of these must never
+        // block incidentEngine.process() further down in this function.
+        // executionGraph.record() was throwing "is not a function" on
+        // every single event before this fix, which meant NO incidents
+        // were being created at all, including real treasury DEADLOCKs.
+        try {
 
-        executionGraph.record(normalized);
+            missionControlAggregator.process(
+                normalized
+            );
+
+        } catch (err) {
+
+            console.error(
+                "[PlatformIntelligenceBus] missionControlAggregator.process() failed — non-fatal, continuing:",
+                err.message
+            );
+
+        }
+
+        try {
+
+            executionGraph.record(normalized);
+
+        } catch (err) {
+
+            console.error(
+                "[PlatformIntelligenceBus] executionGraph.record() failed — non-fatal, continuing:",
+                err.message
+            );
+
+        }
+
         architectureEventBridge.completed("activityEngine");
 
         const results = [];
