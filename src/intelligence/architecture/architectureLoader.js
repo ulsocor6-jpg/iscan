@@ -3,6 +3,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 import architectureKnowledgeGraph from "./architectureKnowledgeGraph.js";
+import descriptorValidator from "../descriptors/descriptorValidator.js";
 
 class ArchitectureLoader {
 
@@ -27,38 +28,40 @@ class ArchitectureLoader {
 
                 if (!descriptor) return;
 
+                const validation =
+                    descriptorValidator.validate(descriptor);
+
+                if (!validation.valid) {
+
+                    console.warn(
+                        "[ArchitectureLoader] Invalid descriptor:",
+                        descriptor.name || path.basename(file)
+                    );
+
+                    for (const err of validation.errors)
+                        console.warn("   •", err);
+
+                    return;
+
+                }
+
                 architectureKnowledgeGraph.register({
 
+                    ...descriptor,
+
                     id:
+                        descriptor.id ||
                         descriptor.name ||
                         path.basename(file),
-
-                    name:
-                        descriptor.name ||
-                        path.basename(file),
-
-                    type:
-                        descriptor.type || "service",
-
-                    description:
-                        descriptor.description || "",
-
-                    dependsOn:
-                        descriptor.dependsOn || [],
-
-                    provides:
-                        descriptor.provides || [],
-
-                    consumes:
-                        descriptor.inputs || [],
-
-                    produces:
-                        descriptor.outputs || [],
 
                     previous:
-                        descriptor.dependsOn || [],
+                        descriptor.previous ||
+                        descriptor.dependsOn ||
+                        [],
 
-                    next: []
+                    next:
+                        descriptor.next ||
+                        []
 
                 });
 
