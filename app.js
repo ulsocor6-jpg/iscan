@@ -118,6 +118,9 @@ import inspectorRoutes from "./src/routes/admin/inspectorRoutes.js";
 import operatorRoutes from "./src/routes/operator/operatorRoutes.js";
 import intelligenceRoutes from "./src/routes/intelligence/intelligenceRoutes.js";
 import activityRoutes from "./src/routes/activityRoutes.js";
+import missionControlRoutes from "./src/routes/missionControlRoutes.js";
+import clientHealthRoutes from "./src/intelligence/clientHealth/clientHealthRoutes.js";
+import nodeRoutes from "./src/intelligence/nodeRegistry/nodeRoutes.js";
 import architectureRoutes from "./src/routes/architectureRoutes.js";
 import operatorActionsRoute from "./src/routes/operator/operatorActionsRoute.js";
 import supportRoutes from "./src/routes/supportRoutes.js";
@@ -234,6 +237,9 @@ app.use("/api/v1/crypto-withdrawals", cryptoWithdrawalRoutes);
 
 app.use("/api/admin/inspector", inspectorRoutes);
 app.use("/api/v1/intelligence", intelligenceRoutes);
+app.use("/api/v1/mission-control", missionControlRoutes);
+app.use("/api/v1/client", clientHealthRoutes);
+app.use("/api/v1/node", nodeRoutes);
 app.use("/api/v1/admin/architecture", requireAuth, requireAdmin, architectureRoutes);
 
 /* ===========================
